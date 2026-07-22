@@ -16,6 +16,7 @@ import Taskbar from "./Taskbar";
 import StartMenu from "./StartMenu";
 import TicketReconciler from "./TicketReconciler";
 import SlaEngine from "./SlaEngine";
+import PersistenceManager from "./PersistenceManager";
 
 export default function HostDesktop() {
   const windows = useHostStore((s) => s.windows);
@@ -33,7 +34,8 @@ export default function HostDesktop() {
         </span>
       </div>
 
-      {/* Headless engines: ticket resolution + live SLA clock */}
+      {/* Headless engines. PersistenceManager first: hydrate before evaluating. */}
+      <PersistenceManager />
       <TicketReconciler />
       <SlaEngine />
 

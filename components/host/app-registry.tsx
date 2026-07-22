@@ -5,14 +5,16 @@
  * ======================================
  * Binds each declarative `HostAppId` (from HOST_APP_REGISTRY data) to the React
  * component that renders its window body. Kept separate from the data registry
- * so `SessionState` stays serializable (Phase 6 persistence).
+ * so `SessionState` stays serializable. As of Phase 6 every host app is real.
  */
 
 import type { HostAppId } from "@/lib/core";
 import TicketCenter from "./apps/TicketCenter";
 import RemoteGateway from "./apps/RemoteGateway";
 import Mail from "./apps/Mail";
-import PlaceholderApp from "./apps/PlaceholderApp";
+import Toolbox from "./apps/Toolbox";
+import Leaderboard from "./apps/Leaderboard";
+import SettingsApp from "./apps/SettingsApp";
 
 export function renderHostApp(appId: HostAppId): React.ReactNode {
   switch (appId) {
@@ -22,7 +24,11 @@ export function renderHostApp(appId: HostAppId): React.ReactNode {
       return <RemoteGateway />;
     case "mail":
       return <Mail />;
-    default:
-      return <PlaceholderApp appId={appId} />;
+    case "toolbox":
+      return <Toolbox />;
+    case "leaderboard":
+      return <Leaderboard />;
+    case "settings":
+      return <SettingsApp />;
   }
 }
