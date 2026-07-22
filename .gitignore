@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Env & local config
+.env*
+.claude/settings.local.json
+
+# OS / editor noise
+.DS_Store
+*.log

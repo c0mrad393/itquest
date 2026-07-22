@@ -1,0 +1,110 @@
+"use client";
+
+/**
+ * TriageOS — Host window frame (Windows 11 style)
+ * -----------------------------------------------
+ * Draggable, focusable window chrome with minimize / maximize / close, driven
+ * by the host store. Handles both window kinds: host-app bodies come from the
+ * component registry; remote-session bodies are a Phase-3 placeholder for now.
+ */
+
+import { useRef } from "react";
+import { useHostStore } from "@/lib/host/store";
+import type { ManagedWindow } from "@/lib/host/windows";
+import { renderHostApp } from "./app-registry";
+import RemoteSession from "./remote/RemoteSession";
+
+const TASKBAR_H = 48;
+
+export default function WindowFrame({ win }: { win: ManagedWindow }) {
+  const { focus, close, minimize, toggleMaximize, move } = useHostStore();
+  const drag = useRef<{ dx: number; dy: number } | null>(null);
+
+  if (win.mode === "minimized") return null;
+
+  const maximized = win.mode === "maximized";
+  const rect = maximized
+    ? { left: 0, top: 0, width: "100%", height: `calc(100% - ${TASKBAR_H}px)` }
+    : { left: win.x, top: win.y, width: win.w, height: win.h };
+
+  function onPointerDown(e: React.PointerEvent) {
+    if (maximized) return; // don't drag a maximized window
+    focus(win.instanceId);
+    drag.current = { dx: e.clientX - win.x, dy: e.clientY - win.y };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }
+  function onPointerMove(e: React.PointerEvent) {
+    if (!drag.current) return;
+    move(win.instanceId, e.clientX - drag.current.dx, e.clientY - drag.current.dy);
+  }
+  function onPointerUp(e: React.PointerEvent) {
+    drag.current = null;
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+  }
+
+  return (
+    <div
+      className="absolute flex flex-col overflow-hidden border border-edge bg-panel shadow-2xl shadow-black/60"
+      style={{ ...rect, zIndex: win.z, borderRadius: maximized ? 0 : 10 }}
+      onMouseDown={() => focus(win.instanceId)}
+    >
+      {/* Title bar */}
+      <div
+        className="flex h-9 shrink-0 cursor-grab items-center gap-2 border-b border-edge bg-panelalt px-3 active:cursor-grabbing"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onDoubleClick={() => toggleMaximize(win.instanceId)}
+      >
+        <span className="text-sm">{win.icon}</span>
+        <span className="select-none text-xs font-medium text-gray-200">{win.title}</span>
+        {win.kind === "remote" && (
+          <span className="rounded bg-info/15 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-info">
+            {win.protocol}
+          </span>
+        )}
+
+        <div className="ml-auto flex items-center">
+          <CtrlBtn onClick={() => minimize(win.instanceId)} label="Minimize">
+            <svg width="10" height="10" viewBox="0 0 10 10"><rect y="4.5" width="10" height="1" fill="currentColor" /></svg>
+          </CtrlBtn>
+          <CtrlBtn onClick={() => toggleMaximize(win.instanceId)} label="Maximize">
+            <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" /></svg>
+          </CtrlBtn>
+          <CtrlBtn onClick={() => close(win.instanceId)} label="Close" danger>
+            <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" strokeWidth="1" /></svg>
+          </CtrlBtn>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {win.kind === "app" ? renderHostApp(win.appId) : <RemoteSession win={win} />}
+      </div>
+    </div>
+  );
+}
+
+function CtrlBtn({
+  onClick,
+  label,
+  danger,
+  children,
+}: {
+  onClick: () => void;
+  label: string;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      className={`flex h-9 w-11 items-center justify-center text-gray-400 transition ${
+        danger ? "hover:bg-danger hover:text-white" : "hover:bg-edge hover:text-gray-100"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}

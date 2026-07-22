@@ -1,0 +1,72 @@
+/**
+ * TriageOS — Ticket presentation helpers (pure)
+ * =============================================
+ * Shared color/label maps and SLA math used by the Ticket Center list + detail.
+ * No JSX here — just data, so it stays trivially testable.
+ */
+
+import type { Ticket, TicketSeverity, TicketStatus, TicketTrack } from "@/lib/core";
+
+export const TRACK_META: Record<TicketTrack, { label: string; icon: string; color: string }> = {
+  helpdesk: { label: "Helpdesk", icon: "🎧", color: "text-sky-300 bg-sky-500/15 border-sky-500/30" },
+  sysadmin: { label: "Sysadmin", icon: "🛠", color: "text-violet-300 bg-violet-500/15 border-violet-500/30" },
+  netops: { label: "NetOps", icon: "🌐", color: "text-teal-300 bg-teal-500/15 border-teal-500/30" },
+  secops: { label: "SecOps", icon: "🛡", color: "text-rose-300 bg-rose-500/15 border-rose-500/30" },
+};
+
+export const SEVERITY_META: Record<TicketSeverity, { label: string; color: string; dot: string }> = {
+  low: { label: "Low", color: "text-gray-300 bg-gray-500/15 border-gray-500/30", dot: "bg-gray-400" },
+  medium: { label: "Medium", color: "text-amber-300 bg-amber-500/15 border-amber-500/30", dot: "bg-amber-400" },
+  high: { label: "High", color: "text-orange-300 bg-orange-500/15 border-orange-500/30", dot: "bg-orange-400" },
+  critical: { label: "Critical", color: "text-red-300 bg-red-500/15 border-red-500/30", dot: "bg-red-500" },
+};
+
+export const STATUS_META: Record<TicketStatus, { label: string; color: string }> = {
+  new: { label: "New", color: "text-blue-300 bg-blue-500/15" },
+  accepted: { label: "Accepted", color: "text-cyan-300 bg-cyan-500/15" },
+  in_progress: { label: "In Progress", color: "text-indigo-300 bg-indigo-500/15" },
+  escalated: { label: "Escalated", color: "text-fuchsia-300 bg-fuchsia-500/15" },
+  resolved: { label: "Resolved", color: "text-emerald-300 bg-emerald-500/15" },
+  breached: { label: "Breached", color: "text-red-300 bg-red-500/15" },
+  closed: { label: "Closed", color: "text-gray-400 bg-gray-500/15" },
+};
+
+/** "5m ago", "2h ago", "3d ago" from an epoch-ms timestamp. */
+export function relativeTime(ts: number, from = Date.now()): string {
+  const s = Math.max(0, Math.floor((from - ts) / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+/** Format seconds as a compact SLA duration, e.g. "2h 00m", "15m". */
+export function formatDuration(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  return `${m}m`;
+}
+
+/**
+ * Static SLA snapshot for the Phase-2 frame (no live tick yet). Computes the
+ * resolution deadline from acceptance (or creation) + policy, and how much is
+ * left right now. Phase 5 replaces `now` with a live clock.
+ */
+export function slaSnapshot(ticket: Ticket, now = Date.now()) {
+  const anchor = ticket.clock.startedAt ?? ticket.createdAt;
+  const deadline = anchor + ticket.sla.resolutionSeconds * 1000;
+  const remainingSec = Math.floor((deadline - now) / 1000);
+  const breached = remainingSec < 0 || ticket.clock.resolutionBreached;
+  const total = ticket.sla.resolutionSeconds;
+  const usedPct = Math.min(100, Math.max(0, ((total - remainingSec) / total) * 100));
+  return {
+    deadline,
+    remainingSec,
+    breached,
+    usedPct,
+    label: breached ? "SLA breached" : `${formatDuration(remainingSec)} left`,
+  };
+}
