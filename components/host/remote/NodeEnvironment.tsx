@@ -12,6 +12,7 @@
 import { useState } from "react";
 import type { TargetNode, WindowsNodeState } from "@/lib/core";
 import NodeTerminal from "./apps-linux/NodeTerminal";
+import MacOSEndpointEnv from "./endpoints/MacOSEndpointEnv";
 import ADUCPanel from "./apps-windows/ADUCPanel";
 import ServicesPanel from "./apps-windows/ServicesPanel";
 import ControlPanel from "./apps-windows/ControlPanel";
@@ -19,11 +20,10 @@ import EventViewer from "./apps-windows/EventViewer";
 import FileExplorer from "./apps-windows/FileExplorer";
 
 export default function NodeEnvironment({ node }: { node: TargetNode }) {
-  return node.os === "windows" ? (
-    <WindowsEnvironment node={node} />
-  ) : (
-    <NodeTerminal nodeId={node.nodeId} />
-  );
+  if (node.os === "windows") return <WindowsEnvironment node={node} />;
+  // Mac endpoints reuse the full macOS endpoint desktop.
+  if (node.os === "macos") return <MacOSEndpointEnv nodeId={node.nodeId} />;
+  return <NodeTerminal nodeId={node.nodeId} />;
 }
 
 type ConsoleId = "aduc" | "gpmc" | "services" | "controlpanel" | "eventvwr" | "explorer";

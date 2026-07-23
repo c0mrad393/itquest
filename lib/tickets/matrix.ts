@@ -447,6 +447,61 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     healthyNode: (_infra, ctx) => ctx.targetNodeId,
   },
 
+  "sys-t1-rogue-process": {
+    id: "sys-t1-rogue-process",
+    category: "System & Web Services",
+    difficulty: "Tier_1_Easy",
+    track: "helpdesk",
+    severity: "medium",
+    priority: "P3",
+    slaDuration: 20 * 60,
+    responseSeconds: 5 * 60,
+    xpReward: 190,
+    personaId: "persona-tara-calm",
+    tags: ["endpoint", "cpu", "task-manager"],
+    origin: "dashboard",
+    summary: "A runaway process is pinning an endpoint's CPU.",
+    hints: [
+      "TriageRemote → connect to the endpoint (RDP)",
+      "Task Manager / Activity Monitor → sort by CPU",
+      "End the runaway task to restore the machine",
+    ],
+    playable: true,
+    makeContext: (infra, rng) => {
+      const endpoints = Object.values(infra.nodes).filter(
+        (n) => n.role === "workstation" && (n.os === "windows" || n.os === "macos"),
+      );
+      if (endpoints.length === 0) return null;
+      const n = pick(rng, endpoints);
+      return {
+        targetNodeId: n.nodeId,
+        targetHostname: n.hostname,
+        serviceName: n.os === "macos" ? "mediaanalysisd" : "TelemetryUpdater.exe",
+      };
+    },
+    title: (ctx) => `${ctx.targetHostname} unresponsive — runaway process pinning CPU`,
+    description: (ctx) =>
+      `The user of ${ctx.targetHostname} reports the machine is crawling — the fan is at full speed and apps freeze. A process called '${ctx.serviceName}' appears to be consuming nearly all CPU. Remote in and end the task.`,
+    requester: (_ctx, org) => ({
+      name: "Tara Coles", role: "Front Desk", email: `tara.coles@${mailDomain(org)}`, department: "Facilities",
+    }),
+    injectFault: (infra, ctx) => {
+      const n = infra.nodes[ctx.targetNodeId as NodeId];
+      if (!n) return;
+      n.processes = [
+        ...n.processes,
+        { pid: 66613, ppid: 1, user: n.os === "macos" ? "staff" : "user", command: ctx.serviceName!, cpu: 96.4, mem: 41.2, state: "R" },
+      ];
+      n.health.cpuLoad = 98;
+      n.health.status = "degraded";
+    },
+    win: (infra, ctx) => {
+      const n = infra.nodes[ctx.targetNodeId as NodeId];
+      return !!n && !n.processes.some((p) => p.command === ctx.serviceName);
+    },
+    healthyNode: (_infra, ctx) => ctx.targetNodeId,
+  },
+
   // ═══ D. Security & Incident ═════════════════════════════════════════════
   "sec-t1-phishing": {
     id: "sec-t1-phishing",

@@ -9,11 +9,12 @@
 
 import type { LinuxNodeState } from "./linux";
 import type { WindowsNodeState } from "./windows";
+import type { MacNodeState } from "./mac";
 import type { ConnectionProtocol, NodeId } from "./nodes";
 import type { OrganizationProfile } from "./organization";
 
 /** Discriminated union of every node kind. Narrow on `.os`. */
-export type TargetNode = LinuxNodeState | WindowsNodeState;
+export type TargetNode = LinuxNodeState | WindowsNodeState | MacNodeState;
 
 /**
  * A live edge in the network graph. Metrics evolve in real time (NetworkEngine

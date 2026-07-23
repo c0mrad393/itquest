@@ -21,7 +21,7 @@ import type { NetworkState } from "@/lib/vm/types";
 export type NodeId = string;
 
 /** OS discriminant used to narrow the TargetNode union. */
-export type NodeOs = "linux" | "windows";
+export type NodeOs = "linux" | "windows" | "macos";
 
 /** Functional role — drives iconography, gateway grouping, and scenario logic. */
 export type NodeRole =

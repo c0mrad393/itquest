@@ -52,6 +52,18 @@ interface InfraStore {
   /** One NetworkEngine tick: random-walk utilization/loss, degrade hot nodes. */
   tickNetworkMetrics: () => void;
 
+  // ── Remote endpoint actions (TriageRemote environments) ──
+  /** End a task / force quit — removes the process from the node's table. */
+  killProcess: (nodeId: NodeId, pid: number) => void;
+  /** Enable/disable a network adapter on ANY node (Windows, macOS, Linux). */
+  setNodeInterfaceUp: (nodeId: NodeId, iface: string, up: boolean) => void;
+  /** Change a node's resolver list (endpoint Network Settings). */
+  setNodeDns: (nodeId: NodeId, dnsServers: string[]) => void;
+  /** Change a node's IPv4 on an adapter. */
+  setNodeIpv4: (nodeId: NodeId, iface: string, ipv4: string) => void;
+  /** macOS Wi-Fi radio toggle. */
+  setMacWifi: (nodeId: NodeId, on: boolean) => void;
+
   // ── Incident-response actions (Security & advanced NetOps tickets) ──
   /** Block an IP at the edge router (SecOps: block attacker / C2). */
   blockIp: (ip: string) => void;
@@ -273,6 +285,58 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       }
 
       return { infra: { ...s.infra, links, nodes } };
+    }),
+
+  killProcess: (nodeId, pid) =>
+    set((s) => {
+      // All three OS node shapes carry a process table.
+      const node = s.infra.nodes[nodeId];
+      if (!node) return s;
+      const procs = node.processes.filter((p) => p.pid !== pid);
+      return withNode(s, nodeId, { ...node, processes: procs } as TargetNode);
+    }),
+
+  setNodeInterfaceUp: (nodeId, iface, up) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node) return s;
+      const clone = structuredClone(node);
+      const nic = clone.network.interfaces.find((i) => i.name === iface);
+      if (!nic) return s;
+      nic.up = up;
+      return withNode(s, nodeId, clone);
+    }),
+
+  setNodeDns: (nodeId, dnsServers) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node) return s;
+      return withNode(s, nodeId, {
+        ...node,
+        network: { ...node.network, dnsServers },
+      } as TargetNode);
+    }),
+
+  setNodeIpv4: (nodeId, iface, ipv4) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node) return s;
+      const clone = structuredClone(node);
+      const nic = clone.network.interfaces.find((i) => i.name === iface);
+      if (!nic) return s;
+      nic.ipv4 = ipv4;
+      return withNode(s, nodeId, clone);
+    }),
+
+  setMacWifi: (nodeId, on) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node || node.os !== "macos") return s;
+      const clone = structuredClone(node);
+      clone.wifiEnabled = on;
+      // The Wi-Fi radio backs the primary adapter.
+      if (clone.network.interfaces[0]) clone.network.interfaces[0].up = on;
+      return withNode(s, nodeId, clone);
     }),
 
   blockIp: (ip) => set((s) => patchSecurity(s, { blockedIps: dedupe(s.infra.security.blockedIps, ip) })),

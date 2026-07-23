@@ -12,7 +12,7 @@
  */
 
 import type { BaseNode } from "./nodes";
-import type { FsNode } from "@/lib/vm/types";
+import type { FsNode, ProcessInfo } from "@/lib/vm/types";
 
 // ── Active Directory (ADUC) ────────────────────────────────────────────────
 
@@ -232,6 +232,8 @@ export interface WindowsNodeState extends BaseNode {
 
   filesystem: FsNode; // NTFS tree; drives mapped as top-level children (C:, D:)
   services: Record<string, WindowsService>;
+  /** Live process table — Task Manager ends tasks from here. */
+  processes: ProcessInfo[];
   registry: RegistryState;
   firewall: WindowsFirewallState;
   eventLogs: WindowsEventLogs;

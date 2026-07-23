@@ -13,7 +13,7 @@ import { useInfraStore } from "@/lib/infra/store";
 import { useHostStore } from "@/lib/host/store";
 import type { HealthStatus, TargetNode } from "@/lib/core";
 
-const OS_ICON: Record<TargetNode["os"], string> = { linux: "🐧", windows: "🪟" };
+const OS_ICON: Record<TargetNode["os"], string> = { linux: "🐧", windows: "🪟", macos: "🍎" };
 
 const HEALTH: Record<HealthStatus, { label: string; dot: string; text: string }> = {
   healthy: { label: "Healthy", dot: "bg-emerald-400", text: "text-emerald-300" },

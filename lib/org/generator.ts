@@ -35,6 +35,8 @@ import {
   type TopologyKind,
   type WindowsNodeState,
   type WindowsService,
+  type MacNodeState,
+  type ProcessInfo,
 } from "@/lib/core";
 import { chance, int, mulberry32, pick, sample, type Rng } from "./rng";
 import { COMPANY_PARTS, DEPARTMENTS, FIRST_NAMES, LAST_NAMES } from "./namegen";
@@ -49,6 +51,44 @@ function dir(children: Record<string, FsNode>): FsNode {
 }
 function file(content: string): FsNode {
   return { type: "file", content, owner: "root", group: "root", mode: "rw-r--r--", mtime: now };
+}
+
+/** Baseline Windows process table (endpoint Task Manager reads this). */
+function winProcesses(rng: Rng, isServer: boolean): ProcessInfo[] {
+  const base: [string, number, number][] = isServer
+    ? [["System", 0.2, 0.9], ["lsass.exe", 0.6, 2.1], ["svchost.exe", 0.4, 1.6], ["MsMpEng.exe", 1.8, 3.2]]
+    : [
+        ["System", 0.2, 0.8], ["explorer.exe", 1.1, 3.4], ["chrome.exe", 6.2, 11.5],
+        ["Teams.exe", 3.4, 7.8], ["OUTLOOK.EXE", 2.1, 5.2], ["svchost.exe", 0.5, 1.4],
+        ["MsMpEng.exe", 2.2, 3.1],
+      ];
+  return base.map(([command, cpu, mem], i) => ({
+    pid: int(rng, 400, 9000) + i,
+    ppid: 1,
+    user: isServer ? "SYSTEM" : "user",
+    command,
+    cpu,
+    mem,
+    state: "R" as const,
+  }));
+}
+
+/** Baseline macOS process table (Activity Monitor reads this). */
+function macProcesses(rng: Rng): ProcessInfo[] {
+  const base: [string, number, number][] = [
+    ["launchd", 0.1, 0.4], ["WindowServer", 3.2, 4.6], ["Finder", 0.8, 2.1],
+    ["Safari", 5.4, 9.8], ["Slack", 3.1, 8.2], ["Spotlight", 0.6, 1.2],
+    ["mds_stores", 1.4, 2.0],
+  ];
+  return base.map(([command, cpu, mem], i) => ({
+    pid: int(rng, 300, 8000) + i,
+    ppid: 1,
+    user: "staff",
+    command,
+    cpu,
+    mem,
+    state: "R" as const,
+  }));
 }
 
 const winSvc = (
@@ -176,7 +216,7 @@ function generateDirectory(rng: Rng, org: OrganizationProfile): ActiveDirectoryS
 
 interface NodeSpec {
   role: NodeRole;
-  os: "linux" | "windows";
+  os: "linux" | "windows" | "macos";
   hostname: string;
   ip: string;
   subnet: string;
@@ -354,6 +394,7 @@ function makeWindowsNode(
     isDomainController: isDc,
     filesystem: dir({ "C:": dir({ Windows: dir({ System32: dir({}) }), Users: dir({}) }) }),
     services,
+    processes: winProcesses(rng, isDc),
     registry: [],
     firewall: {
       profiles: { Domain: { enabled: true }, Private: { enabled: true }, Public: { enabled: true } },
@@ -391,6 +432,36 @@ function makeWindowsNode(
         }
       : undefined,
     nextPid: 5000,
+  };
+}
+
+/** macOS client workstation. */
+function makeMacNode(rng: Rng, org: OrganizationProfile, spec: NodeSpec, label: string): MacNodeState {
+  const short = `${pick(rng, ["e.ali", "n.berg", "s.reyes", "k.moss", "j.lin"])}`;
+  return {
+    nodeId: spec.hostname.toLowerCase(),
+    hostname: spec.hostname,
+    displayName: label,
+    role: spec.role,
+    domain: org.domain,
+    connection: baseConnection(spec, rng),
+    network: baseNetwork(spec, org),
+    health: health(rng),
+    tags: ["workstation", "macos"],
+    os: "macos",
+    productName: pick(rng, ["macOS 14 Sonoma", "macOS 15 Sequoia", "macOS 13 Ventura"]),
+    build: `2${int(rng, 2, 4)}${pick(rng, ["F", "G", "E"])}${int(rng, 10, 99)}`,
+    filesystem: dir({
+      Applications: dir({}),
+      Users: dir({ [short]: dir({ Desktop: dir({}), Documents: dir({}) }) }),
+      System: dir({ Library: dir({}) }),
+      etc: dir({ hosts: file(`127.0.0.1 localhost\n`) }),
+    }),
+    processes: macProcesses(rng),
+    localUsers: [{ name: short, fullName: short.replace(".", " "), admin: chance(rng, 0.4) }],
+    wifiEnabled: true,
+    firewallEnabled: chance(rng, 0.7),
+    nextPid: 6000,
   };
 }
 
@@ -452,6 +523,15 @@ export function generateWorld(seed: number): InfrastructureState {
     "Staff Workstation",
   );
   add(ws1);
+
+  // Every org gets at least one Mac endpoint (design/exec fleet).
+  add(
+    makeMacNode(
+      rng, org,
+      { role: "workstation", os: "macos", hostname: `MAC-${int(rng, 100, 899)}`, ip: ipIn(rng, sub("User"), int(rng, 20, 240)), subnet: sub("User").cidr },
+      "Mac Workstation",
+    ),
+  );
 
   if (org.scale !== "small") {
     add(makeLinuxNode(rng, org, { role: "database", os: "linux", hostname: `sql-${suffix()}`, ip: ipIn(rng, sub("Storage"), 21), subnet: sub("Storage").cidr }, "Database · PostgreSQL"));

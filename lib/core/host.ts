@@ -15,6 +15,7 @@ export type HostAppId =
   | "mail" // Persona conversation client (ticket dialogue threads)
   | "coremail" // Outlook-style corporate mailbox (internal + external mail)
   | "gateway" // Remote Gateway Manager (RDP/SSH launcher)
+  | "triageremote" // Remote endpoint access (connect by IP/hostname)
   | "netops" // Network topology console (link optimization)
   | "toolbox" // Tech Toolbox & Documentation Center
   | "leaderboard" // Global ranking
@@ -96,6 +97,18 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     description: "Live network topology: link metrics, re-routing, and software firewalls.",
     defaultSize: { w: 960, h: 640 },
     minSize: { w: 680, h: 460 },
+    singleton: true,
+    pinnedToTaskbar: true,
+    showOnDesktop: true,
+  },
+  triageremote: {
+    id: "triageremote",
+    title: "TriageRemote",
+    icon: "🛰️",
+    category: "work",
+    description: "Remote into Windows, macOS, and Linux endpoints by IP or hostname.",
+    defaultSize: { w: 900, h: 620 },
+    minSize: { w: 620, h: 440 },
     singleton: true,
     pinnedToTaskbar: true,
     showOnDesktop: true,
