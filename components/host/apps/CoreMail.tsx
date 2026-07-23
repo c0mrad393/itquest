@@ -3,14 +3,24 @@
 /**
  * CoreMail — corporate mailbox (Outlook-style, Level-0 host app)
  * -------------------------------------------------------------
- * Folder rail + message list + reading pane. Carries internal staff mail
- * (from the org's 100+ directory) and external ISP/vendor mail. Actionable
- * threads drive scenario tickets entirely through the email loop.
+ * Two message sources merged into one inbox:
+ *   • Ambient mail (useMailStore) — internal staff requests from the org's
+ *     100+ directory, plus external ISP / vendor advisories.
+ *   • Incident threads (useTicketStore) — Tier 2/3 tickets arrive here FIRST
+ *     as an escalating email string and only reach the ITSM dashboard when the
+ *     operator escalates them ("mail-only until promoted").
+ *
+ * Tier-1 phishing is also actioned from here: flagging the malicious sender
+ * domain satisfies that ticket's win-condition.
  */
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useMailStore, type MailFolder, type MailMessage } from "@/lib/mail/store";
+import { useTicketStore } from "@/lib/host/tickets-store";
+import { useInfraStore } from "@/lib/infra/store";
 import { relativeTime } from "@/lib/host/ticket-ui";
+import type { Ticket } from "@/lib/core";
+import type { EmailBeat } from "@/lib/tickets/matrix";
 
 const FOLDERS: { id: MailFolder; label: string; icon: string }[] = [
   { id: "inbox", label: "Inbox", icon: "📥" },
@@ -18,21 +28,73 @@ const FOLDERS: { id: MailFolder; label: string; icon: string }[] = [
   { id: "sent", label: "Sent", icon: "📤" },
 ];
 
+/** A unified row: either ambient mail or a ticket incident thread. */
+type Row =
+  | { kind: "ambient"; id: string; ts: number; msg: MailMessage }
+  | { kind: "incident"; id: string; ts: number; ticket: Ticket; beats: EmailBeat[] };
+
 export default function CoreMail() {
-  const { messages, selectedId, folder, select, setFolder, markRead } = useMailStore();
+  const { messages, folder, setFolder, markRead } = useMailStore();
+  const tickets = useTicketStore((s) => s.tickets);
+  const mailThreads = useTicketStore((s) => s.mailThreads);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const filtered = useMemo(() => {
-    if (folder === "external") return messages.filter((m) => m.kind === "external");
-    if (folder === "sent") return messages.filter((m) => m.thread.some((t) => t.from === "you"));
-    return messages.filter((m) => m.kind !== "sent");
-  }, [messages, folder]);
+  // Incident rows: mail-origin escalations, plus any reported phishing mail
+  // (Tier-1 phishing arrives in the mailbox so its sender can be flagged here).
+  const incidents = useMemo(
+    () =>
+      tickets
+        .filter((t) => (t.origin === "mail" && mailThreads[t.id]?.length) || t.dynamicContext.senderDomain)
+        .map<Row>((t) => {
+          const beats: EmailBeat[] = mailThreads[t.id]?.length
+            ? mailThreads[t.id]
+            : [
+                {
+                  from: "IT Service Desk (spoofed)",
+                  fromEmail: `no-reply@${t.dynamicContext.senderDomain}`,
+                  subject: "ACTION REQUIRED: Your password expires today",
+                  body:
+                    `Dear ${t.dynamicContext.targetUserName ?? "colleague"},\n\n` +
+                    `Our records show your network password expires in 2 hours. To avoid losing access, ` +
+                    `re-confirm your credentials immediately using the secure portal below.\n\n` +
+                    `  https://${t.dynamicContext.senderDomain}/verify?u=${t.dynamicContext.targetUserId}\n\n` +
+                    `Failure to act will result in account suspension.\n\nIT Service Desk`,
+                  ageMin: 18,
+                },
+              ];
+          const newest = beats[beats.length - 1];
+          return { kind: "incident", id: `inc-${t.id}`, ts: Date.now() - newest.ageMin * 60_000, ticket: t, beats };
+        }),
+    [tickets, mailThreads],
+  );
 
-  const unread = messages.filter((m) => !m.read).length;
-  const selected = messages.find((m) => m.id === selectedId) ?? null;
+  const ambient = useMemo<Row[]>(
+    () => messages.map((m) => ({ kind: "ambient", id: m.id, ts: m.ts, msg: m })),
+    [messages],
+  );
 
-  function open(m: MailMessage) {
-    select(m.id);
-    markRead(m.id);
+  const rows = useMemo(() => {
+    let all = [...incidents, ...ambient];
+    if (folder === "external") {
+      all = all.filter((r) => r.kind === "ambient" && r.msg.kind === "external");
+    } else if (folder === "sent") {
+      all = all.filter(
+        (r) =>
+          (r.kind === "ambient" && r.msg.thread.some((t) => t.from === "you")) ||
+          (r.kind === "incident" && !r.ticket.mailOnly),
+      );
+    }
+    return all.sort((a, b) => b.ts - a.ts);
+  }, [incidents, ambient, folder]);
+
+  const unread =
+    messages.filter((m) => !m.read).length + incidents.filter((r) => r.kind === "incident" && r.ticket.mailOnly).length;
+
+  const selected = rows.find((r) => r.id === selectedId) ?? null;
+
+  function open(r: Row) {
+    setSelectedId(r.id);
+    if (r.kind === "ambient") markRead(r.msg.id);
   }
 
   return (
@@ -63,48 +125,186 @@ export default function CoreMail() {
 
       {/* Message list */}
       <div className="w-80 shrink-0 overflow-y-auto term-scroll border-r border-edge">
-        {filtered.length === 0 && (
+        {rows.length === 0 && (
           <div className="p-6 text-center text-xs text-gray-600">No mail in this folder.</div>
         )}
-        {filtered.map((m) => (
-          <button
-            key={m.id}
-            onClick={() => open(m)}
-            className={`flex w-full flex-col gap-1 border-b border-edge/60 px-3 py-2.5 text-left ${
-              selectedId === m.id ? "bg-info/10" : m.read ? "hover:bg-panelalt" : "bg-panelalt/60 hover:bg-panelalt"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              {!m.read && <span className="h-2 w-2 shrink-0 rounded-full bg-info" />}
-              <span className={`truncate text-[13px] ${m.read ? "text-gray-300" : "font-semibold text-gray-100"}`}>
-                {m.from}
-              </span>
-              {m.kind === "external" && (
-                <span className="rounded bg-amber-500/15 px-1 py-0.5 text-[9px] font-semibold text-amber-300">EXT</span>
-              )}
-              {m.starred && <span className="text-amber-300">★</span>}
-              <span className="ml-auto shrink-0 text-[10px] text-gray-500">{relativeTime(m.ts)}</span>
-            </div>
-            <div className={`truncate text-xs ${m.read ? "text-gray-500" : "text-gray-200"}`}>{m.subject}</div>
-            {m.scenarioId && m.replies && (
-              <span className="w-fit rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300">
-                ⚡ Action required
-              </span>
-            )}
-          </button>
-        ))}
+        {rows.map((r) =>
+          r.kind === "incident" ? (
+            <IncidentRow key={r.id} row={r} active={selectedId === r.id} onClick={() => open(r)} />
+          ) : (
+            <AmbientRow key={r.id} msg={r.msg} active={selectedId === r.id} onClick={() => open(r)} />
+          ),
+        )}
       </div>
 
       {/* Reading pane */}
       <div className="min-w-0 flex-1 overflow-y-auto term-scroll">
-        {selected ? <Reader msg={selected} /> : <Empty />}
+        {selected ? (
+          selected.kind === "incident" ? (
+            <IncidentReader row={selected} />
+          ) : (
+            <AmbientReader msg={selected.msg} />
+          )
+        ) : (
+          <Empty />
+        )}
       </div>
     </div>
   );
 }
 
-function Reader({ msg }: { msg: MailMessage }) {
+// ── List rows ───────────────────────────────────────────────────────────────
+
+function IncidentRow({
+  row,
+  active,
+  onClick,
+}: {
+  row: Extract<Row, { kind: "incident" }>;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const pending = row.ticket.mailOnly;
+  const newest = row.beats[row.beats.length - 1];
+  return (
+    <button
+      onClick={onClick}
+      className={`flex w-full flex-col gap-1 border-b border-edge/60 px-3 py-2.5 text-left ${
+        active ? "bg-info/10" : pending ? "bg-panelalt/60 hover:bg-panelalt" : "hover:bg-panelalt"
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        {pending && <span className="h-2 w-2 shrink-0 rounded-full bg-danger" />}
+        <span className={`truncate text-[13px] ${pending ? "font-semibold text-gray-100" : "text-gray-300"}`}>
+          {newest.from}
+        </span>
+        <span className="rounded bg-rose-500/15 px-1 py-0.5 text-[9px] font-semibold text-rose-300">
+          {row.ticket.difficulty === "Tier_3_Hard" ? "T3" : row.ticket.difficulty === "Tier_2_Medium" ? "T2" : "T1"}
+        </span>
+        <span className="ml-auto shrink-0 text-[10px] text-gray-500">{relativeTime(row.ts)}</span>
+      </div>
+      <div className={`truncate text-xs ${pending ? "text-gray-200" : "text-gray-500"}`}>
+        {newest.subject}
+      </div>
+      <span
+        className={`w-fit rounded px-1.5 py-0.5 text-[9px] font-semibold ${
+          pending ? "bg-emerald-500/15 text-emerald-300" : "bg-gray-500/15 text-gray-400"
+        }`}
+      >
+        {pending ? `⚡ ${row.beats.length}-mail escalation — action required` : `✓ On ITSM board · ${row.ticket.code}`}
+      </span>
+    </button>
+  );
+}
+
+function AmbientRow({ msg, active, onClick }: { msg: MailMessage; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex w-full flex-col gap-1 border-b border-edge/60 px-3 py-2.5 text-left ${
+        active ? "bg-info/10" : msg.read ? "hover:bg-panelalt" : "bg-panelalt/60 hover:bg-panelalt"
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        {!msg.read && <span className="h-2 w-2 shrink-0 rounded-full bg-info" />}
+        <span className={`truncate text-[13px] ${msg.read ? "text-gray-300" : "font-semibold text-gray-100"}`}>
+          {msg.from}
+        </span>
+        {msg.kind === "external" && (
+          <span className="rounded bg-amber-500/15 px-1 py-0.5 text-[9px] font-semibold text-amber-300">EXT</span>
+        )}
+        {msg.starred && <span className="text-amber-300">★</span>}
+        <span className="ml-auto shrink-0 text-[10px] text-gray-500">{relativeTime(msg.ts)}</span>
+      </div>
+      <div className={`truncate text-xs ${msg.read ? "text-gray-500" : "text-gray-200"}`}>{msg.subject}</div>
+    </button>
+  );
+}
+
+// ── Readers ─────────────────────────────────────────────────────────────────
+
+function IncidentReader({ row }: { row: Extract<Row, { kind: "incident" }> }) {
+  const surface = useTicketStore((s) => s.surfaceTicket);
+  const flagDomain = useInfraStore((s) => s.flagSenderDomain);
+  const { ticket, beats } = row;
+  const pending = ticket.mailOnly;
+
+  return (
+    <div className="flex flex-col gap-3 p-5">
+      <div>
+        <h2 className="text-base font-semibold text-gray-50">{beats[beats.length - 1].subject}</h2>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
+          <span className="rounded bg-rose-500/15 px-1.5 py-0.5 font-semibold text-rose-300">
+            {ticket.category} · {ticket.difficulty.replace(/_/g, " ")}
+          </span>
+          <span>SLA {Math.round(ticket.slaDuration / 60)}m</span>
+          {!pending && <span className="font-mono text-info">{ticket.code}</span>}
+        </div>
+      </div>
+
+      {/* Escalating thread, oldest first */}
+      {beats.map((b, i) => (
+        <div key={i} className="rounded-lg border border-edge bg-panelalt p-3">
+          <div className="mb-1 flex items-center gap-2 text-[11px]">
+            <span className="font-medium text-gray-200">{b.from}</span>
+            <span className="text-info">&lt;{b.fromEmail}&gt;</span>
+            <span className="ml-auto text-gray-600">{b.ageMin}m ago</span>
+          </div>
+          <div className="mb-1 text-xs font-semibold text-gray-300">{b.subject}</div>
+          <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-gray-400">{b.body}</p>
+        </div>
+      ))}
+
+      {/* Actions */}
+      <div className="space-y-1.5 border-t border-edge pt-3">
+        {ticket.origin === "mail" &&
+          (pending ? (
+            <>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500">Action</div>
+              <button
+                onClick={() => surface(ticket.id)}
+                className="flex w-full items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-left text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
+              >
+                <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px]">ESCALATE</span>
+                Accept this incident and open it on the ITSM dashboard
+              </button>
+            </>
+          ) : (
+            <div className="text-center text-[11px] text-emerald-300">
+              ✓ Escalated to the ITSM dashboard as {ticket.code}
+            </div>
+          ))}
+
+        {ticket.dynamicContext.senderDomain && (
+          <FlagSenderButton domain={ticket.dynamicContext.senderDomain} onFlag={flagDomain} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FlagSenderButton({ domain, onFlag }: { domain: string; onFlag: (d: string) => void }) {
+  const flagged = useInfraStore((s) => s.infra.security.flaggedDomains);
+  const isFlagged = flagged.includes(domain);
+  return (
+    <button
+      onClick={() => onFlag(domain)}
+      disabled={isFlagged}
+      className="flex w-full items-center gap-2 rounded-lg border border-danger/40 px-3 py-2 text-left text-xs font-semibold text-danger transition hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <span className="rounded bg-danger/20 px-1.5 py-0.5 text-[9px]">{isFlagged ? "FLAGGED" : "FLAG"}</span>
+      {isFlagged ? `${domain} blocked org-wide` : `Flag ${domain} as malicious (blocks org-wide)`}
+    </button>
+  );
+}
+
+function AmbientReader({ msg }: { msg: MailMessage }) {
   const reply = useMailStore((s) => s.reply);
+  const flagDomain = useInfraStore((s) => s.flagSenderDomain);
+  const flagged = useInfraStore((s) => s.infra.security.flaggedDomains);
+  const domain = msg.fromEmail.split("@")[1] ?? "";
+  const isFlagged = flagged.includes(domain);
+
   return (
     <div className="flex flex-col gap-4 p-5">
       <div>
@@ -121,7 +321,6 @@ function Reader({ msg }: { msg: MailMessage }) {
         {msg.body}
       </div>
 
-      {/* Thread follow-ups */}
       {msg.thread.map((t, i) => (
         <div
           key={i}
@@ -136,7 +335,6 @@ function Reader({ msg }: { msg: MailMessage }) {
         </div>
       ))}
 
-      {/* Reply actions (actionable mail only) */}
       {msg.replies && msg.replies.length > 0 && (
         <div className="space-y-1.5 border-t border-edge pt-3">
           <div className="text-[10px] uppercase tracking-wider text-gray-500">Reply</div>
@@ -144,21 +342,24 @@ function Reader({ msg }: { msg: MailMessage }) {
             <button
               key={r.id}
               onClick={() => reply(msg.id, r.id)}
-              className="flex w-full items-center gap-2 rounded-lg border border-edge bg-panelalt px-3 py-2 text-left text-xs text-gray-200 transition hover:border-info/50 hover:bg-info/10"
+              className="w-full rounded-lg border border-edge bg-panelalt px-3 py-2 text-left text-xs text-gray-200 transition hover:border-info/50 hover:bg-info/10"
             >
-              {r.effect === "accept-linked-ticket" && (
-                <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300">
-                  OPEN TICKET
-                </span>
-              )}
-              <span>{r.label}</span>
+              {r.label}
             </button>
           ))}
         </div>
       )}
-      {msg.replies === undefined && msg.thread.length > 0 && (
-        <div className="border-t border-edge pt-3 text-center text-[11px] text-gray-600">
-          Thread closed — handled via CoreMail.
+
+      {/* Phishing triage on any external sender */}
+      {msg.kind === "external" && domain && (
+        <div className="border-t border-edge pt-3">
+          <button
+            onClick={() => flagDomain(domain)}
+            disabled={isFlagged}
+            className="rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-semibold text-danger transition hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {isFlagged ? `✓ ${domain} flagged` : `🚩 Flag ${domain} as malicious`}
+          </button>
         </div>
       )}
     </div>

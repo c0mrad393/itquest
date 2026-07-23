@@ -52,7 +52,36 @@ interface InfraStore {
   /** One NetworkEngine tick: random-walk utilization/loss, degrade hot nodes. */
   tickNetworkMetrics: () => void;
 
+  // ── Incident-response actions (Security & advanced NetOps tickets) ──
+  /** Block an IP at the edge router (SecOps: block attacker / C2). */
+  blockIp: (ip: string) => void;
+  /** Isolate a node: record it + block all its links (ransomware containment). */
+  isolateNode: (nodeId: NodeId) => void;
+  /** Flag a phishing sender domain org-wide. */
+  flagSenderDomain: (domain: string) => void;
+  /** Rotate all service-account credentials (APT eviction). */
+  rotateCredentials: () => void;
+  /** Re-point resolvers at the correct primary DC + flush cache (DNS hijack). */
+  markDnsFixed: () => void;
+  /** Run log rotation / cleanup on a node (disk saturation). */
+  runLogRotation: (nodeId: NodeId) => void;
+  /** Complete the fixed bulk onboarding import. */
+  completeOnboarding: () => void;
+  /** Replace the whole infrastructure (used by factory fault injection). */
+  setInfra: (infra: InfrastructureState) => void;
+
   reset: () => void;
+}
+
+function patchSecurity(
+  s: { infra: InfrastructureState },
+  patch: Partial<InfrastructureState["security"]>,
+): { infra: InfrastructureState } {
+  return { infra: { ...s.infra, security: { ...s.infra.security, ...patch } } };
+}
+
+function dedupe(arr: string[], v: string): string[] {
+  return arr.includes(v) ? arr : [...arr, v];
 }
 
 /** Immutably replace one node in the infra state. */
@@ -224,8 +253,13 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
         const attached = links.filter((l) => l.from === id || l.to === id);
         if (attached.length === 0) continue;
         const worstLoss = Math.max(...attached.map((l) => l.packetLossPct));
-        // Don't mask scenario-driven degradation (e.g. the 502 web node).
-        const scenarioDegraded = n.os === "linux" && n.services.app?.status === "failed";
+        // Don't let the tick heal scenario-driven degradation (502 upstream,
+        // exhausted DB, disk saturation, or a contained/isolated host).
+        const scenarioDegraded =
+          (n.os === "linux" &&
+            (n.services.app?.status === "failed" || n.services.postgresql?.status === "failed")) ||
+          n.health.diskUsedPct >= 95 ||
+          s.infra.security.isolatedNodeIds.includes(id);
         const status = scenarioDegraded
           ? n.health.status
           : worstLoss > 4
@@ -240,6 +274,42 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
 
       return { infra: { ...s.infra, links, nodes } };
     }),
+
+  blockIp: (ip) => set((s) => patchSecurity(s, { blockedIps: dedupe(s.infra.security.blockedIps, ip) })),
+
+  isolateNode: (nodeId) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        security: { ...s.infra.security, isolatedNodeIds: dedupe(s.infra.security.isolatedNodeIds, nodeId) },
+        links: s.infra.links.map((l) => (l.from === nodeId || l.to === nodeId ? { ...l, blocked: true } : l)),
+      },
+    })),
+
+  flagSenderDomain: (domain) =>
+    set((s) => patchSecurity(s, { flaggedDomains: dedupe(s.infra.security.flaggedDomains, domain) })),
+
+  rotateCredentials: () => set((s) => patchSecurity(s, { credentialsRotated: true })),
+
+  markDnsFixed: () => set((s) => patchSecurity(s, { dnsFixed: true })),
+
+  runLogRotation: (nodeId) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      const next = node
+        ? withNode(s, nodeId, { ...node, health: { ...node.health, diskUsedPct: 42, status: "healthy" } })
+        : s;
+      return {
+        infra: {
+          ...next.infra,
+          security: { ...next.infra.security, logsRotated: dedupe(next.infra.security.logsRotated, nodeId) },
+        },
+      };
+    }),
+
+  completeOnboarding: () => set((s) => patchSecurity(s, { onboardingComplete: true })),
+
+  setInfra: (infra) => set({ infra }),
 
   reset: () => set({ infra: generateWorld(freshSeed()) }),
 }));

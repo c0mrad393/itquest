@@ -1,22 +1,23 @@
 /**
  * TriageOS — Ticket store (Level 0 ITSM)
  * ======================================
- * Holds the operator's ticket queue and selection. Phase 2 supports selection
- * and basic lifecycle transitions (accept / escalate) so the Ticket Center is
- * genuinely interactive; the live SLA countdown and scenario/win-condition
- * binding land in Phase 5, and persistence in Phase 6.
+ * Holds the operator's ticket queue, selection, and (procedural content engine)
+ * the matrix-generated starter queue for the current world. Tier 2/3 tickets
+ * are minted mail-only and surface to the dashboard once promoted from CoreMail.
  */
 
 "use client";
 
 import { create } from "zustand";
-import type { Ticket, TicketStatus, TicketTrack, TicketSeverity } from "@/lib/core";
-import { createSeedTickets } from "./seed";
+import type { Ticket, TicketStatus, TicketTrack, TicketSeverity, TicketCategory } from "@/lib/core";
 import { useInfraStore } from "@/lib/infra/store";
+import { generateTicketQueue, applyQueueFaults } from "@/lib/tickets/factory";
+import type { EmailBeat } from "@/lib/tickets/matrix";
 
 export interface TicketFilters {
   track: TicketTrack | "all";
   severity: TicketSeverity | "all";
+  category: TicketCategory | "all";
   query: string;
   /** Hide resolved/closed tickets by default. */
   showClosed: boolean;
@@ -24,6 +25,8 @@ export interface TicketFilters {
 
 interface TicketStore {
   tickets: Ticket[];
+  /** Escalating CoreMail threads for mail-origin tickets, keyed by ticket id. */
+  mailThreads: Record<string, EmailBeat[]>;
   selectedId: string | null;
   filters: TicketFilters;
 
@@ -32,37 +35,43 @@ interface TicketStore {
   setStatus: (id: string, status: TicketStatus) => void;
   accept: (id: string, assignee: string) => void;
   escalate: (id: string) => void;
-  /** Mark resolved (win-condition met) — records resolvedAt on the SLA clock. */
   resolve: (id: string) => void;
-  /** Create a ticket originated from a CoreMail email loop (mail-resolved). */
-  addMailTicket: (scenarioId: string, subject: string, from: string) => void;
+  /** Promote a mail-only ticket onto the ITSM dashboard (from CoreMail). */
+  surfaceTicket: (id: string) => void;
 }
 
+/** Build the initial queue for the current world + inject its faults. */
+function initQueue() {
+  const infra = useInfraStore.getState().infra;
+  const { tickets, emailThreads, faults } = generateTicketQueue(infra);
+  if (faults.length) {
+    useInfraStore.getState().setInfra(applyQueueFaults(infra, faults));
+  }
+  // Dashboard tickets get a default selection; mail-only ones stay hidden.
+  const firstDashboard = tickets.find((t) => !t.mailOnly);
+  return { tickets, mailThreads: emailThreads, selectedId: firstDashboard?.id ?? null };
+}
+
+const seed = initQueue();
+
 export const useTicketStore = create<TicketStore>((set) => ({
-  tickets: createSeedTickets(useInfraStore.getState().infra),
-  selectedId: "t-4821",
-  filters: { track: "all", severity: "all", query: "", showClosed: false },
+  tickets: seed.tickets,
+  mailThreads: seed.mailThreads,
+  selectedId: seed.selectedId,
+  filters: { track: "all", severity: "all", category: "all", query: "", showClosed: false },
 
   select: (id) => set({ selectedId: id }),
 
-  setFilter: (key, value) =>
-    set((s) => ({ filters: { ...s.filters, [key]: value } })),
+  setFilter: (key, value) => set((s) => ({ filters: { ...s.filters, [key]: value } })),
 
   setStatus: (id, status) =>
-    set((s) => ({
-      tickets: s.tickets.map((t) => (t.id === id ? { ...t, status } : t)),
-    })),
+    set((s) => ({ tickets: s.tickets.map((t) => (t.id === id ? { ...t, status } : t)) })),
 
   accept: (id, assignee) =>
     set((s) => ({
       tickets: s.tickets.map((t) =>
         t.id === id
-          ? {
-              ...t,
-              status: "accepted",
-              assignee,
-              clock: { ...t.clock, startedAt: t.clock.startedAt ?? Date.now() },
-            }
+          ? { ...t, status: "accepted", assignee, clock: { ...t.clock, startedAt: t.clock.startedAt ?? Date.now() } }
           : t,
       ),
     })),
@@ -70,9 +79,7 @@ export const useTicketStore = create<TicketStore>((set) => ({
   escalate: (id) =>
     set((s) => ({
       tickets: s.tickets.map((t) =>
-        t.id === id
-          ? { ...t, status: "escalated", escalationCount: t.escalationCount + 1 }
-          : t,
+        t.id === id ? { ...t, status: "escalated", escalationCount: t.escalationCount + 1 } : t,
       ),
     })),
 
@@ -85,47 +92,30 @@ export const useTicketStore = create<TicketStore>((set) => ({
       ),
     })),
 
-  addMailTicket: (scenarioId, subject, from) =>
-    set((s) => {
-      // Idempotent per scenario (one mail loop → one ticket).
-      if (s.tickets.some((t) => t.scenarioId === scenarioId)) return s;
-      const n = 4830 + s.tickets.length;
-      const org = useInfraStore.getState().infra.org;
-      const ticket: Ticket = {
-        id: `t-mail-${scenarioId}`,
-        code: `TCK-${n}`,
-        title: subject,
-        description: `Opened via CoreMail from ${from}. Tracked and resolved through the email thread.`,
-        track: "netops",
-        severity: "medium",
-        priority: "P3",
-        status: "in_progress",
-        clientOrg: org.name,
-        requester: { name: from, role: "External correspondent", email: "", department: "External" },
-        targetNodeIds: [],
-        scenarioId,
-        personaId: "persona-marcus-calm",
-        sla: { responseSeconds: 30 * 60, resolutionSeconds: 4 * 3600 },
-        clock: { startedAt: Date.now(), respondedAt: Date.now(), resolvedAt: null, responseBreached: false, resolutionBreached: false },
-        createdAt: Date.now(),
-        assignee: "O. Kharebashvili",
-        tags: ["mail-originated", "isp", "bandwidth"],
-        xpReward: 220,
-        escalationCount: 0,
-      };
-      return { tickets: [ticket, ...s.tickets] };
-    }),
+  surfaceTicket: (id) =>
+    set((s) => ({
+      tickets: s.tickets.map((t) =>
+        t.id === id
+          ? { ...t, mailOnly: false, status: "accepted", assignee: "O. Kharebashvili", clock: { ...t.clock, startedAt: t.clock.startedAt ?? Date.now() } }
+          : t,
+      ),
+      selectedId: id,
+    })),
 }));
 
-/** Pure selector: apply active filters to a ticket list. */
+/**
+ * Pure selector: apply active filters + hide mail-only (un-promoted) tickets
+ * from the dashboard. CoreMail reads mail-only tickets directly.
+ */
 export function applyFilters(tickets: Ticket[], f: TicketFilters): Ticket[] {
   const q = f.query.trim().toLowerCase();
   return tickets.filter((t) => {
+    if (t.mailOnly) return false; // not yet promoted to the board
     if (f.track !== "all" && t.track !== f.track) return false;
     if (f.severity !== "all" && t.severity !== f.severity) return false;
+    if (f.category !== "all" && t.category !== f.category) return false;
     if (!f.showClosed && (t.status === "resolved" || t.status === "closed")) return false;
-    if (q && !(`${t.code} ${t.title} ${t.requester.name}`.toLowerCase().includes(q)))
-      return false;
+    if (q && !`${t.code} ${t.title} ${t.requester.name}`.toLowerCase().includes(q)) return false;
     return true;
   });
 }

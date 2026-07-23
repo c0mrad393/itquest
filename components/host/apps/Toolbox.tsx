@@ -10,9 +10,8 @@
  */
 
 import { useMemo, useState } from "react";
-import { SCENARIOS } from "@/lib/scenario/registry";
+import { TICKET_TEMPLATES } from "@/lib/tickets/matrix";
 import { linuxInterpreter } from "@/lib/infra/terminal";
-import { useInfraStore } from "@/lib/infra/store";
 import { TRACK_META } from "@/lib/host/ticket-ui";
 
 type Tab = "runbooks" | "cli";
@@ -66,26 +65,31 @@ function TabBtn({
   );
 }
 
+const DIFF_LABEL: Record<string, string> = {
+  Tier_1_Easy: "Tier 1",
+  Tier_2_Medium: "Tier 2",
+  Tier_3_Hard: "Tier 3",
+};
+
 function Runbooks({ query }: { query: string }) {
   const q = query.trim().toLowerCase();
-  const infra = useInfraStore((s) => s.infra);
-  const scenarios = useMemo(
+  const templates = useMemo(
     () =>
-      Object.values(SCENARIOS).filter(
+      Object.values(TICKET_TEMPLATES).filter(
         (s) =>
           !q ||
-          `${s.title} ${s.summary} ${s.track} ${s.hints.join(" ")}`.toLowerCase().includes(q),
+          `${s.category} ${s.summary} ${s.track} ${s.hints.join(" ")}`.toLowerCase().includes(q),
       ),
     [q],
   );
 
-  if (scenarios.length === 0) {
+  if (templates.length === 0) {
     return <Empty text={`No runbooks match “${query}”.`} />;
   }
 
   return (
     <div className="space-y-3">
-      {scenarios.map((s) => {
+      {templates.map((s) => {
         const track = TRACK_META[s.track];
         return (
           <details
@@ -94,13 +98,18 @@ function Runbooks({ query }: { query: string }) {
           >
             <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3">
               <span className={`rounded border px-1.5 py-0.5 text-[10px] ${track.color}`}>
-                {track.icon} {track.label}
+                {track.icon} {s.category}
               </span>
-              <span className="font-semibold text-gray-100">{s.title}</span>
+              <span className="rounded bg-gray-500/15 px-1.5 py-0.5 text-[10px] text-gray-300">
+                {DIFF_LABEL[s.difficulty]}
+              </span>
+              <span className="font-semibold text-gray-100">{s.summary}</span>
+              {!s.playable && (
+                <span className="rounded bg-warn/15 px-1.5 py-0.5 text-[9px] text-warn">guided</span>
+              )}
               <span className="ml-auto text-[10px] text-gray-600 group-open:hidden">expand ▾</span>
             </summary>
             <div className="border-t border-edge/60 px-4 py-3">
-              <p className="mb-3 text-xs leading-relaxed text-gray-400">{s.summary}</p>
               <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
                 Procedure
               </div>
@@ -113,7 +122,7 @@ function Runbooks({ query }: { query: string }) {
                 ))}
               </ol>
               <div className="mt-3 font-mono text-[10px] text-gray-600">
-                affects: {s.targets(infra).join(", ") || "—"}
+                SLA {Math.round(s.slaDuration / 60)}m · {s.xpReward} XP
               </div>
             </div>
           </details>

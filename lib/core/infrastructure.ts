@@ -45,6 +45,28 @@ export interface SubnetDef {
   label: string; // "Core VLAN", "DMZ", "User VLAN 2"
 }
 
+/**
+ * Incident-response state the operator mutates to resolve Security/NetOps
+ * tickets: edge-router IP blocks, node isolation, flagged phishing domains,
+ * and one-shot remediation flags. Win-conditions read these.
+ */
+export interface SecurityState {
+  /** IPs blocked at the edge router (SecOps: block attacker / C2). */
+  blockedIps: string[];
+  /** Nodes isolated from the topology (ransomware containment). */
+  isolatedNodeIds: NodeId[];
+  /** Sender domains flagged as malicious (phishing triage). */
+  flaggedDomains: string[];
+  /** Service-account credentials rotated (APT remediation). */
+  credentialsRotated: boolean;
+  /** Resolver re-pointed to the correct primary DC (DNS hijack). */
+  dnsFixed: boolean;
+  /** Nodes whose logs have been rotated/cleaned (disk saturation). */
+  logsRotated: NodeId[];
+  /** Bulk onboarding batch imported successfully. */
+  onboardingComplete: boolean;
+}
+
 /** A row in the Level-0 Remote Gateway Manager. */
 export interface GatewayEntry {
   nodeId: NodeId;
@@ -71,6 +93,8 @@ export interface InfrastructureState {
   subnets: SubnetDef[];
   /** Connectable endpoints surfaced in the Remote Gateway Manager. */
   gateway: GatewayEntry[];
+  /** Incident-response actions the operator has taken. */
+  security: SecurityState;
 
   loadedAt: number;
 }

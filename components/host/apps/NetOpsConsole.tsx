@@ -10,6 +10,7 @@
  * links (containment). Node health follows its worst attached link.
  */
 
+import { useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
 import { useNow } from "@/lib/sla/store";
 import { SCALE_META, SECTOR_META, type NetworkLink } from "@/lib/core";
@@ -68,6 +69,8 @@ export default function NetOpsConsole() {
           />
         ))}
       </div>
+
+      <IncidentActions />
 
       <div className="border-t border-edge px-4 py-2 text-[10px] leading-relaxed text-gray-600">
         Re-routing sheds utilization and clears loss. Software firewalls add latency but dampen
@@ -149,6 +152,123 @@ function LinkRow({
         </IconBtn>
       </div>
     </div>
+  );
+}
+
+/**
+ * Incident Response — the SecOps/NetOps action surface that satisfies the
+ * Tier 2/3 win-conditions: edge-router IP blocks, host isolation, credential
+ * rotation, DNS re-point, and log rotation.
+ */
+function IncidentActions() {
+  const infra = useInfraStore((s) => s.infra);
+  const blockIp = useInfraStore((s) => s.blockIp);
+  const isolateNode = useInfraStore((s) => s.isolateNode);
+  const rotateCredentials = useInfraStore((s) => s.rotateCredentials);
+  const markDnsFixed = useInfraStore((s) => s.markDnsFixed);
+  const runLogRotation = useInfraStore((s) => s.runLogRotation);
+  const completeOnboarding = useInfraStore((s) => s.completeOnboarding);
+
+  const [ip, setIp] = useState("");
+  const [nodeId, setNodeId] = useState("");
+  const sec = infra.security;
+  const nodes = Object.values(infra.nodes);
+
+  return (
+    <div className="border-t border-edge bg-panelalt/60 px-4 py-3">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+          Incident Response
+        </span>
+        {sec.blockedIps.length > 0 && (
+          <span className="rounded bg-danger/15 px-1.5 py-0.5 text-[9px] text-danger">
+            {sec.blockedIps.length} IP blocked
+          </span>
+        )}
+        {sec.isolatedNodeIds.length > 0 && (
+          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] text-amber-300">
+            {sec.isolatedNodeIds.length} isolated
+          </span>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Block attacker IP at the edge router */}
+        <div className="flex items-center gap-1">
+          <input
+            value={ip}
+            onChange={(e) => setIp(e.target.value)}
+            placeholder="attacker IP…"
+            className="w-36 rounded border border-edge bg-panel px-2 py-1 font-mono text-[11px] outline-none placeholder:text-gray-600 focus:border-info"
+          />
+          <button
+            onClick={() => { if (ip.trim()) { blockIp(ip.trim()); setIp(""); } }}
+            className="rounded border border-danger/40 px-2 py-1 text-[11px] font-semibold text-danger hover:bg-danger/10"
+          >
+            ⛔ Block at edge
+          </button>
+        </div>
+
+        {/* Node-scoped containment / cleanup */}
+        <div className="flex items-center gap-1">
+          <select
+            value={nodeId}
+            onChange={(e) => setNodeId(e.target.value)}
+            className="rounded border border-edge bg-panel px-2 py-1 text-[11px] text-gray-300 outline-none"
+          >
+            <option value="">select host…</option>
+            {nodes.map((n) => (
+              <option key={n.nodeId} value={n.nodeId}>{n.hostname}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => nodeId && isolateNode(nodeId)}
+            disabled={!nodeId}
+            className="rounded border border-amber-500/40 px-2 py-1 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/10 disabled:opacity-40"
+          >
+            🔒 Isolate
+          </button>
+          <button
+            onClick={() => nodeId && runLogRotation(nodeId)}
+            disabled={!nodeId}
+            className="rounded border border-edge px-2 py-1 text-[11px] text-gray-200 hover:bg-edge disabled:opacity-40"
+          >
+            🧹 Rotate logs
+          </button>
+        </div>
+
+        {/* One-shot remediations */}
+        <ActionToggle done={sec.credentialsRotated} onClick={rotateCredentials} label="🔑 Rotate service credentials" doneLabel="Credentials rotated" />
+        <ActionToggle done={sec.dnsFixed} onClick={markDnsFixed} label="🌐 Flush DNS + re-point resolvers" doneLabel="Resolvers corrected" />
+        <ActionToggle done={sec.onboardingComplete} onClick={completeOnboarding} label="👥 Re-run onboarding import" doneLabel="Onboarding imported" />
+      </div>
+    </div>
+  );
+}
+
+function ActionToggle({
+  done,
+  onClick,
+  label,
+  doneLabel,
+}: {
+  done: boolean;
+  onClick: () => void;
+  label: string;
+  doneLabel: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={done}
+      className={`rounded border px-2 py-1 text-[11px] font-semibold transition ${
+        done
+          ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+          : "border-edge text-gray-200 hover:bg-edge"
+      }`}
+    >
+      {done ? `✓ ${doneLabel}` : label}
+    </button>
   );
 }
 

@@ -15,7 +15,6 @@
 
 import { create } from "zustand";
 import { useInfraStore } from "@/lib/infra/store";
-import { useTicketStore } from "@/lib/host/tickets-store";
 import { mulberry32, int, pick } from "@/lib/org/rng";
 import { EXTERNAL_MAIL_SEEDS, INTERNAL_MAIL_SEEDS } from "@/lib/org/namegen";
 import type { InfrastructureState } from "@/lib/core";
@@ -86,24 +85,7 @@ function buildMailbox(infra: InfrastructureState): MailMessage[] {
     ts: ago(9),
     read: false,
     starred: false,
-    scenarioId: "scn-isp-throttle",
     thread: [],
-    replies: [
-      {
-        id: "r-accept",
-        label: "Acknowledge and open a NetOps ticket to re-balance internal traffic.",
-        effect: "accept-linked-ticket",
-        responseText:
-          "Thanks for the quick response. Ticket noted on our side — please confirm once utilization is back under the committed rate and we'll clear the throttle flag.",
-      },
-      {
-        id: "r-ignore",
-        label: "Reply that traffic is expected and request a temporary limit increase.",
-        effect: "acknowledge",
-        responseText:
-          "Understood, but our policy caps sustained overage. A temporary increase requires a signed change order. The throttle remains scheduled until utilization drops.",
-      },
-    ],
   });
 
   // ── External advisories (ambient world-building) ──
@@ -176,11 +158,6 @@ export const useMailStore = create<MailStore>((set, get) => ({
     const msg = get().messages.find((m) => m.id === id);
     const opt = msg?.replies?.find((r) => r.id === replyId);
     if (!msg || !opt) return;
-
-    // Email-loop effect: create/link a ticket driven entirely from mail.
-    if (opt.effect === "accept-linked-ticket" && msg.scenarioId && !msg.linkedTicketId) {
-      useTicketStore.getState().addMailTicket(msg.scenarioId, msg.subject, msg.from);
-    }
 
     set((s) => ({
       messages: s.messages.map((m) =>

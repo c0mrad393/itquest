@@ -539,6 +539,15 @@ export function generateWorld(seed: number): InfrastructureState {
     links,
     subnets,
     gateway,
+    security: {
+      blockedIps: [],
+      isolatedNodeIds: [],
+      flaggedDomains: [],
+      credentialsRotated: false,
+      dnsFixed: false,
+      logsRotated: [],
+      onboardingComplete: false,
+    },
     loadedAt: now,
   };
 }

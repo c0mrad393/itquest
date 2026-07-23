@@ -24,9 +24,10 @@ import { useMailStore, type MailMessage } from "@/lib/mail/store";
 import { useHostStore } from "@/lib/host/store";
 import type { HostUser, InfrastructureState, Ticket } from "@/lib/core";
 import type { Conversation } from "@/lib/dialogue/types";
+import type { EmailBeat } from "@/lib/tickets/matrix";
 
 const BASE_KEY = "triageos-save";
-const VERSION = 2;
+const VERSION = 3;
 
 /**
  * Save-slot scope (per-account saves). Set by the auth layer BEFORE the
@@ -53,6 +54,7 @@ export interface PersistedState {
   slaWarned: Record<string, boolean>;
   slaBreached: Record<string, boolean>;
   mail: MailMessage[];
+  mailThreads: Record<string, EmailBeat[]>;
   user: HostUser;
 }
 
@@ -68,6 +70,7 @@ export function capture(): PersistedState {
     slaWarned: useSlaStore.getState().warned,
     slaBreached: useSlaStore.getState().breached,
     mail: useMailStore.getState().messages,
+    mailThreads: useTicketStore.getState().mailThreads,
     user: useHostStore.getState().host.user,
   };
 }
@@ -96,7 +99,7 @@ export function loadSave(): PersistedState | null {
 /** Push a saved snapshot into the live stores. */
 export function applySave(s: PersistedState): void {
   useInfraStore.setState({ infra: s.infra });
-  useTicketStore.setState({ tickets: s.tickets });
+  useTicketStore.setState({ tickets: s.tickets, mailThreads: s.mailThreads ?? {} });
   useDialogueStore.setState({ conversations: s.conversations, seq: s.dialogueSeq });
   useSlaStore.setState({ warned: s.slaWarned, breached: s.slaBreached });
   if (s.mail) useMailStore.setState({ messages: s.mail });

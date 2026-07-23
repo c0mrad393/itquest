@@ -28,12 +28,15 @@ export default function Taskbar() {
   const host = useHostStore((s) => s.host);
 
   const openTickets = useTicketStore((s) =>
-    s.tickets.filter((t) => t.status !== "resolved" && t.status !== "closed").length,
+    s.tickets.filter((t) => !t.mailOnly && t.status !== "resolved" && t.status !== "closed").length,
   );
   const unreadMail = useDialogueStore((s) =>
     Object.values(s.conversations).reduce((n, c) => n + (c.unread > 0 ? 1 : 0), 0),
   );
-  const unreadCoreMail = useMailStore((s) => s.messages.filter((m) => !m.read).length);
+  const unreadAmbient = useMailStore((s) => s.messages.filter((m) => !m.read).length);
+  // Pending Tier 2/3 escalations live in CoreMail until promoted.
+  const pendingIncidents = useTicketStore((s) => s.tickets.filter((t) => t.mailOnly).length);
+  const unreadCoreMail = unreadAmbient + pendingIncidents;
 
   const topZ = windows.length ? Math.max(...windows.map((w) => w.z)) : 0;
 

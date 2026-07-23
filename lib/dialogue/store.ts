@@ -37,20 +37,32 @@ function clamp(n: number) {
   return Math.max(0, Math.min(100, n));
 }
 
+/** Higher difficulty → more agitated starting mood. */
+const DIFFICULTY_METER_SHIFT: Record<string, number> = {
+  Tier_1_Easy: 4,
+  Tier_2_Medium: -6,
+  Tier_3_Hard: -18,
+};
+
 function buildConversations(): Record<string, Conversation> {
   const out: Record<string, Conversation> = {};
   for (const ticket of useTicketStore.getState().tickets) {
     const persona = getPersona(ticket.personaId);
+    if (!persona) continue;
+    // Authored branching tree if one exists for this scenario; otherwise the
+    // conversation opens with the ticket's own description (no branches).
     const tree = DIALOGUE_TREES[ticket.scenarioId];
-    if (!persona || !tree) continue;
-    const meter = EMOTION_BASE[persona.baseline];
-    const startNode = tree.nodes[tree.start];
+    const opening = tree ? tree.nodes[tree.start].text : ticket.description;
+    const meter = Math.max(
+      6,
+      Math.min(100, EMOTION_BASE[persona.baseline] + (DIFFICULTY_METER_SHIFT[ticket.difficulty] ?? 0)),
+    );
     out[ticket.id] = {
       ticketId: ticket.id,
       personaId: ticket.personaId,
       scenarioId: ticket.scenarioId,
-      messages: [{ id: 0, from: "customer", text: startNode.text, ts: ticket.createdAt }],
-      currentNodeId: tree.start,
+      messages: [{ id: 0, from: "customer", text: opening, ts: ticket.createdAt }],
+      currentNodeId: tree ? tree.start : null,
       meter,
       csat: 70,
       emotion: meterToEmotion(meter),

@@ -13,6 +13,36 @@ export type TicketTrack = "helpdesk" | "sysadmin" | "netops" | "secops";
 export type TicketSeverity = "low" | "medium" | "high" | "critical";
 export type TicketPriority = "P1" | "P2" | "P3" | "P4";
 
+/** The four content domains of the ticket matrix. */
+export type TicketCategory =
+  | "Identity & Access"
+  | "Network & Routing"
+  | "System & Web Services"
+  | "Security & Incident";
+
+/** Difficulty tier — drives SLA duration, XP, and starting persona emotion. */
+export type TicketDifficulty = "Tier_1_Easy" | "Tier_2_Medium" | "Tier_3_Hard";
+
+/** How a ticket enters the world. Tier 2/3 start mail-only in CoreMail. */
+export type TicketOrigin = "dashboard" | "mail";
+
+/**
+ * References to the procedurally generated assets a ticket concerns, so its
+ * text and win-condition line up with the specific company profile.
+ */
+export interface TicketDynamicContext {
+  targetUserId?: string; // samAccountName
+  targetUserName?: string; // display name
+  targetHostname?: string;
+  targetNodeId?: NodeId;
+  serviceName?: string;
+  maliciousIp?: string; // attacker / C2 address
+  affectedVlan?: string; // subnet CIDR
+  linkId?: string; // NetworkLink id
+  senderDomain?: string; // phishing origin
+  department?: string;
+}
+
 export type TicketStatus =
   | "new" // arrived, unaccepted
   | "accepted" // picked up (starts response clock)
@@ -56,12 +86,28 @@ export interface Ticket {
   priority: TicketPriority;
   status: TicketStatus;
 
+  // ── Matrix classification (procedural content engine) ──
+  category: TicketCategory;
+  difficulty: TicketDifficulty;
+  /** Explicit resolution SLA in seconds (mirrors sla.resolutionSeconds). */
+  slaDuration: number;
+  /** The matrix template this ticket was minted from. */
+  templateId: string;
+  /** Procedurally generated asset references bound into title/description/win. */
+  dynamicContext: TicketDynamicContext;
+  origin: TicketOrigin;
+  /** Tier 2/3 mail tickets: true until promoted from CoreMail to the dashboard. */
+  mailOnly: boolean;
+
   clientOrg: string;
   requester: TicketRequester;
 
   /** Nodes this incident touches (for gateway highlighting + win-checks). */
   targetNodeIds: NodeId[];
-  /** Scenario that injects the fault and defines the win-condition. */
+  /**
+   * Legacy alias of `templateId` — the reconciler resolves win-conditions via
+   * the ticket matrix keyed by this id. Kept for dialogue-tree lookups.
+   */
   scenarioId: string;
   /** AI persona driving the dialogue for this ticket. */
   personaId: string;

@@ -8,7 +8,7 @@
  */
 
 import { useMemo } from "react";
-import type { Ticket, TicketSeverity, TicketTrack } from "@/lib/core";
+import type { Ticket, TicketCategory, TicketSeverity } from "@/lib/core";
 import { applyFilters, useTicketStore } from "@/lib/host/tickets-store";
 import { useHostStore } from "@/lib/host/store";
 import { useDialogueStore } from "@/lib/dialogue/store";
@@ -22,15 +22,29 @@ import {
   slaSnapshot,
 } from "@/lib/host/ticket-ui";
 
-const TRACKS: (TicketTrack | "all")[] = ["all", "helpdesk", "sysadmin", "netops", "secops"];
 const SEVERITIES: (TicketSeverity | "all")[] = ["all", "low", "medium", "high", "critical"];
+const CATEGORIES: (TicketCategory | "all")[] = [
+  "all",
+  "Identity & Access",
+  "Network & Routing",
+  "System & Web Services",
+  "Security & Incident",
+];
+const DIFFICULTY_BADGE: Record<string, { label: string; color: string }> = {
+  Tier_1_Easy: { label: "T1", color: "bg-emerald-500/15 text-emerald-300" },
+  Tier_2_Medium: { label: "T2", color: "bg-amber-500/15 text-amber-300" },
+  Tier_3_Hard: { label: "T3", color: "bg-red-500/15 text-red-300" },
+};
 
 export default function TicketCenter() {
   const { tickets, selectedId, filters, select, setFilter } = useTicketStore();
   const visible = useMemo(() => applyFilters(tickets, filters), [tickets, filters]);
   const selected = tickets.find((t) => t.id === selectedId) ?? null;
 
-  const openCount = tickets.filter((t) => t.status !== "resolved" && t.status !== "closed").length;
+  // Mail-only escalations aren't on the board yet, so they don't count here.
+  const openCount = tickets.filter(
+    (t) => !t.mailOnly && t.status !== "resolved" && t.status !== "closed",
+  ).length;
 
   return (
     <div className="flex h-full flex-col bg-panel text-sm text-gray-200">
@@ -58,13 +72,13 @@ export default function TicketCenter() {
 
       {/* Filter chips */}
       <div className="flex flex-wrap items-center gap-1 border-b border-edge px-3 py-2">
-        {TRACKS.map((t) => (
+        {CATEGORIES.map((c) => (
           <FilterChip
-            key={t}
-            active={filters.track === t}
-            onClick={() => setFilter("track", t)}
+            key={c}
+            active={filters.category === c}
+            onClick={() => setFilter("category", c)}
           >
-            {t === "all" ? "All tracks" : TRACK_META[t].label}
+            {c === "all" ? "All categories" : c}
           </FilterChip>
         ))}
         <span className="mx-1 h-4 w-px bg-edge" />
@@ -152,6 +166,12 @@ function TicketRow({
       <div className="flex items-center gap-2">
         <span className={`h-2 w-2 shrink-0 rounded-full ${sev.dot}`} />
         <span className="font-mono text-[11px] text-gray-500">{ticket.code}</span>
+        <span
+          className={`rounded px-1 py-0.5 text-[9px] font-bold ${DIFFICULTY_BADGE[ticket.difficulty].color}`}
+          title={ticket.difficulty}
+        >
+          {DIFFICULTY_BADGE[ticket.difficulty].label}
+        </span>
         {emotion && (
           <span className={`rounded px-1 py-0.5 text-[10px] ${EMOTION_META[emotion].color}`} title={EMOTION_META[emotion].label}>
             {EMOTION_META[emotion].icon}
@@ -164,7 +184,7 @@ function TicketRow({
       <div className="line-clamp-2 text-[13px] leading-snug text-gray-100">{ticket.title}</div>
       <div className="flex items-center gap-2 text-[10px]">
         <span className={`rounded border px-1.5 py-0.5 ${track.color}`}>
-          {track.icon} {track.label}
+          {track.icon} {ticket.category}
         </span>
         <span className="text-gray-500">{ticket.requester.name}</span>
         <span className="ml-auto text-gray-500">{relativeTime(ticket.createdAt)}</span>

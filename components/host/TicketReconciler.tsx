@@ -15,7 +15,7 @@ import { useTicketStore } from "@/lib/host/tickets-store";
 import { useHostStore } from "@/lib/host/store";
 import { useDialogueStore } from "@/lib/dialogue/store";
 import { useSlaStore } from "@/lib/sla/store";
-import { SCENARIOS } from "@/lib/scenario/registry";
+import { TICKET_TEMPLATES } from "@/lib/tickets/matrix";
 import { computeScore } from "@/lib/scenario/scoring";
 
 export default function TicketReconciler() {
@@ -26,12 +26,14 @@ export default function TicketReconciler() {
 
       for (const ticket of tickets) {
         if (ticket.status === "resolved" || ticket.status === "closed") continue;
-        const scenario = SCENARIOS[ticket.scenarioId];
-        if (!scenario || !scenario.win(infra)) continue;
+        // Mail-only tickets can't resolve until promoted to the board.
+        if (ticket.mailOnly) continue;
+        const template = TICKET_TEMPLATES[ticket.templateId];
+        if (!template || !template.win(infra, ticket.dynamicContext)) continue;
 
         // 1) Resolve the ticket + refresh node health.
         resolve(ticket.id);
-        const healthyNode = scenario.healthyNodeOnResolve?.(infra);
+        const healthyNode = template.healthyNode?.(infra, ticket.dynamicContext);
         if (healthyNode) {
           useInfraStore.getState().updateNode(healthyNode, (n) => {
             n.health.status = "healthy";
