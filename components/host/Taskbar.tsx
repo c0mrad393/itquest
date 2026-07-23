@@ -16,6 +16,7 @@ import {
 import { useHostStore } from "@/lib/host/store";
 import { useTicketStore } from "@/lib/host/tickets-store";
 import { useDialogueStore } from "@/lib/dialogue/store";
+import { useMailStore } from "@/lib/mail/store";
 import Clock from "./Clock";
 
 export default function Taskbar() {
@@ -32,6 +33,7 @@ export default function Taskbar() {
   const unreadMail = useDialogueStore((s) =>
     Object.values(s.conversations).reduce((n, c) => n + (c.unread > 0 ? 1 : 0), 0),
   );
+  const unreadCoreMail = useMailStore((s) => s.messages.filter((m) => !m.read).length);
 
   const topZ = windows.length ? Math.max(...windows.map((w) => w.z)) : 0;
 
@@ -42,6 +44,7 @@ export default function Taskbar() {
     const src = HOST_APP_REGISTRY[appId].badgeSource;
     if (src === "unread-tickets") return openTickets || null;
     if (src === "unread-mail") return unreadMail || null;
+    if (src === "unread-coremail") return unreadCoreMail || null;
     if (src === "sla-alerts") return host.tray.notifications || null;
     return null;
   }

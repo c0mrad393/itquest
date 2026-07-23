@@ -12,6 +12,7 @@
 import { useMemo, useState } from "react";
 import { SCENARIOS } from "@/lib/scenario/registry";
 import { linuxInterpreter } from "@/lib/infra/terminal";
+import { useInfraStore } from "@/lib/infra/store";
 import { TRACK_META } from "@/lib/host/ticket-ui";
 
 type Tab = "runbooks" | "cli";
@@ -67,6 +68,7 @@ function TabBtn({
 
 function Runbooks({ query }: { query: string }) {
   const q = query.trim().toLowerCase();
+  const infra = useInfraStore((s) => s.infra);
   const scenarios = useMemo(
     () =>
       Object.values(SCENARIOS).filter(
@@ -111,7 +113,7 @@ function Runbooks({ query }: { query: string }) {
                 ))}
               </ol>
               <div className="mt-3 font-mono text-[10px] text-gray-600">
-                affects: {s.targetNodeIds.join(", ")}
+                affects: {s.targets(infra).join(", ") || "—"}
               </div>
             </div>
           </details>

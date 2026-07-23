@@ -28,6 +28,7 @@ export type NodeRole =
   | "web-server"
   | "app-server"
   | "database"
+  | "load-balancer"
   | "domain-controller"
   | "file-server"
   | "workstation"

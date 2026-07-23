@@ -10,7 +10,7 @@
 "use client";
 
 import { create } from "zustand";
-import { createSeedTickets } from "@/lib/host/seed";
+import { useTicketStore } from "@/lib/host/tickets-store";
 import { getPersona } from "./personas";
 import { DIALOGUE_TREES } from "./trees";
 import {
@@ -39,7 +39,7 @@ function clamp(n: number) {
 
 function buildConversations(): Record<string, Conversation> {
   const out: Record<string, Conversation> = {};
-  for (const ticket of createSeedTickets()) {
+  for (const ticket of useTicketStore.getState().tickets) {
     const persona = getPersona(ticket.personaId);
     const tree = DIALOGUE_TREES[ticket.scenarioId];
     if (!persona || !tree) continue;

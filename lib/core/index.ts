@@ -24,6 +24,7 @@ export * from "./tickets";
 export * from "./host";
 export * from "./state";
 export * from "./identity";
+export * from "./organization";
 
 // Reused primitives (canonical definitions live in lib/vm/types).
 export type {

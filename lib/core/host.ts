@@ -12,8 +12,10 @@
 
 export type HostAppId =
   | "itsm" // Ticket dashboard
-  | "mail" // Corporate mail client
+  | "mail" // Persona conversation client (ticket dialogue threads)
+  | "coremail" // Outlook-style corporate mailbox (internal + external mail)
   | "gateway" // Remote Gateway Manager (RDP/SSH launcher)
+  | "netops" // Network topology console (link optimization)
   | "toolbox" // Tech Toolbox & Documentation Center
   | "leaderboard" // Global ranking
   | "settings" // Host settings
@@ -22,7 +24,7 @@ export type HostAppId =
 export type HostAppCategory = "work" | "system";
 
 /** Which live counter, if any, drives an app's taskbar/Start badge. */
-export type HostAppBadgeSource = "unread-tickets" | "unread-mail" | "sla-alerts";
+export type HostAppBadgeSource = "unread-tickets" | "unread-mail" | "unread-coremail" | "sla-alerts";
 
 export interface HostAppDescriptor {
   id: HostAppId;
@@ -62,16 +64,41 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
   },
   mail: {
     id: "mail",
-    title: "Mail",
-    icon: "✉️",
+    title: "Conversations",
+    icon: "💬",
     category: "work",
-    description: "Complaints, SLA alerts, and infrastructure warnings from clients and monitoring.",
+    description: "Direct ticket conversations with AI customer personas (emotion + CSAT).",
     defaultSize: { w: 880, h: 600 },
     minSize: { w: 560, h: 380 },
     singleton: true,
     pinnedToTaskbar: true,
     showOnDesktop: true,
     badgeSource: "unread-mail",
+  },
+  coremail: {
+    id: "coremail",
+    title: "CoreMail",
+    icon: "📧",
+    category: "work",
+    description: "Corporate mailbox: internal staff requests, ISP notices, and vendor advisories.",
+    defaultSize: { w: 1000, h: 660 },
+    minSize: { w: 700, h: 460 },
+    singleton: true,
+    pinnedToTaskbar: true,
+    showOnDesktop: true,
+    badgeSource: "unread-coremail",
+  },
+  netops: {
+    id: "netops",
+    title: "NetOps Console",
+    icon: "🌐",
+    category: "work",
+    description: "Live network topology: link metrics, re-routing, and software firewalls.",
+    defaultSize: { w: 960, h: 640 },
+    minSize: { w: 680, h: 460 },
+    singleton: true,
+    pinnedToTaskbar: true,
+    showOnDesktop: true,
   },
   gateway: {
     id: "gateway",

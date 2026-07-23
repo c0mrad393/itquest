@@ -15,7 +15,8 @@ import type {
   WindowsService,
 } from "@/lib/core";
 import type { CommandResult, NodeId } from "@/lib/core";
-import { createInfrastructure } from "./seed";
+import { generateWorld } from "@/lib/org/generator";
+import { freshSeed } from "@/lib/org/rng";
 import { linuxInterpreter, nodeToVM, writeVMToNode } from "./terminal";
 
 type WinServiceAction = "start" | "stop" | "restart";
@@ -42,6 +43,15 @@ interface InfraStore {
   setWinInterfaceUp: (nodeId: NodeId, iface: string, up: boolean) => void;
   setFirewallProfile: (nodeId: NodeId, profile: "Domain" | "Private" | "Public", enabled: boolean) => void;
 
+  // ── NetOps topology gameplay ──
+  /** Re-route a link onto a different subnet (sheds utilization, resets loss). */
+  rerouteLink: (linkId: string, viaCidr: string) => void;
+  /** Deploy/remove a software firewall on a link (+latency, dampens loss). */
+  setLinkFirewall: (linkId: string, on: boolean) => void;
+  setLinkBlocked: (linkId: string, blocked: boolean) => void;
+  /** One NetworkEngine tick: random-walk utilization/loss, degrade hot nodes. */
+  tickNetworkMetrics: () => void;
+
   reset: () => void;
 }
 
@@ -55,7 +65,9 @@ function withNode(
 }
 
 export const useInfraStore = create<InfraStore>((set, get) => ({
-  infra: createInfrastructure(),
+  // A brand-new world is generated from a fresh seed; hydration replaces it
+  // when a per-account save exists (the org persists inside `infra`).
+  infra: generateWorld(freshSeed()),
 
   authenticate: (nodeId, value) =>
     set((s) => {
@@ -153,7 +165,83 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       return withNode(s, nodeId, clone);
     }),
 
-  reset: () => set({ infra: createInfrastructure() }),
+  rerouteLink: (linkId, viaCidr) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        links: s.infra.links.map((l) =>
+          l.id === linkId
+            ? {
+                ...l,
+                via: viaCidr,
+                // Fresh path: shed most utilization, clear loss, tiny latency shift.
+                utilizationPct: Math.max(10, Math.round(l.utilizationPct * 0.45)),
+                packetLossPct: 0.1,
+                latencyMs: Math.round((l.latencyMs + (Math.random() - 0.4)) * 10) / 10,
+              }
+            : l,
+        ),
+      },
+    })),
+
+  setLinkFirewall: (linkId, on) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        links: s.infra.links.map((l) =>
+          l.id === linkId
+            ? { ...l, softwareFirewall: on, latencyMs: Math.round((l.latencyMs + (on ? 0.8 : -0.8)) * 10) / 10 }
+            : l,
+        ),
+      },
+    })),
+
+  setLinkBlocked: (linkId, blocked) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        links: s.infra.links.map((l) => (l.id === linkId ? { ...l, blocked } : l)),
+      },
+    })),
+
+  tickNetworkMetrics: () =>
+    set((s) => {
+      const links = s.infra.links.map((l) => {
+        if (l.blocked) return { ...l, utilizationPct: 0, packetLossPct: 0 };
+        // Utilization random-walks; congestion breeds loss, firewalls dampen it.
+        const drift = (Math.random() - 0.48) * 6;
+        const utilizationPct = Math.min(99, Math.max(5, l.utilizationPct + drift));
+        const congestion = Math.max(0, utilizationPct - 85);
+        const targetLoss = congestion * (l.softwareFirewall ? 0.25 : 0.55) + Math.random() * 0.3;
+        const packetLossPct = Math.round((l.packetLossPct * 0.6 + targetLoss * 0.4) * 10) / 10;
+        return { ...l, utilizationPct: Math.round(utilizationPct), packetLossPct };
+      });
+
+      // Node health follows its worst attached link.
+      const nodes = { ...s.infra.nodes };
+      for (const id of Object.keys(nodes)) {
+        const n = nodes[id];
+        const attached = links.filter((l) => l.from === id || l.to === id);
+        if (attached.length === 0) continue;
+        const worstLoss = Math.max(...attached.map((l) => l.packetLossPct));
+        // Don't mask scenario-driven degradation (e.g. the 502 web node).
+        const scenarioDegraded = n.os === "linux" && n.services.app?.status === "failed";
+        const status = scenarioDegraded
+          ? n.health.status
+          : worstLoss > 4
+            ? "critical"
+            : worstLoss > 1.5
+              ? "degraded"
+              : "healthy";
+        if (status !== n.health.status) {
+          nodes[id] = { ...n, health: { ...n.health, status } } as TargetNode;
+        }
+      }
+
+      return { infra: { ...s.infra, links, nodes } };
+    }),
+
+  reset: () => set({ infra: generateWorld(freshSeed()) }),
 }));
 
 /** Convenience hook: subscribe to a single node by id. */

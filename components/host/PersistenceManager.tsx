@@ -1,48 +1,64 @@
 "use client";
 
 /**
- * PersistenceManager — headless save/restore (Phase 6)
- * ----------------------------------------------------
+ * PersistenceManager — headless save/restore
+ * ------------------------------------------
  * On mount: hydrates all stores from LocalStorage (if a compatible save
- * exists). Then: debounce-autosaves on any change to the persistent stores.
+ * exists). Then autosaves on any change to the persistent stores.
  *
  * Mounted FIRST among the host desktop's headless engines so hydration lands
- * before the reconciler/SLA engine evaluate anything.
+ * before the reconciler/SLA/network engines evaluate anything.
  *
- * Note: the SLA store is deliberately NOT subscribed for autosave — it ticks
- * `now` every second and would thrash storage. Its warned/breached flags only
- * change alongside dialogue/ticket updates, which already trigger a save.
+ * THROTTLE (not debounce): the NetworkEngine mutates the infra store's link
+ * metrics every couple of seconds, and the org's 100+ user directory makes a
+ * full serialize non-trivial — so we cap writes to once per SAVE_INTERVAL_MS
+ * (leading + trailing). Meaningful mutations (service fixes, AD unlocks, XP,
+ * dialogue) still persist within that window; transient metric jitter doesn't
+ * hammer storage. The SLA store (1 Hz `now`) is intentionally not subscribed.
  */
 
 import { useEffect } from "react";
 import { useInfraStore } from "@/lib/infra/store";
 import { useTicketStore } from "@/lib/host/tickets-store";
 import { useDialogueStore } from "@/lib/dialogue/store";
+import { useMailStore } from "@/lib/mail/store";
 import { useHostStore } from "@/lib/host/store";
 import { applySave, loadSave, saveNow } from "@/lib/persistence/save";
 
-const AUTOSAVE_DEBOUNCE_MS = 800;
+const SAVE_INTERVAL_MS = 4000;
 
 export default function PersistenceManager() {
   useEffect(() => {
     const saved = loadSave();
     if (saved) applySave(saved);
 
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let last = 0;
+    let trailing: ReturnType<typeof setTimeout> | undefined;
+
     const schedule = () => {
-      clearTimeout(timer);
-      timer = setTimeout(saveNow, AUTOSAVE_DEBOUNCE_MS);
+      const elapsed = Date.now() - last;
+      if (elapsed >= SAVE_INTERVAL_MS) {
+        last = Date.now();
+        saveNow();
+      } else if (!trailing) {
+        trailing = setTimeout(() => {
+          trailing = undefined;
+          last = Date.now();
+          saveNow();
+        }, SAVE_INTERVAL_MS - elapsed);
+      }
     };
 
     const unsubs = [
       useInfraStore.subscribe(schedule),
       useTicketStore.subscribe(schedule),
       useDialogueStore.subscribe(schedule),
+      useMailStore.subscribe(schedule),
       useHostStore.subscribe(schedule),
     ];
 
     return () => {
-      clearTimeout(timer);
+      if (trailing) clearTimeout(trailing);
       unsubs.forEach((u) => u());
     };
   }, []);

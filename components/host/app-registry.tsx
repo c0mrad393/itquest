@@ -12,6 +12,8 @@ import type { HostAppId } from "@/lib/core";
 import TicketCenter from "./apps/TicketCenter";
 import RemoteGateway from "./apps/RemoteGateway";
 import Mail from "./apps/Mail";
+import CoreMail from "./apps/CoreMail";
+import NetOpsConsole from "./apps/NetOpsConsole";
 import Toolbox from "./apps/Toolbox";
 import Leaderboard from "./apps/Leaderboard";
 import SettingsApp from "./apps/SettingsApp";
@@ -25,6 +27,10 @@ export function renderHostApp(appId: HostAppId): React.ReactNode {
       return <RemoteGateway />;
     case "mail":
       return <Mail />;
+    case "coremail":
+      return <CoreMail />;
+    case "netops":
+      return <NetOpsConsole />;
     case "toolbox":
       return <Toolbox />;
     case "leaderboard":

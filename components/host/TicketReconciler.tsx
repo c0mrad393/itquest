@@ -31,8 +31,9 @@ export default function TicketReconciler() {
 
         // 1) Resolve the ticket + refresh node health.
         resolve(ticket.id);
-        if (scenario.healthyNodeOnResolve) {
-          useInfraStore.getState().updateNode(scenario.healthyNodeOnResolve, (n) => {
+        const healthyNode = scenario.healthyNodeOnResolve?.(infra);
+        if (healthyNode) {
+          useInfraStore.getState().updateNode(healthyNode, (n) => {
             n.health.status = "healthy";
           });
         }

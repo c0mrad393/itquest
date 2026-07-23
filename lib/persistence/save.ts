@@ -20,12 +20,13 @@ import { useInfraStore } from "@/lib/infra/store";
 import { useTicketStore } from "@/lib/host/tickets-store";
 import { useDialogueStore } from "@/lib/dialogue/store";
 import { useSlaStore } from "@/lib/sla/store";
+import { useMailStore, type MailMessage } from "@/lib/mail/store";
 import { useHostStore } from "@/lib/host/store";
 import type { HostUser, InfrastructureState, Ticket } from "@/lib/core";
 import type { Conversation } from "@/lib/dialogue/types";
 
 const BASE_KEY = "triageos-save";
-const VERSION = 1;
+const VERSION = 2;
 
 /**
  * Save-slot scope (per-account saves). Set by the auth layer BEFORE the
@@ -51,6 +52,7 @@ export interface PersistedState {
   dialogueSeq: number;
   slaWarned: Record<string, boolean>;
   slaBreached: Record<string, boolean>;
+  mail: MailMessage[];
   user: HostUser;
 }
 
@@ -65,6 +67,7 @@ export function capture(): PersistedState {
     dialogueSeq: useDialogueStore.getState().seq,
     slaWarned: useSlaStore.getState().warned,
     slaBreached: useSlaStore.getState().breached,
+    mail: useMailStore.getState().messages,
     user: useHostStore.getState().host.user,
   };
 }
@@ -96,6 +99,7 @@ export function applySave(s: PersistedState): void {
   useTicketStore.setState({ tickets: s.tickets });
   useDialogueStore.setState({ conversations: s.conversations, seq: s.dialogueSeq });
   useSlaStore.setState({ warned: s.slaWarned, breached: s.slaBreached });
+  if (s.mail) useMailStore.setState({ messages: s.mail });
   useHostStore.setState((st) => ({ host: { ...st.host, user: s.user } }));
 }
 

@@ -28,6 +28,12 @@ export interface ADUser {
   samAccountName: string; // "j.doe"
   upn: string; // "j.doe@corp.internal"
   displayName: string;
+  /** Job title, e.g. "Accounts Payable Specialist". */
+  title: string;
+  /** Department (doubles as the OU grouping in generated orgs). */
+  department: string;
+  /** Corporate mailbox address. */
+  email: string;
   /** Containing OU distinguished name. */
   ou: string;
   /** Group membership by samAccountName. */
@@ -39,7 +45,18 @@ export interface ADUser {
   /** Failed sign-in counter; lockout scenarios read this. */
   badPwdCount: number;
   lastLogon: number | null;
+  /** Password expiry timestamp (epoch millis); null = never expires. */
+  passwordExpiresAt: number | null;
   description?: string;
+}
+
+/** Derived account state shown in ADUC. */
+export type ADAccountStatus = "Active" | "Locked" | "Disabled";
+
+export function adAccountStatus(u: ADUser): ADAccountStatus {
+  if (!u.enabled) return "Disabled";
+  if (u.locked) return "Locked";
+  return "Active";
 }
 
 export type ADGroupScope = "DomainLocal" | "Global" | "Universal";

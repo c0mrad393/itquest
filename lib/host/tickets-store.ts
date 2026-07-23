@@ -12,6 +12,7 @@
 import { create } from "zustand";
 import type { Ticket, TicketStatus, TicketTrack, TicketSeverity } from "@/lib/core";
 import { createSeedTickets } from "./seed";
+import { useInfraStore } from "@/lib/infra/store";
 
 export interface TicketFilters {
   track: TicketTrack | "all";
@@ -33,10 +34,12 @@ interface TicketStore {
   escalate: (id: string) => void;
   /** Mark resolved (win-condition met) — records resolvedAt on the SLA clock. */
   resolve: (id: string) => void;
+  /** Create a ticket originated from a CoreMail email loop (mail-resolved). */
+  addMailTicket: (scenarioId: string, subject: string, from: string) => void;
 }
 
 export const useTicketStore = create<TicketStore>((set) => ({
-  tickets: createSeedTickets(),
+  tickets: createSeedTickets(useInfraStore.getState().infra),
   selectedId: "t-4821",
   filters: { track: "all", severity: "all", query: "", showClosed: false },
 
@@ -81,6 +84,37 @@ export const useTicketStore = create<TicketStore>((set) => ({
           : t,
       ),
     })),
+
+  addMailTicket: (scenarioId, subject, from) =>
+    set((s) => {
+      // Idempotent per scenario (one mail loop → one ticket).
+      if (s.tickets.some((t) => t.scenarioId === scenarioId)) return s;
+      const n = 4830 + s.tickets.length;
+      const org = useInfraStore.getState().infra.org;
+      const ticket: Ticket = {
+        id: `t-mail-${scenarioId}`,
+        code: `TCK-${n}`,
+        title: subject,
+        description: `Opened via CoreMail from ${from}. Tracked and resolved through the email thread.`,
+        track: "netops",
+        severity: "medium",
+        priority: "P3",
+        status: "in_progress",
+        clientOrg: org.name,
+        requester: { name: from, role: "External correspondent", email: "", department: "External" },
+        targetNodeIds: [],
+        scenarioId,
+        personaId: "persona-marcus-calm",
+        sla: { responseSeconds: 30 * 60, resolutionSeconds: 4 * 3600 },
+        clock: { startedAt: Date.now(), respondedAt: Date.now(), resolvedAt: null, responseBreached: false, resolutionBreached: false },
+        createdAt: Date.now(),
+        assignee: "O. Kharebashvili",
+        tags: ["mail-originated", "isp", "bandwidth"],
+        xpReward: 220,
+        escalationCount: 0,
+      };
+      return { tickets: [ticket, ...s.tickets] };
+    }),
 }));
 
 /** Pure selector: apply active filters to a ticket list. */

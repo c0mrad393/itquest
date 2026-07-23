@@ -16,6 +16,7 @@ import Taskbar from "./Taskbar";
 import StartMenu from "./StartMenu";
 import TicketReconciler from "./TicketReconciler";
 import SlaEngine from "./SlaEngine";
+import NetworkEngine from "./NetworkEngine";
 import PersistenceManager from "./PersistenceManager";
 
 export default function HostDesktop() {
@@ -38,6 +39,7 @@ export default function HostDesktop() {
       <PersistenceManager />
       <TicketReconciler />
       <SlaEngine />
+      <NetworkEngine />
 
       {/* Desktop icons */}
       <DesktopIcons />
