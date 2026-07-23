@@ -16,7 +16,8 @@ export type HostAppId =
   | "gateway" // Remote Gateway Manager (RDP/SSH launcher)
   | "toolbox" // Tech Toolbox & Documentation Center
   | "leaderboard" // Global ranking
-  | "settings"; // Host settings
+  | "settings" // Host settings
+  | "profile"; // Account & profile management (identity layer)
 
 export type HostAppCategory = "work" | "system";
 
@@ -119,6 +120,18 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     singleton: true,
     pinnedToTaskbar: false,
     showOnDesktop: false,
+  },
+  profile: {
+    id: "profile",
+    title: "My Profile",
+    icon: "🪪",
+    category: "system",
+    description: "Your operator account: identity, avatar, stats, and sign-out.",
+    defaultSize: { w: 700, h: 560 },
+    minSize: { w: 520, h: 420 },
+    singleton: true,
+    pinnedToTaskbar: false,
+    showOnDesktop: true,
   },
 };
 

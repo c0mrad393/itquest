@@ -11,6 +11,7 @@
 import { useState } from "react";
 import { HOST_APP_REGISTRY, type HostAppDescriptor, type HostAppId } from "@/lib/core";
 import { useHostStore } from "@/lib/host/store";
+import Avatar from "./Avatar";
 
 export default function StartMenu() {
   const open = useHostStore((s) => s.startMenuOpen);
@@ -69,9 +70,7 @@ export default function StartMenu() {
 
         {/* Footer: profile + power */}
         <div className="mt-4 flex items-center gap-3 border-t border-edge pt-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-info/20 text-lg">
-            {host.user.avatar}
-          </div>
+          <Avatar value={host.user.avatar} className="h-9 w-9 text-lg" />
           <div className="leading-tight">
             <div className="text-sm text-gray-100">{host.user.displayName}</div>
             <div className="text-[11px] text-gray-500">

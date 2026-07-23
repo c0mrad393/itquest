@@ -19,6 +19,7 @@ import type { ManagedWindow, WindowRect } from "./windows";
 import { createHostWorkstation } from "./seed";
 import type { HostWorkstationState } from "@/lib/core";
 import { levelForXp } from "@/lib/scenario/scoring";
+import { reportProgress } from "@/lib/auth/store";
 
 const DESKTOP_MARGIN = 16;
 let instanceCounter = 0;
@@ -195,10 +196,14 @@ export const useHostStore = create<HostStore>((set, get) => ({
   setStartMenu: (open) => set({ startMenuOpen: open }),
   toggleStartMenu: () => set((s) => ({ startMenuOpen: !s.startMenuOpen })),
 
-  awardXp: (amount) =>
+  awardXp: (amount) => {
     set((s) => {
       const xp = s.host.user.xp + amount;
       const level = levelForXp(xp);
       return { host: { ...s.host, user: { ...s.host.user, xp, level } } };
-    }),
+    });
+    // Persist progression to the account profile (no-op for guests).
+    const { xp, level } = get().host.user;
+    reportProgress(xp, level);
+  },
 }));

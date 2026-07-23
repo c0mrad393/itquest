@@ -14,7 +14,7 @@ export function createHostWorkstation(): HostWorkstationState {
       displayName: "O. Kharebashvili",
       role: "Tier-2 Systems Engineer",
       avatar: "🧑‍💻",
-      level: 7,
+      level: 4,
       xp: 6420,
     },
     wallpaper: "bloom",

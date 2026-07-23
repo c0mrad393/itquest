@@ -24,8 +24,23 @@ import { useHostStore } from "@/lib/host/store";
 import type { HostUser, InfrastructureState, Ticket } from "@/lib/core";
 import type { Conversation } from "@/lib/dialogue/types";
 
-const KEY = "triageos-save";
+const BASE_KEY = "triageos-save";
 const VERSION = 1;
+
+/**
+ * Save-slot scope (per-account saves). Set by the auth layer BEFORE the
+ * desktop mounts, so hydration reads the signed-in user's slot ("guest" for
+ * guest sessions).
+ */
+let scope = "guest";
+
+export function setSaveScope(next: string): void {
+  scope = next;
+}
+
+function storageKey(): string {
+  return `${BASE_KEY}::${scope}`;
+}
 
 export interface PersistedState {
   version: number;
@@ -56,7 +71,7 @@ export function capture(): PersistedState {
 
 export function saveNow(): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(capture()));
+    localStorage.setItem(storageKey(), JSON.stringify(capture()));
   } catch {
     // Storage full/unavailable — the sim keeps running unpersisted.
   }
@@ -64,7 +79,7 @@ export function saveNow(): void {
 
 export function loadSave(): PersistedState | null {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(storageKey());
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedState;
     // Schema gate: discard incompatible saves rather than half-hydrate.
@@ -90,7 +105,7 @@ export function savedAt(): number | null {
 
 export function clearSave(): void {
   try {
-    localStorage.removeItem(KEY);
+    localStorage.removeItem(storageKey());
   } catch {
     /* noop */
   }

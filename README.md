@@ -30,6 +30,23 @@ npm run dev        # http://localhost:3000  (or: next dev -p <port>)
 
 Useful scripts: `npm run typecheck` · `npm run build` · `npm run lint`
 
+## Authentication (optional but recommended)
+
+The app works out of the box in **Guest mode** (local-only sessions). To enable
+real accounts (Email/Password + Google OAuth) with cross-device progression:
+
+1. Create a Supabase project, then copy `.env.local.example` → `.env.local`
+   and fill in `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+2. Run `supabase/schema.sql` in the Supabase SQL editor (creates the
+   `profiles` table, RLS policies, and the signup trigger).
+3. For Google sign-in: Authentication → Providers → enable Google (add your
+   Google OAuth client id/secret), and add `http://localhost:3000/desktop`
+   (plus your production `/desktop` URL) to the redirect allow-list.
+
+Routing: `/` is the anonymous landing page; `/desktop` is the auth-gated
+Host OS. Saves are scoped per account (`guest` for guest sessions), and XP/level
+sync to the `profiles` row on every award.
+
 ## Architecture map
 
 | Layer | Path | Role |

@@ -13,6 +13,7 @@ import { useHostStore } from "@/lib/host/store";
 import { useInfraStore } from "@/lib/infra/store";
 import { resetSimulation, saveNow, savedAt } from "@/lib/persistence/save";
 import { levelForXp, xpForLevel } from "@/lib/scenario/scoring";
+import Avatar from "../Avatar";
 
 export default function SettingsApp() {
   const user = useHostStore((s) => s.host.user);
@@ -36,9 +37,7 @@ export default function SettingsApp() {
       {/* Profile */}
       <Section title="Operator profile">
         <div className="flex items-center gap-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-info/20 text-3xl">
-            {user.avatar}
-          </div>
+          <Avatar value={user.avatar} className="h-14 w-14 text-3xl" />
           <div className="flex-1">
             <div className="text-base font-semibold text-gray-100">{user.displayName}</div>
             <div className="text-[11px] text-gray-500">{user.role}</div>

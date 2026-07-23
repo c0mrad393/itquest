@@ -1,10 +1,9 @@
-import HostDesktop from "@/components/host/HostDesktop";
+import LandingPage from "@/components/landing/LandingPage";
 
 /**
- * TriageOS root — the Level-0 host workstation.
- * The prior single-node CLI/GUI workspace lives at /node-demo and becomes the
- * nested remote-session content in Phase 3–4.
+ * TriageOS root — the anonymous marketing landing page.
+ * Authenticated (or guest) sessions enter the simulator at /desktop.
  */
 export default function Page() {
-  return <HostDesktop />;
+  return <LandingPage />;
 }

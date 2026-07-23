@@ -14,26 +14,8 @@ import { useTicketStore } from "@/lib/host/tickets-store";
 import { useDialogueStore } from "@/lib/dialogue/store";
 import { useSlaStore } from "@/lib/sla/store";
 import { levelForXp } from "@/lib/scenario/scoring";
-
-interface Row {
-  name: string;
-  role: string;
-  avatar: string;
-  xp: number;
-  resolved: number;
-  breaches: number;
-  csat: number | null; // null = no data yet
-  you?: boolean;
-}
-
-/** Seeded rival field (static until multiplayer sync lands). */
-const RIVALS: Row[] = [
-  { name: "D. Okafor", role: "Tier-3 SRE", avatar: "🧑🏿‍💻", xp: 12480, resolved: 61, breaches: 2, csat: 91 },
-  { name: "M. Ivanova", role: "SecOps Analyst", avatar: "👩🏻‍💻", xp: 9310, resolved: 44, breaches: 4, csat: 88 },
-  { name: "K. Tanaka", role: "Tier-2 Sysadmin", avatar: "👨🏻‍💼", xp: 7420, resolved: 39, breaches: 6, csat: 84 },
-  { name: "S. Weber", role: "NetOps Engineer", avatar: "🧔🏼", xp: 5150, resolved: 28, breaches: 3, csat: 86 },
-  { name: "A. Haddad", role: "Helpdesk Lead", avatar: "👩🏽", xp: 3890, resolved: 33, breaches: 9, csat: 79 },
-];
+import { RIVALS, type LeaderboardEntry as Row } from "@/lib/host/leaderboard-data";
+import Avatar from "../Avatar";
 
 export default function Leaderboard() {
   const user = useHostStore((s) => s.host.user);
@@ -97,7 +79,7 @@ export default function Leaderboard() {
               {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
             </span>
             <span className="flex min-w-0 items-center gap-2">
-              <span className="text-lg">{r.avatar}</span>
+              <Avatar value={r.avatar} className="h-7 w-7 text-lg" />
               <span className="min-w-0">
                 <span className="block truncate text-gray-100">
                   {r.name}
