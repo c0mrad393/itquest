@@ -37,8 +37,9 @@ import {
   type WindowsService,
   type MacNodeState,
   type ProcessInfo,
+  type EndpointVisualState,
 } from "@/lib/core";
-import { chance, int, mulberry32, pick, sample, type Rng } from "./rng";
+import { chance, int, mulberry32, pick, sample, shuffle, type Rng } from "./rng";
 import { COMPANY_PARTS, DEPARTMENTS, FIRST_NAMES, LAST_NAMES } from "./namegen";
 
 const now = Date.now();
@@ -71,6 +72,87 @@ function winProcesses(rng: Rng, isServer: boolean): ProcessInfo[] {
     mem,
     state: "R" as const,
   }));
+}
+
+// ── Endpoint visual state (wallpaper / theme / department desktop) ───────────
+
+const WALLPAPERS: EndpointVisualState["wallpaper"][] = [
+  "corp-blue", "corp-teal", "corp-violet", "gradient-sunset", "gradient-mint",
+  "abstract-waves", "abstract-mesh", "photo-mountain", "photo-shore", "default-os",
+];
+
+/** Department-appropriate desktop files (name + ext + kind). */
+const DEPT_FILES: Record<string, { name: string; kind: "file" | "folder"; ext?: string }[]> = {
+  Finance: [
+    { name: "Q1_Audit.csv", kind: "file", ext: "csv" },
+    { name: "Budget_FY.xlsx", kind: "file", ext: "xlsx" },
+    { name: "Invoices", kind: "folder" },
+    { name: "Expense_Report.pdf", kind: "file", ext: "pdf" },
+  ],
+  HR: [
+    { name: "Payroll_Q3.xlsx", kind: "file", ext: "xlsx" },
+    { name: "Resumes", kind: "folder" },
+    { name: "Onboarding.docx", kind: "file", ext: "docx" },
+    { name: "Org_Chart.pptx", kind: "file", ext: "pptx" },
+  ],
+  IT: [
+    { name: "script.py", kind: "file", ext: "py" },
+    { name: "Git", kind: "folder" },
+    { name: "backup.sh", kind: "file", ext: "sh" },
+    { name: "server_keys.key", kind: "file", ext: "key" },
+  ],
+  Sales: [
+    { name: "Pipeline.xlsx", kind: "file", ext: "xlsx" },
+    { name: "Proposals", kind: "folder" },
+    { name: "Deck_Q4.pptx", kind: "file", ext: "pptx" },
+  ],
+  Marketing: [
+    { name: "Campaign.pptx", kind: "file", ext: "pptx" },
+    { name: "Assets", kind: "folder" },
+    { name: "banner_v3.png", kind: "file", ext: "png" },
+  ],
+  Legal: [
+    { name: "NDA_Template.docx", kind: "file", ext: "docx" },
+    { name: "Contracts", kind: "folder" },
+    { name: "Compliance.pdf", kind: "file", ext: "pdf" },
+  ],
+  Operations: [
+    { name: "Logistics.xlsx", kind: "file", ext: "xlsx" },
+    { name: "SOPs", kind: "folder" },
+    { name: "Vendors.csv", kind: "file", ext: "csv" },
+  ],
+  "Customer Success": [
+    { name: "Tickets_Export.csv", kind: "file", ext: "csv" },
+    { name: "Playbooks", kind: "folder" },
+    { name: "QBR.pptx", kind: "file", ext: "pptx" },
+  ],
+};
+
+const COMMON_FILES: { name: string; kind: "file" | "folder"; ext?: string }[] = [
+  { name: "Notes.txt", kind: "file", ext: "txt" },
+  { name: "Screenshots", kind: "folder" },
+];
+
+function makeVisualState(rng: Rng, department: string, loggedInUser: string): EndpointVisualState {
+  const files = [...(DEPT_FILES[department] ?? DEPT_FILES.Operations), ...COMMON_FILES];
+  // Scatter icons across a random subset of a small grid (unique cells).
+  const cells = new Set<string>();
+  const desktop = files.map((f, i) => {
+    let col: number, row: number, key: string;
+    do {
+      col = int(rng, 0, 3);
+      row = int(rng, 0, 4);
+      key = `${col},${row}`;
+    } while (cells.has(key));
+    cells.add(key);
+    return { id: `d${i}`, name: f.name, kind: f.kind, ext: f.ext, col, row };
+  });
+  return {
+    wallpaper: pick(rng, WALLPAPERS),
+    theme: chance(rng, 0.45) ? "dark" : "light",
+    loggedInUser,
+    desktop,
+  };
 }
 
 /** Baseline macOS process table (Activity Monitor reads this). */
@@ -552,6 +634,37 @@ export function generateWorld(seed: number): InfrastructureState {
     }
   }
 
+  // ── Endpoint fleet ──────────────────────────────────────────────────────
+  // Give ~75% of standard staff a mapped workstation so Helpdesk always has
+  // plenty of machines to remote into. These are reached PER-USER through
+  // ADUC → Remote Connect, so they are deliberately kept OUT of the Remote
+  // Gateway list (infrastructure only) and the physical link topology — that
+  // keeps the gateway and NetOps console readable at 100s of endpoints.
+  const FLEET_TAG = "fleet-endpoint";
+  const pinnedLogins = new Set(["j.doe", "a.smith"]);
+  const staff = directory.users.filter((u) => u.enabled && !pinnedLogins.has(u.samAccountName));
+  const featuredWs = Object.values(nodes).filter(
+    (n) => n.role === "workstation" && (n.os === "windows" || n.os === "macos"),
+  ).length;
+  const targetMapped = Math.round(staff.length * 0.75);
+  const fleetCount = Math.max(0, targetMapped - featuredWs);
+  for (let i = 0; i < fleetCount; i++) {
+    const isMac = chance(rng, 0.15); // ~15% of the fleet is a Mac
+    const spec: NodeSpec = {
+      role: "workstation",
+      os: isMac ? "macos" : "windows",
+      // 2000+ range keeps fleet hostnames distinct from featured WS-/MAC- ids.
+      hostname: `${isMac ? "MAC" : "WS"}-${2000 + i}`,
+      ip: ipIn(rng, sub("User"), int(rng, 20, 250)),
+      subnet: sub("User").cidr,
+    };
+    const node = isMac
+      ? makeMacNode(rng, org, spec, "Staff Workstation")
+      : makeWindowsNode(rng, org, spec, "Staff Workstation");
+    (node.tags as string[]).push(FLEET_TAG);
+    add(node);
+  }
+
   // Register machines in AD.
   directory.computers = Object.values(nodes)
     .filter((n) => n.os === "windows")
@@ -564,6 +677,30 @@ export function generateWorld(seed: number): InfrastructureState {
         lastLogon: now - int(rng, 0, 3) * DAY,
       }),
     );
+
+  // ── Assign users to endpoints + stamp procedural visual state ──
+  // Endpoints = Windows/Mac workstations. Each is paired with a distinct AD
+  // user (biased away from the pinned scenario accounts) whose department
+  // drives the desktop files; that user's assignedNodeId powers ADUC's
+  // Remote Connect. Non-workstation Windows nodes (DC/file-server) get a plain
+  // corporate visual state so they still render if remoted into.
+  const endpoints = Object.values(nodes).filter(
+    (n) => n.role === "workstation" && (n.os === "windows" || n.os === "macos"),
+  ) as (WindowsNodeState | MacNodeState)[];
+  // One distinct staff owner per endpoint (the fleet was sized to ~75% of
+  // staff, so the shuffled pool covers every endpoint without repeats).
+  const pool = shuffle(rng, staff);
+  endpoints.forEach((ep, i) => {
+    const owner = pool[i];
+    if (owner) owner.assignedNodeId = ep.nodeId;
+    ep.visualState = makeVisualState(rng, owner?.department ?? "Operations", owner?.displayName ?? "Staff User");
+  });
+  // Servers/DCs: neutral corporate desktop for remote sessions.
+  for (const n of Object.values(nodes)) {
+    if ((n.os === "windows" || n.os === "macos") && !n.visualState) {
+      (n as WindowsNodeState | MacNodeState).visualState = makeVisualState(rng, "IT", "Administrator");
+    }
+  }
 
   // ── Links ──
   const links: NetworkLink[] = [];
@@ -582,17 +719,20 @@ export function generateWorld(seed: number): InfrastructureState {
   });
 
   const nodeList = Object.values(nodes);
+  // Infrastructure nodes only carry the physical topology; the endpoint fleet
+  // is reached logically through ADUC, not modelled as gateway links.
+  const infraNodes = nodeList.filter((n) => !n.tags.includes(FLEET_TAG));
   const hub = pdc.nodeId;
-  for (const n of nodeList) {
+  for (const n of infraNodes) {
     if (n.nodeId === hub) continue;
     links.push(mkLink(n.nodeId, hub, (n as { role: NodeRole }).role === "web-server" || n.role === "load-balancer" ? sub("DMZ").cidr : sub("Core").cidr));
   }
   // Internet egress via the DMZ (LB if present, else the web node).
-  const egress = nodeList.find((n) => n.role === "load-balancer") ?? web;
+  const egress = infraNodes.find((n) => n.role === "load-balancer") ?? web;
   links.push(mkLink(egress.nodeId, "internet", sub("DMZ").cidr));
   // Topology flavor: mesh/multi-subnet add cross-links.
   if (org.topologyKind === "hybrid-mesh" || org.topologyKind === "multi-subnet") {
-    const extras = sample(rng, nodeList.filter((n) => n.nodeId !== hub), Math.min(3, nodeList.length - 1));
+    const extras = sample(rng, infraNodes.filter((n) => n.nodeId !== hub), Math.min(3, infraNodes.length - 1));
     for (let i = 0; i + 1 < extras.length; i++) {
       links.push(mkLink(extras[i].nodeId, extras[i + 1].nodeId, pick(rng, subnets).cidr));
     }
@@ -603,7 +743,8 @@ export function generateWorld(seed: number): InfrastructureState {
   victim.packetLossPct = int(rng, 30, 80) / 10;
 
   // ── Gateway ──
-  const gateway: GatewayEntry[] = nodeList.map((n) => ({
+  // Infrastructure + featured workstations only — the fleet is ADUC-reachable.
+  const gateway: GatewayEntry[] = infraNodes.map((n) => ({
     nodeId: n.nodeId,
     label: n.displayName,
     protocol: n.connection.protocol,

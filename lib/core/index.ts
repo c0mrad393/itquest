@@ -20,6 +20,7 @@ export * from "./nodes";
 export * from "./linux";
 export * from "./windows";
 export * from "./mac";
+export * from "./endpoint";
 export * from "./infrastructure";
 export * from "./tickets";
 export * from "./host";

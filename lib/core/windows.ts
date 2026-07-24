@@ -13,6 +13,7 @@
 
 import type { BaseNode } from "./nodes";
 import type { FsNode, ProcessInfo } from "@/lib/vm/types";
+import type { EndpointVisualState } from "./endpoint";
 
 // ── Active Directory (ADUC) ────────────────────────────────────────────────
 
@@ -47,6 +48,8 @@ export interface ADUser {
   lastLogon: number | null;
   /** Password expiry timestamp (epoch millis); null = never expires. */
   passwordExpiresAt: number | null;
+  /** Node id of this user's assigned endpoint (drives ADUC Remote Connect). */
+  assignedNodeId?: string;
   description?: string;
 }
 
@@ -244,6 +247,9 @@ export interface WindowsNodeState extends BaseNode {
   activeDirectory?: ActiveDirectoryState;
   /** Present when GPMC is available on this node. */
   groupPolicy?: GroupPolicyState;
+
+  /** Procedural presentation (wallpaper/theme/desktop) — endpoints only. */
+  visualState?: EndpointVisualState;
 
   nextPid: number;
 }
