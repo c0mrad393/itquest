@@ -22,6 +22,7 @@ import { levelForXp } from "@/lib/scenario/scoring";
 import { reportProgress } from "@/lib/auth/store";
 
 const DESKTOP_MARGIN = 16;
+const TASKBAR_H = 48;
 let instanceCounter = 0;
 const nextInstanceId = (prefix: string) => `${prefix}-${++instanceCounter}`;
 
@@ -182,11 +183,25 @@ export const useHostStore = create<HostStore>((set, get) => ({
     }),
 
   move: (instanceId, x, y) =>
-    set((s) => ({
-      windows: s.windows.map((w) =>
-        w.instanceId === instanceId ? { ...w, x: Math.max(0, x), y: Math.max(0, y) } : w,
-      ),
-    })),
+    set((s) => {
+      // Strictly contain windows within the desktop so they can't be lost
+      // off-screen: clamp the top-left so the whole frame stays above the
+      // taskbar and inside the viewport (or pinned to 0 if larger than it).
+      const vw = typeof window !== "undefined" ? window.innerWidth : 1440;
+      const vh = typeof window !== "undefined" ? window.innerHeight : 860;
+      return {
+        windows: s.windows.map((w) => {
+          if (w.instanceId !== instanceId) return w;
+          const maxX = Math.max(0, vw - w.w);
+          const maxY = Math.max(0, vh - TASKBAR_H - w.h);
+          return {
+            ...w,
+            x: Math.min(Math.max(0, x), maxX),
+            y: Math.min(Math.max(0, y), maxY),
+          };
+        }),
+      };
+    }),
 
   resize: (instanceId, rect) =>
     set((s) => ({

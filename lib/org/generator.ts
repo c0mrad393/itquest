@@ -38,6 +38,8 @@ import {
   type MacNodeState,
   type ProcessInfo,
   type EndpointVisualState,
+  type EndpointAppId,
+  type DesktopItem,
 } from "@/lib/core";
 import { chance, int, mulberry32, pick, sample, shuffle, type Rng } from "./rng";
 import { COMPANY_PARTS, DEPARTMENTS, FIRST_NAMES, LAST_NAMES } from "./namegen";
@@ -77,8 +79,31 @@ function winProcesses(rng: Rng, isServer: boolean): ProcessInfo[] {
 // ── Endpoint visual state (wallpaper / theme / department desktop) ───────────
 
 const WALLPAPERS: EndpointVisualState["wallpaper"][] = [
-  "corp-blue", "corp-teal", "corp-violet", "gradient-sunset", "gradient-mint",
-  "abstract-waves", "abstract-mesh", "photo-mountain", "photo-shore", "default-os",
+  "corp-blue", "corp-teal", "corp-violet", "corp-slate", "corp-crimson",
+  "corp-emerald", "corp-indigo", "corp-amber",
+  "gradient-sunset", "gradient-mint", "gradient-ocean", "gradient-dusk",
+  "gradient-rose", "gradient-forest", "photo-mountain", "photo-shore",
+  "abstract-waves", "abstract-mesh", "abstract-grid", "abstract-conic",
+  "abstract-stripes", "abstract-dots", "abstract-aurora",
+  "solid-graphite", "solid-midnight", "solid-plum", "solid-fog", "solid-sand",
+  "default-os",
+];
+
+const ARCHETYPES: EndpointVisualState["archetype"][] = ["clean", "organized", "messy"];
+
+/** Department-appropriate application shortcuts (kind: "app"). */
+const DEPT_APPS: Record<string, { name: string; app: EndpointAppId }[]> = {
+  Finance: [{ name: "FinanceERP", app: "financeerp" }],
+  IT: [{ name: "CodeStudio", app: "codestudio" }],
+  Marketing: [{ name: "DesignSuite", app: "designsuite" }],
+};
+
+/** App shortcuts every workstation carries. */
+const STANDARD_APPS: { name: string; app: EndpointAppId }[] = [
+  { name: "Recycle Bin", app: "recycle-bin" },
+  { name: "Edge", app: "edge" },
+  { name: "Company Portal", app: "company-portal" },
+  { name: "CoreTeams", app: "coreteams" },
 ];
 
 /** Department-appropriate desktop files (name + ext + kind). */
@@ -133,25 +158,79 @@ const COMMON_FILES: { name: string; kind: "file" | "folder"; ext?: string }[] = 
   { name: "Screenshots", kind: "folder" },
 ];
 
-function makeVisualState(rng: Rng, department: string, loggedInUser: string): EndpointVisualState {
-  const files = [...(DEPT_FILES[department] ?? DEPT_FILES.Operations), ...COMMON_FILES];
-  // Scatter icons across a random subset of a small grid (unique cells).
-  const cells = new Set<string>();
-  const desktop = files.map((f, i) => {
-    let col: number, row: number, key: string;
-    do {
-      col = int(rng, 0, 3);
-      row = int(rng, 0, 4);
-      key = `${col},${row}`;
-    } while (cells.has(key));
-    cells.add(key);
-    return { id: `d${i}`, name: f.name, kind: f.kind, ext: f.ext, col, row };
+const GRID_COLS = 4;
+const GRID_ROWS = 5;
+
+/**
+ * Place raw desktop items into grid cells per the desktop archetype:
+ *   organized → fill column-by-column from the top-left, no gaps
+ *   clean     → a tidy single left column (few items)
+ *   messy     → random unique cells across the whole grid, with gaps
+ */
+function placeItems(
+  rng: Rng,
+  raw: { name: string; kind: DesktopItem["kind"]; ext?: string; app?: EndpointAppId }[],
+  archetype: EndpointVisualState["archetype"],
+): DesktopItem[] {
+  const withId = (r: (typeof raw)[number], i: number, col: number, row: number): DesktopItem => ({
+    id: `d${i}`,
+    name: r.name,
+    kind: r.kind,
+    ext: r.ext,
+    app: r.app,
+    col,
+    row,
   });
+
+  if (archetype === "messy") {
+    const cells = new Set<string>();
+    return raw.map((r, i) => {
+      let col: number, row: number, key: string;
+      do {
+        col = int(rng, 0, GRID_COLS - 1);
+        row = int(rng, 0, GRID_ROWS - 1);
+        key = `${col},${row}`;
+      } while (cells.has(key));
+      cells.add(key);
+      return withId(r, i, col, row);
+    });
+  }
+
+  // clean / organized: fill columns top-to-bottom from the left, no gaps.
+  const maxCols = archetype === "clean" ? 1 : GRID_COLS;
+  return raw.map((r, i) => {
+    const col = Math.floor(i / GRID_ROWS) % maxCols;
+    const row = i % GRID_ROWS;
+    return withId(r, i, col, row);
+  });
+}
+
+function makeVisualState(rng: Rng, department: string, loggedInUser: string): EndpointVisualState {
+  const archetype = pick(rng, ARCHETYPES);
+
+  const apps = [...STANDARD_APPS, ...(DEPT_APPS[department] ?? [])].map((a) => ({
+    name: a.name,
+    kind: "app" as const,
+    app: a.app,
+  }));
+
+  const deptFiles = [...(DEPT_FILES[department] ?? DEPT_FILES.Operations), ...COMMON_FILES];
+  // A tidy "clean" desktop only keeps a couple of working files around.
+  const files =
+    archetype === "clean" ? sample(rng, deptFiles, Math.min(2, deptFiles.length)) : deptFiles;
+
+  // Apps lead (top-left), files follow — capped to the grid.
+  const raw = [...apps, ...files.map((f) => ({ name: f.name, kind: f.kind, ext: f.ext }))].slice(
+    0,
+    GRID_COLS * GRID_ROWS,
+  );
+
   return {
     wallpaper: pick(rng, WALLPAPERS),
     theme: chance(rng, 0.45) ? "dark" : "light",
+    archetype,
     loggedInUser,
-    desktop,
+    desktop: placeItems(rng, raw, archetype),
   };
 }
 

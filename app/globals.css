@@ -13,16 +13,65 @@ body {
   color: #c9d1d9;
 }
 
-/* Terminal scrollbar */
+/* ── Modern thin scrollbars (global — no default browser chrome) ──────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #30363d transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #454d59;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Light-surfaced windows (endpoint light theme) get a matching light thumb */
+.scroll-light {
+  scrollbar-color: #c2c9d6 transparent;
+}
+.scroll-light::-webkit-scrollbar-thumb {
+  background: #cdd3dd;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.scroll-light::-webkit-scrollbar-thumb:hover {
+  background: #b3bbc9;
+  background-clip: padding-box;
+}
+
+/* Terminal keeps the same thin treatment (alias retained for existing markup) */
 .term-scroll::-webkit-scrollbar {
-  width: 10px;
+  width: 8px;
+  height: 8px;
 }
 .term-scroll::-webkit-scrollbar-thumb {
   background: #30363d;
-  border-radius: 6px;
+  border-radius: 8px;
 }
 .term-scroll::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* Desktop icon labels: readable white text over any wallpaper */
+.desktop-label {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 2px rgba(0, 0, 0, 0.55);
+}
+.desktop-glyph {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
 
 /* Blinking caret for the terminal input */

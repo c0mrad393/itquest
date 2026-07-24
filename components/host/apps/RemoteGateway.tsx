@@ -37,7 +37,7 @@ export default function RemoteGateway() {
       <div className="flex items-center gap-2 border-b border-edge bg-panelalt px-4 py-3">
         <span className="text-sm font-semibold">{infra.clientOrg}</span>
         <span className="rounded-full bg-info/15 px-2 py-0.5 text-[10px] font-semibold text-info">
-          {Object.keys(infra.nodes).length} nodes
+          {infra.gateway.length} nodes
         </span>
         <span className="ml-auto text-[11px] text-gray-500">Remote Gateway · RDP / SSH</span>
       </div>
