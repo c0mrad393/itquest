@@ -347,6 +347,80 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     healthyNode: (_infra, ctx) => ctx.targetNodeId,
   },
 
+  // ── Hardware Provisioning Lab & Field Dispatch ──────────────────────────────
+
+  "hw-t1-ram-upgrade": {
+    id: "hw-t1-ram-upgrade",
+    category: "System & Web Services",
+    difficulty: "Tier_1_Easy",
+    track: "helpdesk",
+    severity: "medium",
+    priority: "P3",
+    slaDuration: 25 * 60,
+    responseSeconds: 5 * 60,
+    xpReward: 220,
+    personaId: "persona-tara-calm",
+    tags: ["hardware", "ram", "deployment"],
+    origin: "dashboard",
+    summary: "A developer's workstation is crashing from out-of-memory.",
+    hints: [
+      "Hardware Lab → Workshop → assemble a 32GB memory module",
+      "Image the replacement box (Boot from PXE)",
+      "Dispatch a field team to physically swap the unit",
+    ],
+    playable: true,
+    makeContext: (infra) => {
+      const ws = findFirstWorkstation(infra);
+      return ws ? { targetNodeId: ws.nodeId, targetHostname: ws.hostname, serviceName: "RAM" } : null;
+    },
+    title: (ctx) => `${ctx.targetHostname} crashing — out-of-memory, needs RAM upgrade`,
+    description: (ctx) =>
+      `A developer on ${ctx.targetHostname} keeps hitting hard crashes under load — the box is out of memory and 8GB isn't enough for their build tooling. Provision a 32GB memory upgrade in the Hardware Lab, image the unit, and dispatch a field team for the physical swap.`,
+    requester: (_ctx, org) => ({ name: "Devan Rao", role: "Software Engineer", email: `devan.rao@${mailDomain(org)}`, department: "IT" }),
+    injectFault: (infra, ctx) => {
+      const n = infra.nodes[ctx.targetNodeId as NodeId];
+      if (n) { n.health.memUsedPct = 98; n.health.status = "critical"; }
+    },
+    win: (infra, ctx) => infra.security.hardwareReplaced.includes(ctx.targetNodeId as NodeId),
+    healthyNode: (_infra, ctx) => ctx.targetNodeId,
+  },
+
+  "hw-t2-rack-disk": {
+    id: "hw-t2-rack-disk",
+    category: "System & Web Services",
+    difficulty: "Tier_2_Medium",
+    track: "helpdesk",
+    severity: "high",
+    priority: "P2",
+    slaDuration: 35 * 60,
+    responseSeconds: 8 * 60,
+    xpReward: 360,
+    personaId: "persona-marcus-calm",
+    tags: ["hardware", "disk", "storage", "hot-swap"],
+    origin: "dashboard",
+    summary: "A database storage server has a disk array I/O hardware failure.",
+    hints: [
+      "Hardware Lab → Workshop → hot-swap the failed drive on the rack tray",
+      "Pick the enterprise hot-swap SAS drive from stock",
+      "Dispatch a field team to rack 4B for the physical replacement",
+    ],
+    playable: true,
+    makeContext: (infra) => {
+      const db = Object.values(infra.nodes).find((n) => n.role === "database");
+      return db ? { targetNodeId: db.nodeId, targetHostname: db.hostname, serviceName: "/dev/sdb" } : null;
+    },
+    title: (ctx) => `Disk array I/O failure on ${ctx.targetHostname} (/dev/sdb)`,
+    description: (ctx) =>
+      `${ctx.targetHostname} is logging I/O errors on the storage array — the drive at /dev/sdb has a hardware fault and the array is degraded. Provision a hot-swap replacement drive in the Hardware Lab and dispatch a field team to swap it in rack 4B before the array loses redundancy.`,
+    requester: (_ctx, org) => ({ name: "Marcus Feld", role: "Infrastructure Engineer", email: `marcus.feld@${mailDomain(org)}`, department: "IT" }),
+    injectFault: (infra, ctx) => {
+      const n = infra.nodes[ctx.targetNodeId as NodeId];
+      if (n) { n.health.diskUsedPct = 99; n.health.status = "critical"; }
+    },
+    win: (infra, ctx) => infra.security.hardwareReplaced.includes(ctx.targetNodeId as NodeId),
+    healthyNode: (_infra, ctx) => ctx.targetNodeId,
+  },
+
   "net-t3-dns": {
     id: "net-t3-dns",
     category: "Network & Routing",

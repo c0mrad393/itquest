@@ -79,6 +79,8 @@ interface InfraStore {
   runLogRotation: (nodeId: NodeId) => void;
   /** Complete the fixed bulk onboarding import. */
   completeOnboarding: () => void;
+  /** Field dispatch complete: mark hardware replaced + bring the node online/healthy. */
+  completeHardwareReplacement: (nodeId: NodeId) => void;
   /** Replace the whole infrastructure (used by factory fault injection). */
   setInfra: (infra: InfrastructureState) => void;
 
@@ -372,6 +374,27 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
     }),
 
   completeOnboarding: () => set((s) => patchSecurity(s, { onboardingComplete: true })),
+
+  completeHardwareReplacement: (nodeId) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      const next = node
+        ? withNode(s, nodeId, {
+            ...node,
+            connection: { ...node.connection, online: true, reachable: true },
+            health: { ...node.health, status: "healthy", cpuLoad: 8, memUsedPct: 34, diskUsedPct: 41 },
+          })
+        : s;
+      return {
+        infra: {
+          ...next.infra,
+          security: {
+            ...next.infra.security,
+            hardwareReplaced: dedupe(next.infra.security.hardwareReplaced, nodeId),
+          },
+        },
+      };
+    }),
 
   setInfra: (infra) => set({ infra }),
 

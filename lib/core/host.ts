@@ -15,6 +15,7 @@ export type HostAppId =
   | "mail" // Persona conversation client (ticket dialogue threads)
   | "coremail" // Outlook-style corporate mailbox (internal + external mail)
   | "gateway" // Remote Gateway Manager (RDP/SSH launcher)
+  | "hardwarelab" // Hardware Provisioning Lab & Field Dispatch
   | "netops" // Network topology console (link optimization)
   | "toolbox" // Tech Toolbox & Documentation Center
   | "leaderboard" // Global ranking
@@ -108,6 +109,18 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     description: "Client servers and workstations. Connect to open an RDP/SSH session.",
     defaultSize: { w: 820, h: 560 },
     minSize: { w: 560, h: 400 },
+    singleton: true,
+    pinnedToTaskbar: true,
+    showOnDesktop: true,
+  },
+  hardwarelab: {
+    id: "hardwarelab",
+    title: "Hardware Lab & Deployment",
+    icon: "🔧",
+    category: "work",
+    description: "Provision hardware, image endpoints, and dispatch field teams for physical swaps.",
+    defaultSize: { w: 940, h: 640 },
+    minSize: { w: 680, h: 480 },
     singleton: true,
     pinnedToTaskbar: true,
     showOnDesktop: true,

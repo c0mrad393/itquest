@@ -983,6 +983,7 @@ export function generateWorld(seed: number): InfrastructureState {
       dnsFixed: false,
       logsRotated: [],
       onboardingComplete: false,
+      hardwareReplaced: [],
     },
     loadedAt: now,
   };

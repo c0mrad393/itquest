@@ -18,6 +18,7 @@ import TicketReconciler from "./TicketReconciler";
 import SlaEngine from "./SlaEngine";
 import NetworkEngine from "./NetworkEngine";
 import PersistenceManager from "./PersistenceManager";
+import HardwareDispatchEngine from "./HardwareDispatchEngine";
 
 export default function HostDesktop() {
   const windows = useHostStore((s) => s.windows);
@@ -40,6 +41,7 @@ export default function HostDesktop() {
       <TicketReconciler />
       <SlaEngine />
       <NetworkEngine />
+      <HardwareDispatchEngine />
 
       {/* Desktop icons */}
       <DesktopIcons />

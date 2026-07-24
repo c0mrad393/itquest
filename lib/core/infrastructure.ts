@@ -66,6 +66,8 @@ export interface SecurityState {
   logsRotated: NodeId[];
   /** Bulk onboarding batch imported successfully. */
   onboardingComplete: boolean;
+  /** Nodes whose hardware was replaced + field-dispatched (Hardware Lab). */
+  hardwareReplaced: NodeId[];
 }
 
 /** A row in the Level-0 Remote Gateway Manager. */
