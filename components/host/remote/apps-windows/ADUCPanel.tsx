@@ -11,7 +11,8 @@
 
 import { useMemo, useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
-import { adAccountStatus, type ADUser, type WindowsNodeState } from "@/lib/core";
+import { adAccountStatus, type ADUser, type TargetNode, type WindowsNodeState } from "@/lib/core";
+import EndpointSession from "../endpoints/EndpointSession";
 
 const PAGE_SIZE = 12;
 
@@ -23,6 +24,7 @@ const STATUS_STYLE: Record<string, string> = {
 
 export default function ADUCPanel({ nodeId }: { nodeId: string }) {
   const node = useInfraStore((s) => s.infra.nodes[nodeId]) as WindowsNodeState | undefined;
+  const nodes = useInfraStore((s) => s.infra.nodes);
   const unlock = useInfraStore((s) => s.unlockADUser);
   const setEnabled = useInfraStore((s) => s.setADUserEnabled);
 
@@ -31,6 +33,7 @@ export default function ADUCPanel({ nodeId }: { nodeId: string }) {
   const [statusFilter, setStatusFilter] = useState<"all" | "Active" | "Locked" | "Disabled">("all");
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
+  const [remoteNodeId, setRemoteNodeId] = useState<string | null>(null);
 
   const ad = node?.activeDirectory;
 
@@ -60,6 +63,27 @@ export default function ADUCPanel({ nodeId }: { nodeId: string }) {
   const clampedPage = Math.min(page, pageCount - 1);
   const rows = filtered.slice(clampedPage * PAGE_SIZE, clampedPage * PAGE_SIZE + PAGE_SIZE);
   const user = ad.users.find((u) => u.samAccountName === selected) ?? null;
+  const assignedNode = user?.assignedNodeId ? nodes[user.assignedNodeId] : undefined;
+
+  // ── Live remote session (mounted from a Remote Connect action) ──────────────
+  if (remoteNodeId) {
+    return (
+      <div className="flex h-full flex-col bg-black">
+        <div className="flex shrink-0 items-center gap-2 border-b border-edge bg-panelalt px-3 py-1.5 text-[11px] text-gray-300">
+          <button
+            onClick={() => setRemoteNodeId(null)}
+            className="rounded border border-edge px-2 py-0.5 text-gray-200 hover:bg-edge"
+          >
+            ← Back to ADUC
+          </button>
+          <span className="text-gray-500">Remote session established via Active Directory</span>
+        </div>
+        <div className="min-h-0 flex-1">
+          <EndpointSession nodeId={remoteNodeId} onDisconnect={() => setRemoteNodeId(null)} />
+        </div>
+      </div>
+    );
+  }
 
   function resetPage<T>(setter: (v: T) => void) {
     return (v: T) => {
@@ -181,8 +205,10 @@ export default function ADUCPanel({ nodeId }: { nodeId: string }) {
           {user ? (
             <UserDetail
               user={user}
+              assignedNode={assignedNode}
               onUnlock={() => unlock(nodeId, user.samAccountName)}
               onToggleEnabled={() => setEnabled(nodeId, user.samAccountName, !user.enabled)}
+              onRemoteConnect={() => user.assignedNodeId && setRemoteNodeId(user.assignedNodeId)}
             />
           ) : (
             <Empty text="Select an account." />
@@ -193,16 +219,28 @@ export default function ADUCPanel({ nodeId }: { nodeId: string }) {
   );
 }
 
+const OS_LABEL: Record<string, { name: string; protocol: string; icon: string }> = {
+  windows: { name: "Windows", protocol: "RDP", icon: "🪟" },
+  macos: { name: "macOS", protocol: "RDP", icon: "🍎" },
+  linux: { name: "Linux", protocol: "SSH", icon: "🐧" },
+};
+
 function UserDetail({
   user,
+  assignedNode,
   onUnlock,
   onToggleEnabled,
+  onRemoteConnect,
 }: {
   user: ADUser;
+  assignedNode: TargetNode | undefined;
   onUnlock: () => void;
   onToggleEnabled: () => void;
+  onRemoteConnect: () => void;
 }) {
   const status = adAccountStatus(user);
+  const osMeta = assignedNode ? OS_LABEL[assignedNode.os] : undefined;
+  const online = assignedNode ? assignedNode.connection.online : false;
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-center gap-3">
@@ -229,6 +267,38 @@ function UserDetail({
         <Row label="Must change" value={user.mustChangePassword ? "Yes" : "No"} />
         <Row label="Last logon" value={user.lastLogon ? new Date(user.lastLogon).toLocaleString() : "—"} />
       </dl>
+
+      {/* Assigned endpoint + Remote Connect (RDP/SSH) */}
+      <div className="rounded-md border border-edge bg-panelalt/60 p-3">
+        <div className="mb-2 text-[9px] font-semibold uppercase tracking-wider text-gray-500">
+          Assigned workstation
+        </div>
+        {assignedNode ? (
+          <>
+            <div className="flex items-center gap-2">
+              <span className="text-lg">{osMeta?.icon ?? "🖥️"}</span>
+              <div className="min-w-0">
+                <div className="truncate text-xs text-gray-100">{assignedNode.hostname}</div>
+                <div className="truncate font-mono text-[10px] text-gray-500">
+                  {osMeta?.name} · {assignedNode.connection.ip}
+                </div>
+              </div>
+              <span className={`ml-auto rounded px-1.5 py-0.5 text-[10px] font-semibold ${online ? "bg-emerald-500/20 text-emerald-300" : "bg-gray-500/20 text-gray-400"}`}>
+                {online ? "Online" : "Offline"}
+              </span>
+            </div>
+            <button
+              onClick={onRemoteConnect}
+              disabled={!online}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-md bg-info px-3 py-2 text-xs font-semibold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500"
+            >
+              🛰️ Remote Connect ({osMeta?.protocol ?? "RDP"})
+            </button>
+          </>
+        ) : (
+          <div className="text-[11px] text-gray-600">No workstation mapped to this account.</div>
+        )}
+      </div>
 
       <div className="flex flex-wrap gap-2 border-t border-edge pt-3">
         <button

@@ -462,17 +462,22 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     origin: "dashboard",
     summary: "A runaway process is pinning an endpoint's CPU.",
     hints: [
-      "TriageRemote → connect to the endpoint (RDP)",
+      "ADUC → open the user → Remote Connect (RDP), or use Remote Gateway",
       "Task Manager / Activity Monitor → sort by CPU",
       "End the runaway task to restore the machine",
     ],
     playable: true,
     makeContext: (infra, rng) => {
-      const endpoints = Object.values(infra.nodes).filter(
+      // Prefer a gateway-listed workstation so the machine is reachable via the
+      // Remote Gateway as well as ADUC; the fleet is ADUC-only.
+      const gatewayIds = new Set(infra.gateway.map((g) => g.nodeId));
+      const all = Object.values(infra.nodes).filter(
         (n) => n.role === "workstation" && (n.os === "windows" || n.os === "macos"),
       );
-      if (endpoints.length === 0) return null;
-      const n = pick(rng, endpoints);
+      const endpoints = all.filter((n) => gatewayIds.has(n.nodeId));
+      const eligible = endpoints.length ? endpoints : all;
+      if (eligible.length === 0) return null;
+      const n = pick(rng, eligible);
       return {
         targetNodeId: n.nodeId,
         targetHostname: n.hostname,
