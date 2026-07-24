@@ -1,167 +1,267 @@
 "use client";
 
 /**
- * WindowsEndpointEnv — mini Windows 10/11 desktop (remote endpoint)
+ * WindowsEndpointEnv — mini Windows 11 desktop (remote endpoint)
  * -----------------------------------------------------------------
- * Procedural: renders the node's visualState (wallpaper, theme, scattered
- * department desktop files). Toolset:
- *   Task Manager · Network Settings · Command Prompt · Web Browser · Event Viewer
- * Every mutating action writes to InfrastructureState so the reconciler fixes
- * tickets automatically.
+ * Hyper-realistic Win11 shell: centered Mica taskbar, Start menu with Pinned
+ * apps + Recommended files, a Quick Settings flyout (Wi-Fi / Volume / Battery),
+ * and a real window manager driving This PC, folders, file viewers, credential
+ * prompts, and the diagnostic tools. All mutations write to InfrastructureState.
  */
 
 import { useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
-import type { WindowsNodeState } from "@/lib/core";
+import type { DesktopItem, EndpointFsItem, WindowsNodeState } from "@/lib/core";
 import { DesktopIconGrid, WallpaperLayer, DEFAULT_VISUAL } from "./endpoint-shared";
 import { EndpointBrowser, EndpointEventLog, EndpointTerminal } from "./EndpointTools";
+import { useEndpointWM, renderEpBody, toFsItem, type EpWindow } from "./endpoint-fs";
 
-type AppId = "taskmgr" | "network" | "cmd" | "browser" | "eventvwr";
+type ToolId = "taskmgr" | "network" | "cmd" | "browser" | "eventvwr";
 
-const APPS: { id: AppId; label: string; icon: string }[] = [
+const PINNED: { id: ToolId | "thispc"; label: string; icon: string }[] = [
+  { id: "thispc", label: "This PC", icon: "🖥️" },
   { id: "taskmgr", label: "Task Manager", icon: "📊" },
-  { id: "network", label: "Network Settings", icon: "🖧" },
-  { id: "cmd", label: "Command Prompt", icon: "⌨️" },
+  { id: "network", label: "Network", icon: "🖧" },
+  { id: "cmd", label: "Terminal", icon: "⌨️" },
   { id: "browser", label: "Edge", icon: "🌐" },
   { id: "eventvwr", label: "Event Viewer", icon: "📑" },
 ];
 
+const TOOL_ICON: Record<ToolId, string> = {
+  taskmgr: "📊", network: "🖧", cmd: "⌨️", browser: "🌐", eventvwr: "📑",
+};
+
 export default function WindowsEndpointEnv({ nodeId }: { nodeId: string }) {
   const node = useInfraStore((s) => s.infra.nodes[nodeId]) as WindowsNodeState | undefined;
-  const [openApps, setOpenApps] = useState<AppId[]>([]);
-  const [active, setActive] = useState<AppId | null>(null);
+  const wm = useEndpointWM("windows");
   const [startOpen, setStartOpen] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
   if (!node) return null;
 
   const visual = node.visualState ?? DEFAULT_VISUAL;
   const dark = visual.theme === "dark";
 
-  function launch(id: AppId) {
-    setOpenApps((a) => (a.includes(id) ? a : [...a, id]));
-    setActive(id);
+  function launchTool(id: ToolId) {
+    wm.open({ id: `tool-${id}`, title: PINNED.find((p) => p.id === id)?.label ?? id, icon: TOOL_ICON[id], content: { kind: "app", appId: id } });
+  }
+  function onPinned(id: ToolId | "thispc") {
     setStartOpen(false);
+    if (id === "thispc") wm.openSystem();
+    else launchTool(id);
   }
-  function close(id: AppId) {
-    setOpenApps((a) => a.filter((x) => x !== id));
-    setActive((cur) => (cur === id ? null : cur));
+  function openDesktopItem(item: DesktopItem) {
+    if (item.kind === "app") {
+      if (item.app === "edge") launchTool("browser");
+      else if (item.app === "recycle-bin") wm.open({ id: "recycle", title: "Recycle Bin", icon: "🗑️", content: { kind: "folder", items: [] } });
+      else wm.open({ id: `app-${item.app}`, title: item.name, icon: "🧩", content: { kind: "app", appId: `stub:${item.name}` } });
+      return;
+    }
+    wm.openItem(toFsItem(item));
   }
+  const renderApp = (appId: string) => renderTool(node.nodeId, appId);
+
+  const closeMenus = () => { setStartOpen(false); setQuickOpen(false); };
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden font-sans">
       <WallpaperLayer visual={visual} />
 
       {/* Desktop */}
-      <div className="relative flex-1" onClick={() => setStartOpen(false)}>
-        <DesktopIconGrid visual={visual} />
+      <div className="relative min-h-0 flex-1" onClick={closeMenus}>
+        <DesktopIconGrid visual={visual} onOpen={openDesktopItem} />
 
-        {openApps.map((id) => (
-          <AppWindow
-            key={id}
-            app={APPS.find((a) => a.id === id)!}
-            dark={dark}
-            focused={active === id}
-            onFocus={() => setActive(id)}
-            onClose={() => close(id)}
-          >
-            {renderApp(id, node.nodeId)}
-          </AppWindow>
+        {wm.windows.map((win, i) => (
+          <WinWindow key={win.id} win={win} index={i} dark={dark} focused={wm.focusId === win.id} onFocus={() => wm.focus(win.id)} onClose={() => wm.close(win.id)}>
+            {renderEpBody(win, { nodeId: node.nodeId, variant: "windows", wm, renderApp })}
+          </WinWindow>
         ))}
 
-        {startOpen && (
-          <div className="absolute bottom-10 left-2 z-30 w-56 rounded-lg border border-edge bg-panel/95 p-2 shadow-2xl backdrop-blur">
-            <div className="mb-1 px-2 text-[10px] uppercase tracking-wider text-gray-500">
-              {node.hostname} · {visual.loggedInUser}
-            </div>
-            {APPS.map((a) => (
-              <button
-                key={a.id}
-                onClick={() => launch(a.id)}
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
-              >
-                <span>{a.icon}</span> {a.label}
-              </button>
-            ))}
-          </div>
-        )}
+        {startOpen && <StartMenu node={node} onPinned={onPinned} onOpenFile={(it) => { setStartOpen(false); wm.openItem(it); }} />}
+        {quickOpen && <QuickSettings nodeId={node.nodeId} />}
       </div>
 
-      {/* Taskbar */}
-      <div className="relative z-20 flex h-9 shrink-0 items-center gap-1 border-t border-white/10 bg-black/55 px-2 backdrop-blur">
+      {/* Taskbar (centered, Mica) */}
+      <div className="relative z-30 flex h-11 shrink-0 items-center border-t border-white/10 bg-black/45 px-3 backdrop-blur-md">
+        <div className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1">
+          <button
+            onClick={(e) => { e.stopPropagation(); setQuickOpen(false); setStartOpen((v) => !v); }}
+            title="Start"
+            className={`flex h-8 w-8 items-center justify-center rounded ${startOpen ? "bg-white/20" : "hover:bg-white/10"}`}
+          >
+            <svg width="16" height="16" viewBox="0 0 18 18">
+              <rect x="0" y="0" width="8" height="8" fill="#4cc2ff" /><rect x="10" y="0" width="8" height="8" fill="#4cc2ff" />
+              <rect x="0" y="10" width="8" height="8" fill="#4cc2ff" /><rect x="10" y="10" width="8" height="8" fill="#4cc2ff" />
+            </svg>
+          </button>
+          {PINNED.map((p) => {
+            const winId = p.id === "thispc" ? "system" : `tool-${p.id}`;
+            const isOpen = wm.windows.some((w) => w.id === winId);
+            return (
+              <button
+                key={p.id}
+                onClick={(e) => { e.stopPropagation(); onPinned(p.id); }}
+                title={p.label}
+                className={`relative flex h-8 w-8 items-center justify-center rounded text-base ${isOpen ? "bg-white/15" : "hover:bg-white/10"}`}
+              >
+                {p.icon}
+                {isOpen && <span className="absolute bottom-0.5 left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full bg-info" />}
+              </button>
+            );
+          })}
+        </div>
+
         <button
-          onClick={(e) => { e.stopPropagation(); setStartOpen((v) => !v); }}
-          className={`flex h-7 w-7 items-center justify-center rounded ${startOpen ? "bg-white/15" : "hover:bg-white/10"}`}
-          aria-label="Start"
+          onClick={(e) => { e.stopPropagation(); setStartOpen(false); setQuickOpen((v) => !v); }}
+          className={`ml-auto flex items-center gap-2 rounded px-2 py-1 text-[11px] text-gray-200 ${quickOpen ? "bg-white/15" : "hover:bg-white/10"}`}
+          title="Quick settings"
         >
-          <svg width="14" height="14" viewBox="0 0 18 18">
-            <rect x="0" y="0" width="8" height="8" fill="#4cc2ff" />
-            <rect x="10" y="0" width="8" height="8" fill="#4cc2ff" />
-            <rect x="0" y="10" width="8" height="8" fill="#4cc2ff" />
-            <rect x="10" y="10" width="8" height="8" fill="#4cc2ff" />
-          </svg>
+          <span title={netUp(node) ? "Connected" : "No network"}>{netUp(node) ? "📶" : "🚫"}</span>
+          <span>🔊</span>
+          <span>🔋</span>
         </button>
-        {APPS.map((a) => {
-          const isOpen = openApps.includes(a.id);
-          return (
-            <button
-              key={a.id}
-              onClick={() => (isOpen ? setActive(a.id) : launch(a.id))}
-              title={a.label}
-              className={`relative flex h-7 items-center gap-1 rounded px-2 text-[11px] ${
-                active === a.id ? "bg-white/15 text-gray-100" : "text-gray-300 hover:bg-white/10"
-              }`}
-            >
-              <span>{a.icon}</span>
-              {isOpen && <span className="absolute -bottom-0.5 left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full bg-info" />}
-            </button>
-          );
-        })}
-        <span className="ml-auto pr-1 text-[10px] text-gray-400">{node.edition}</span>
+        <div className="pl-3 text-right text-[10px] leading-tight text-gray-300">
+          <div>{new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+          <div>{node.edition}</div>
+        </div>
       </div>
     </div>
   );
 }
 
-function renderApp(id: AppId, nodeId: string) {
-  switch (id) {
+function netUp(node: WindowsNodeState): boolean {
+  return node.network.interfaces.some((n) => n.up);
+}
+
+function renderTool(nodeId: string, appId: string): React.ReactNode {
+  switch (appId) {
     case "taskmgr": return <TaskManager nodeId={nodeId} />;
     case "network": return <NetworkSettings nodeId={nodeId} />;
     case "cmd": return <EndpointTerminal nodeId={nodeId} flavor="win" />;
     case "browser": return <EndpointBrowser nodeId={nodeId} />;
     case "eventvwr": return <EndpointEventLog nodeId={nodeId} />;
+    default: return <AppStub name={appId.replace(/^stub:/, "")} />;
   }
 }
 
-// ── Draggable app window (Win11 chrome) ──────────────────────────────────────
+function AppStub({ name }: { name: string }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-2 bg-panel text-center">
+      <div className="text-4xl">🧩</div>
+      <div className="text-sm font-semibold text-gray-100">{name}</div>
+      <div className="text-[11px] text-gray-500">Launching the {name} client… (full app arrives in a later build)</div>
+    </div>
+  );
+}
 
-function AppWindow({
-  app,
-  dark,
-  focused,
-  onFocus,
-  onClose,
-  children,
+// ── Win11 window chrome (cascaded, focus-raise) ──────────────────────────────
+
+function WinWindow({
+  win, index, dark, focused, onFocus, onClose, children,
 }: {
-  app: { id: string; label: string; icon: string };
-  dark: boolean;
-  focused: boolean;
-  onFocus: () => void;
-  onClose: () => void;
-  children: React.ReactNode;
+  win: EpWindow; index: number; dark: boolean; focused: boolean; onFocus: () => void; onClose: () => void; children: React.ReactNode;
 }) {
+  void focused;
+  const left = 44 + (index % 5) * 30;
+  const top = 18 + (index % 5) * 26;
   return (
     <div
-      className={`absolute left-1/2 top-6 flex h-[320px] w-[min(560px,90%)] -translate-x-1/2 flex-col overflow-hidden rounded-lg border shadow-2xl ${
-        dark ? "border-edge bg-panel" : "border-gray-300 bg-white"
-      }`}
-      style={{ zIndex: focused ? 15 : 12 }}
+      className={`absolute flex h-[320px] w-[min(600px,88%)] flex-col overflow-hidden rounded-lg border shadow-2xl ${dark ? "border-edge bg-panel" : "border-gray-300 bg-white"}`}
+      style={{ left: `${left}px`, top: `${top}px`, zIndex: win.z }}
       onMouseDown={onFocus}
     >
       <div className={`flex items-center gap-2 border-b px-3 py-1.5 text-xs ${dark ? "border-edge bg-panelalt" : "border-gray-200 bg-gray-100"}`}>
-        <span>{app.icon}</span>
-        <span className={`font-semibold ${dark ? "text-gray-200" : "text-gray-700"}`}>{app.label}</span>
+        <span>{win.icon}</span>
+        <span className={`truncate font-semibold ${dark ? "text-gray-200" : "text-gray-700"}`}>{win.title}</span>
         <button onClick={onClose} className="ml-auto flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-danger hover:text-white">✕</button>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+    </div>
+  );
+}
+
+// ── Start menu (Pinned apps + Recommended files) ─────────────────────────────
+
+function StartMenu({
+  node, onPinned, onOpenFile,
+}: {
+  node: WindowsNodeState;
+  onPinned: (id: ToolId | "thispc") => void;
+  onOpenFile: (item: EndpointFsItem) => void;
+}) {
+  const visual = node.visualState ?? DEFAULT_VISUAL;
+  const recommended: EndpointFsItem[] = [
+    ...visual.desktop.filter((d) => d.kind !== "app").map(toFsItem),
+    ...(visual.documents ?? []),
+  ].slice(0, 6);
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className="absolute bottom-14 left-1/2 z-40 w-[420px] -translate-x-1/2 rounded-xl border border-white/15 bg-black/60 p-4 shadow-2xl backdrop-blur-md"
+    >
+      <input placeholder="Search for apps, settings, and documents" className="mb-4 w-full rounded-full border border-white/10 bg-white/10 px-4 py-1.5 text-xs text-gray-100 outline-none placeholder:text-gray-400" />
+      <div className="mb-2 text-[11px] font-semibold text-gray-200">Pinned</div>
+      <div className="mb-4 grid grid-cols-6 gap-2">
+        {PINNED.map((p) => (
+          <button key={p.id} onClick={() => onPinned(p.id)} className="flex flex-col items-center gap-1 rounded-lg p-2 hover:bg-white/10">
+            <span className="text-2xl">{p.icon}</span>
+            <span className="w-full truncate text-center text-[9px] text-gray-300">{p.label}</span>
+          </button>
+        ))}
+      </div>
+      <div className="mb-2 text-[11px] font-semibold text-gray-200">Recommended</div>
+      <div className="grid grid-cols-2 gap-1">
+        {recommended.map((it) => (
+          <button key={it.id} onClick={() => onOpenFile(it)} className="flex items-center gap-2 rounded-md p-2 text-left hover:bg-white/10">
+            <span className="text-lg">{it.isFolder ? "📁" : "📄"}</span>
+            <span className="min-w-0">
+              <span className="block truncate text-[11px] text-gray-100">{it.name}</span>
+              <span className="block text-[9px] text-gray-500">Recently used</span>
+            </span>
+          </button>
+        ))}
+      </div>
+      <div className="mt-3 flex items-center gap-2 border-t border-white/10 pt-3 text-xs text-gray-200">
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-info/30">👤</span>
+        <span className="truncate">{visual.loggedInUser}</span>
+        <span className="ml-auto text-gray-400">⏻</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Quick Settings flyout ────────────────────────────────────────────────────
+
+function QuickSettings({ nodeId }: { nodeId: string }) {
+  const node = useInfraStore((s) => s.infra.nodes[nodeId]) as WindowsNodeState;
+  const setUp = useInfraStore((s) => s.setNodeInterfaceUp);
+  const [volume, setVolume] = useState(60);
+  const nic = node.network.interfaces[0];
+  const wifiOn = node.network.interfaces.some((n) => n.up);
+  return (
+    <div onClick={(e) => e.stopPropagation()} className="absolute bottom-14 right-2 z-40 w-64 rounded-xl border border-white/15 bg-black/60 p-3 text-xs text-gray-100 shadow-2xl backdrop-blur-md">
+      <div className="mb-3 grid grid-cols-2 gap-2">
+        <button
+          onClick={() => nic && setUp(node.nodeId, nic.name, !wifiOn)}
+          className={`flex flex-col items-start gap-1 rounded-lg p-2 ${wifiOn ? "bg-info/70 text-black" : "bg-white/10"}`}
+        >
+          <span className="text-base">📶</span>
+          <span className="text-[10px] font-semibold">Wi-Fi</span>
+          <span className="text-[9px] opacity-80">{wifiOn ? "Connected" : "Off"}</span>
+        </button>
+        <div className="flex flex-col items-start gap-1 rounded-lg bg-white/10 p-2">
+          <span className="text-base">🔋</span>
+          <span className="text-[10px] font-semibold">Battery</span>
+          <span className="text-[9px] opacity-80">87% · plugged in</span>
+        </div>
+      </div>
+      <div className="rounded-lg bg-white/10 p-2">
+        <div className="mb-1 flex items-center gap-2">
+          <span>🔊</span>
+          <span className="text-[10px]">Volume</span>
+          <span className="ml-auto text-[10px] text-gray-400">{volume}%</span>
+        </div>
+        <input type="range" min={0} max={100} value={volume} onChange={(e) => setVolume(Number(e.target.value))} className="w-full accent-info" />
+      </div>
     </div>
   );
 }
@@ -173,7 +273,7 @@ function TaskManager({ nodeId }: { nodeId: string }) {
   const killProcess = useInfraStore((s) => s.killProcess);
   const procs = [...node.processes].sort((a, b) => b.cpu - a.cpu);
   return (
-    <div className="h-full overflow-y-auto term-scroll text-xs">
+    <div className="h-full overflow-y-auto text-xs">
       <div className="grid grid-cols-[1fr_60px_60px_70px] gap-2 border-b border-edge bg-panelalt px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
         <span>Name</span><span className="text-right">CPU</span><span className="text-right">Memory</span><span className="text-right">Action</span>
       </div>
@@ -181,15 +281,10 @@ function TaskManager({ nodeId }: { nodeId: string }) {
         const hot = p.cpu >= 40;
         return (
           <div key={p.pid} className={`grid grid-cols-[1fr_60px_60px_70px] items-center gap-2 border-b border-edge/50 px-3 py-1.5 ${hot ? "bg-danger/10" : ""}`}>
-            <span className="min-w-0">
-              <span className="block truncate text-gray-100">{p.command}</span>
-              <span className="block font-mono text-[10px] text-gray-500">PID {p.pid} · {p.user}</span>
-            </span>
+            <span className="min-w-0"><span className="block truncate text-gray-100">{p.command}</span><span className="block font-mono text-[10px] text-gray-500">PID {p.pid} · {p.user}</span></span>
             <span className={`text-right font-mono ${hot ? "font-bold text-danger" : "text-gray-300"}`}>{p.cpu.toFixed(1)}%</span>
             <span className="text-right font-mono text-gray-400">{p.mem.toFixed(1)}%</span>
-            <span className="text-right">
-              <button onClick={() => killProcess(node.nodeId, p.pid)} className="rounded border border-danger/40 px-2 py-0.5 text-[10px] text-danger hover:bg-danger/15">End task</button>
-            </span>
+            <span className="text-right"><button onClick={() => killProcess(node.nodeId, p.pid)} className="rounded border border-danger/40 px-2 py-0.5 text-[10px] text-danger hover:bg-danger/15">End task</button></span>
           </div>
         );
       })}
@@ -203,12 +298,9 @@ function NetworkSettings({ nodeId }: { nodeId: string }) {
   const node = useInfraStore((s) => s.infra.nodes[nodeId]) as WindowsNodeState;
   const setUp = useInfraStore((s) => s.setNodeInterfaceUp);
   const setDns = useInfraStore((s) => s.setNodeDns);
-  const setIp = useInfraStore((s) => s.setNodeIpv4);
   const [dnsDraft, setDnsDraft] = useState(node.network.dnsServers.join(", "));
-  const [ipDraft, setIpDraft] = useState(node.network.interfaces[0]?.ipv4 ?? "");
-
   return (
-    <div className="h-full space-y-3 overflow-y-auto term-scroll p-3 text-xs">
+    <div className="h-full space-y-3 overflow-y-auto p-3 text-xs">
       <div>
         <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Adapters</div>
         {node.network.interfaces.map((nic) => (
@@ -220,19 +312,12 @@ function NetworkSettings({ nodeId }: { nodeId: string }) {
           </div>
         ))}
       </div>
-      <Field label="IPv4 address" value={ipDraft} onChange={setIpDraft} onApply={() => node.network.interfaces[0] && setIp(node.nodeId, node.network.interfaces[0].name, ipDraft.trim())} />
-      <Field label="DNS servers" value={dnsDraft} onChange={setDnsDraft} onApply={() => setDns(node.nodeId, dnsDraft.split(",").map((d) => d.trim()).filter(Boolean))} placeholder="10.0.1.10, 1.1.1.1" />
-    </div>
-  );
-}
-
-function Field({ label, value, onChange, onApply, placeholder }: { label: string; value: string; onChange: (v: string) => void; onApply: () => void; placeholder?: string }) {
-  return (
-    <div>
-      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">{label}</div>
-      <div className="flex gap-1">
-        <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="flex-1 rounded border border-edge bg-panel px-2 py-1 font-mono text-[11px] text-gray-200 outline-none placeholder:text-gray-600 focus:border-info" />
-        <button onClick={onApply} className="rounded bg-info px-2 py-1 text-[11px] font-semibold text-black hover:brightness-110">Apply</button>
+      <div>
+        <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">DNS servers</div>
+        <div className="flex gap-1">
+          <input value={dnsDraft} onChange={(e) => setDnsDraft(e.target.value)} className="flex-1 rounded border border-edge bg-panel px-2 py-1 font-mono text-[11px] text-gray-200 outline-none focus:border-info" />
+          <button onClick={() => setDns(node.nodeId, dnsDraft.split(",").map((d) => d.trim()).filter(Boolean))} className="rounded bg-info px-2 py-1 text-[11px] font-semibold text-black hover:brightness-110">Apply</button>
+        </div>
       </div>
     </div>
   );

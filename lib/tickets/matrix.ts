@@ -24,6 +24,7 @@ import type {
   TicketRequester,
   TicketSeverity,
   TicketTrack,
+  WindowsNodeState,
 } from "@/lib/core";
 import { findFaultWeb, findFirstWorkstation, findPrimaryDC } from "@/lib/org/generator";
 import { int, pick, type Rng } from "@/lib/org/rng";
@@ -296,6 +297,54 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
       const l = infra.links.find((x) => x.id === ctx.linkId);
       return !!l && !l.blocked;
     },
+  },
+
+  "net-t2-share": {
+    id: "net-t2-share",
+    category: "Network & Routing",
+    difficulty: "Tier_2_Medium",
+    track: "helpdesk",
+    severity: "high",
+    priority: "P2",
+    slaDuration: 30 * 60,
+    responseSeconds: 8 * 60,
+    xpReward: 320,
+    personaId: "persona-tara-calm",
+    tags: ["smb", "file-share", "mapped-drive"],
+    origin: "dashboard",
+    summary: "Mapped network drives are disconnected across the department.",
+    hints: [
+      "This PC / Finder → the mapped share shows a red ✕ (disconnected)",
+      "The share is served by the file server's SMB (Server / LanmanServer) service",
+      "RDP to the file server → Services (services.msc) → start the Server service",
+    ],
+    playable: true,
+    makeContext: (infra) => {
+      const fs = Object.values(infra.nodes).find(
+        (n): n is WindowsNodeState => n.os === "windows" && n.role === "file-server" && !!n.services["LanmanServer"],
+      );
+      if (!fs) return null;
+      // Only fire if at least one workstation actually maps a share here.
+      const mapped = Object.values(infra.nodes).some(
+        (n) => n.os !== "linux" && (n.mappedDrives ?? []).some((d) => d.serverNodeId === fs.nodeId),
+      );
+      if (!mapped) return null;
+      return { targetNodeId: fs.nodeId, targetHostname: fs.hostname, serviceName: "LanmanServer" };
+    },
+    title: (ctx) => `Users can't reach network drives — ${ctx.targetHostname} share offline`,
+    description: (ctx) =>
+      `Multiple staff report their mapped drives (e.g. Z:\\ Finance) show a red ✕ and 'disconnected'. The shares are hosted on ${ctx.targetHostname}; its Server (SMB) service appears to have stopped, so no one can open files. Restore the service to bring the shares back.`,
+    requester: (_ctx, org) => ({ name: "Tara Coles", role: "Front Desk", email: `tara.coles@${mailDomain(org)}`, department: "Facilities" }),
+    injectFault: (infra, ctx) => {
+      const fs = infra.nodes[ctx.targetNodeId as NodeId] as WindowsNodeState | undefined;
+      const svc = fs?.services["LanmanServer"];
+      if (svc) { svc.status = "Stopped"; svc.pid = null; }
+    },
+    win: (infra, ctx) => {
+      const fs = infra.nodes[ctx.targetNodeId as NodeId] as WindowsNodeState | undefined;
+      return fs?.services["LanmanServer"]?.status === "Running";
+    },
+    healthyNode: (_infra, ctx) => ctx.targetNodeId,
   },
 
   "net-t3-dns": {

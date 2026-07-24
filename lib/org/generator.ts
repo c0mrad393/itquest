@@ -40,6 +40,8 @@ import {
   type EndpointVisualState,
   type EndpointAppId,
   type DesktopItem,
+  type EndpointFsItem,
+  type MappedDrive,
 } from "@/lib/core";
 import { chance, int, mulberry32, pick, sample, shuffle, type Rng } from "./rng";
 import { COMPANY_PARTS, DEPARTMENTS, FIRST_NAMES, LAST_NAMES } from "./namegen";
@@ -167,17 +169,34 @@ const GRID_ROWS = 5;
  *   clean     → a tidy single left column (few items)
  *   messy     → random unique cells across the whole grid, with gaps
  */
+type RawItem = {
+  name: string;
+  kind: DesktopItem["kind"];
+  ext?: string;
+  app?: EndpointAppId;
+  isLocked?: boolean;
+  passwordHint?: string;
+  password?: string;
+  content?: string;
+  children?: EndpointFsItem[];
+};
+
 function placeItems(
   rng: Rng,
-  raw: { name: string; kind: DesktopItem["kind"]; ext?: string; app?: EndpointAppId }[],
+  raw: RawItem[],
   archetype: EndpointVisualState["archetype"],
 ): DesktopItem[] {
-  const withId = (r: (typeof raw)[number], i: number, col: number, row: number): DesktopItem => ({
+  const withId = (r: RawItem, i: number, col: number, row: number): DesktopItem => ({
     id: `d${i}`,
     name: r.name,
     kind: r.kind,
     ext: r.ext,
     app: r.app,
+    isLocked: r.isLocked,
+    passwordHint: r.passwordHint,
+    password: r.password,
+    content: r.content,
+    children: r.children,
     col,
     row,
   });
@@ -205,10 +224,92 @@ function placeItems(
   });
 }
 
+let fsSeq = 0;
+const fid = () => `fs${fsSeq++}`;
+const mkFile = (name: string, ext: string, content?: string): EndpointFsItem => ({
+  id: fid(),
+  name,
+  isFolder: false,
+  ext,
+  content,
+});
+const mkFolder = (name: string, children: EndpointFsItem[]): EndpointFsItem => ({
+  id: fid(),
+  name,
+  isFolder: true,
+  children,
+});
+
+const PW_WORDS = ["Falcon", "Harbor", "Cobalt", "Maple", "Quartz", "Summit", "Willow", "Onyx"];
+
+/** Deterministic per-user unlock secret + the sticky note that reveals it. */
+function makeSecret(rng: Rng): { password: string; note: string } {
+  const password = `${pick(rng, PW_WORDS)}-${int(rng, 100, 999)}`;
+  return {
+    password,
+    note: `REMINDER — do not share.\nArchive password: ${password}\n(IT said to rotate this next quarter.)`,
+  };
+}
+
+function deptDocs(rng: Rng, department: string): EndpointFsItem[] {
+  const dept = DEPT_FILES[department] ?? DEPT_FILES.Operations;
+  const docs = dept.slice(0, 3).map((f) =>
+    f.kind === "folder"
+      ? mkFolder(f.name, [mkFile("readme.txt", "txt", `Working files for ${f.name}.`)])
+      : mkFile(f.name, f.ext ?? "txt", `${department} document — ${f.name}.`),
+  );
+  return [
+    mkFolder("Projects", [
+      mkFile("kickoff_notes.txt", "txt", "Kickoff notes.\n- scope\n- owners\n- timeline"),
+      mkFolder("Archive", [mkFile("2025_summary.csv", "csv", "quarter,value\nQ1,100\nQ2,140")]),
+    ]),
+    ...docs,
+  ];
+}
+
+/** Department → drive-letter used for its dedicated share. */
+const DEPT_DRIVE_LETTER: Record<string, string> = {
+  Finance: "Z:", HR: "H:", Legal: "L:", IT: "I:", Marketing: "M:", Operations: "O:",
+};
+
+function shareUnc(host: string, share: string, os: "windows" | "macos"): string {
+  return os === "macos" ? `smb://${host.toLowerCase()}/${share}` : `\\\\${host}\\${share}`;
+}
+
+/** Build a workstation's mapped drives: a common share + a department share. */
+function makeMappedDrives(
+  rng: Rng,
+  os: "windows" | "macos",
+  department: string,
+  fileServer: TargetNode | undefined,
+): MappedDrive[] | undefined {
+  if (!fileServer) return undefined;
+  const drives: MappedDrive[] = [
+    {
+      letter: os === "macos" ? "Shared" : "S:",
+      remotePath: shareUnc(fileServer.hostname, "Shared", os),
+      serverNodeId: fileServer.nodeId,
+      shareName: "Shared",
+      status: "connected",
+    },
+  ];
+  const deptShare = ["Finance", "HR", "Legal", "IT", "Marketing", "Operations"].includes(department);
+  if (deptShare && chance(rng, 0.85)) {
+    drives.push({
+      letter: os === "macos" ? department : DEPT_DRIVE_LETTER[department] ?? "Z:",
+      remotePath: shareUnc(fileServer.hostname, department, os),
+      serverNodeId: fileServer.nodeId,
+      shareName: department,
+      status: "connected",
+    });
+  }
+  return drives;
+}
+
 function makeVisualState(rng: Rng, department: string, loggedInUser: string): EndpointVisualState {
   const archetype = pick(rng, ARCHETYPES);
 
-  const apps = [...STANDARD_APPS, ...(DEPT_APPS[department] ?? [])].map((a) => ({
+  const apps: RawItem[] = [...STANDARD_APPS, ...(DEPT_APPS[department] ?? [])].map((a) => ({
     name: a.name,
     kind: "app" as const,
     app: a.app,
@@ -218,12 +319,37 @@ function makeVisualState(rng: Rng, department: string, loggedInUser: string): En
   // A tidy "clean" desktop only keeps a couple of working files around.
   const files =
     archetype === "clean" ? sample(rng, deptFiles, Math.min(2, deptFiles.length)) : deptFiles;
+  const fileItems: RawItem[] = files.map((f) => ({
+    name: f.name,
+    kind: f.kind,
+    ext: f.ext,
+    content: f.kind === "file" ? `${department} · ${f.name}` : undefined,
+    children:
+      f.kind === "folder"
+        ? [mkFile("notes.txt", "txt", `Contents of ${f.name}.`), mkFile("summary.csv", "csv", "k,v\na,1\nb,2")]
+        : undefined,
+  }));
 
-  // Apps lead (top-left), files follow — capped to the grid.
-  const raw = [...apps, ...files.map((f) => ({ name: f.name, kind: f.kind, ext: f.ext }))].slice(
-    0,
-    GRID_COLS * GRID_ROWS,
-  );
+  // ~40% of desktops carry a locked archive + a sticky-note that reveals the key.
+  const extras: RawItem[] = [];
+  if (chance(rng, 0.4)) {
+    const { password, note } = makeSecret(rng);
+    extras.push({
+      name: `${department}_Archive`,
+      kind: "folder",
+      isLocked: true,
+      passwordHint: "Password is on the sticky note (password.txt) on this desktop.",
+      password,
+      children: [
+        mkFile("payroll_export.csv", "csv", "employee,net\n████,████"),
+        mkFile("confidential.txt", "txt", "Restricted — internal only."),
+      ],
+    });
+    extras.push({ name: "password.txt", kind: "file", ext: "txt", content: note });
+  }
+
+  // Apps lead (top-left), then locked extras, then files — capped to the grid.
+  const raw = [...apps, ...extras, ...fileItems].slice(0, GRID_COLS * GRID_ROWS);
 
   return {
     wallpaper: pick(rng, WALLPAPERS),
@@ -231,6 +357,13 @@ function makeVisualState(rng: Rng, department: string, loggedInUser: string): En
     archetype,
     loggedInUser,
     desktop: placeItems(rng, raw, archetype),
+    documents: deptDocs(rng, department),
+    downloads: [
+      mkFile("Setup_CorePortal.exe", "exe"),
+      mkFile("invoice_scan.pdf", "pdf", "(scanned document)"),
+      mkFile("meeting_recording.zip", "zip"),
+    ],
+    diskTotalGb: pick(rng, [256, 512, 512, 1024]),
   };
 }
 
@@ -768,11 +901,14 @@ export function generateWorld(seed: number): InfrastructureState {
   ) as (WindowsNodeState | MacNodeState)[];
   // One distinct staff owner per endpoint (the fleet was sized to ~75% of
   // staff, so the shuffled pool covers every endpoint without repeats).
+  const fileServer = Object.values(nodes).find((n) => n.role === "file-server");
   const pool = shuffle(rng, staff);
   endpoints.forEach((ep, i) => {
     const owner = pool[i];
     if (owner) owner.assignedNodeId = ep.nodeId;
-    ep.visualState = makeVisualState(rng, owner?.department ?? "Operations", owner?.displayName ?? "Staff User");
+    const dept = owner?.department ?? "Operations";
+    ep.visualState = makeVisualState(rng, dept, owner?.displayName ?? "Staff User");
+    ep.mappedDrives = makeMappedDrives(rng, ep.os, dept, fileServer);
   });
   // Servers/DCs: neutral corporate desktop for remote sessions.
   for (const n of Object.values(nodes)) {

@@ -113,23 +113,33 @@ function ItemIcon({ item }: { item: DesktopItem }) {
 export function DesktopIconGrid({
   visual,
   labelColor = "text-white",
+  onOpen,
 }: {
   visual: EndpointVisualState;
   labelColor?: string;
+  /** Double-click handler — folders/files/apps open real windows when set. */
+  onOpen?: (item: DesktopItem) => void;
 }) {
   const [open, setOpen] = useState<DesktopItem | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   return (
     <>
       {visual.desktop.map((item) => (
         <button
           key={item.id}
-          onClick={() => setOpen(item)}
+          onClick={() => (onOpen ? setSelected(item.id) : setOpen(item))}
+          onDoubleClick={() => onOpen?.(item)}
           title={item.name}
-          className="group absolute flex w-[74px] flex-col items-center gap-1 rounded-md px-1 pb-1 pt-1.5 text-center transition hover:bg-white/15"
+          className={`group absolute flex w-[74px] flex-col items-center gap-1 rounded-md px-1 pb-1 pt-1.5 text-center transition ${
+            selected === item.id ? "bg-white/20 ring-1 ring-white/30" : "hover:bg-white/15"
+          }`}
           style={{ left: 10 + item.col * 80, top: 10 + item.row * 72 }}
         >
           <span className="flex h-8 items-center justify-center">
-            <ItemIcon item={item} />
+            <span className="relative">
+              <ItemIcon item={item} />
+              {item.isLocked && <span className="absolute -bottom-1.5 -right-1.5 text-[12px] drop-shadow">🔒</span>}
+            </span>
           </span>
           <span className={`desktop-label w-full truncate text-[10px] leading-tight ${labelColor}`}>
             {item.name}

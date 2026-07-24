@@ -67,7 +67,33 @@ export type EndpointAppId =
   | "financeerp"
   | "designsuite";
 
-/** A file / folder / app-shortcut icon on the endpoint desktop. */
+/**
+ * A node in the interactive endpoint file system. Folders nest via `children`;
+ * files carry `content` for the unified viewers. Locked items require a
+ * password (found via email clues / sticky notes / AD resets) before they open.
+ */
+export interface EndpointFsItem {
+  id: string;
+  name: string;
+  isFolder: boolean;
+  /** File-type hint for iconography + viewer selection ("txt"|"csv"|"png"|…). */
+  ext?: string;
+  /** Locked archive/folder — double-click raises a credential prompt. */
+  isLocked?: boolean;
+  passwordHint?: string;
+  /** The secret that unlocks it (discoverable in-world). Never shown directly. */
+  password?: string;
+  /** Text/CSV body for the viewers (files only). */
+  content?: string;
+  /** Folder contents (folders only). */
+  children?: EndpointFsItem[];
+}
+
+/**
+ * A desktop icon: an app shortcut, or a file-system item placed on the grid.
+ * Extends the FS-item fields so a desktop folder/file behaves identically to
+ * one opened from This PC / Finder.
+ */
 export interface DesktopItem {
   id: string;
   name: string; // "Payroll_Q3.xlsx", "Resumes", "FinanceERP"
@@ -79,6 +105,29 @@ export interface DesktopItem {
   /** Grid cell the icon occupies (placement depends on archetype). */
   col: number;
   row: number;
+  // ── Interactive file-system fields (kind file/folder) ──
+  isLocked?: boolean;
+  passwordHint?: string;
+  password?: string;
+  content?: string;
+  children?: EndpointFsItem[];
+}
+
+// ── Network file shares (SMB/NFS mapped drives) ──────────────────────────────
+
+export type MappedDriveStatus = "connected" | "disconnected" | "auth_error";
+
+export interface MappedDrive {
+  /** Windows drive letter ("Z:") or macOS mount label ("Finance"). */
+  letter: string;
+  /** UNC / URL, e.g. "\\\\HELI-FS-08\\Finance" or "smb://heli-fs-08/Finance". */
+  remotePath: string;
+  /** Backing file-server node id (drives live status resolution). */
+  serverNodeId?: string;
+  /** Share name on the server ("Finance"). */
+  shareName?: string;
+  /** Last-known status; the live status is derived from the server node. */
+  status: MappedDriveStatus;
 }
 
 export interface EndpointVisualState {
@@ -90,6 +139,11 @@ export interface EndpointVisualState {
   loggedInUser: string;
   /** Desktop icons: department files/folders + app shortcuts. */
   desktop: DesktopItem[];
+  /** This PC / Finder user-profile folders. */
+  documents?: EndpointFsItem[];
+  downloads?: EndpointFsItem[];
+  /** Total local disk capacity in GB (usage comes from node.health.diskUsedPct). */
+  diskTotalGb?: number;
 }
 
 // ── Wallpaper rendering (CSS backgrounds) ────────────────────────────────────

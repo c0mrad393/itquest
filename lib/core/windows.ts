@@ -13,7 +13,7 @@
 
 import type { BaseNode } from "./nodes";
 import type { FsNode, ProcessInfo } from "@/lib/vm/types";
-import type { EndpointVisualState } from "./endpoint";
+import type { EndpointVisualState, MappedDrive } from "./endpoint";
 
 // ── Active Directory (ADUC) ────────────────────────────────────────────────
 
@@ -250,6 +250,8 @@ export interface WindowsNodeState extends BaseNode {
 
   /** Procedural presentation (wallpaper/theme/desktop) — endpoints only. */
   visualState?: EndpointVisualState;
+  /** Mapped network drives (This PC → Network Locations). */
+  mappedDrives?: MappedDrive[];
 
   nextPid: number;
 }

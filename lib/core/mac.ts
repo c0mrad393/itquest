@@ -9,7 +9,7 @@
 
 import type { BaseNode } from "./nodes";
 import type { FsNode, ProcessInfo } from "@/lib/vm/types";
-import type { EndpointVisualState } from "./endpoint";
+import type { EndpointVisualState, MappedDrive } from "./endpoint";
 
 export interface MacLocalUser {
   name: string; // short name, e.g. "e.ali"
@@ -31,5 +31,7 @@ export interface MacNodeState extends BaseNode {
   firewallEnabled: boolean;
   /** Procedural presentation (wallpaper/theme/desktop). */
   visualState?: EndpointVisualState;
+  /** Mounted network shares (Finder → Shared / Locations). */
+  mappedDrives?: MappedDrive[];
   nextPid: number;
 }
