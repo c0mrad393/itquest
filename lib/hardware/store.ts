@@ -11,7 +11,7 @@
 
 import { create } from "zustand";
 import { useInfraStore } from "@/lib/infra/store";
-import type { WorkshopStep } from "./types";
+import type { WorkshopStage } from "./types";
 
 export type DispatchStatus = "pending" | "in_progress" | "completed";
 
@@ -24,14 +24,26 @@ export interface DispatchState {
   note: string;
 }
 
+/** Per-ticket cross-stage results the imaging phase reads (fault logic). */
+export interface StageResult {
+  /** Assembly left screws/battery/cables incomplete → imaging power-faults. */
+  assemblyFaulty?: boolean;
+  assemblyFault?: string;
+  /** BIOS met the ticket's required states. */
+  biosOk?: boolean;
+}
+
 interface FieldOpsState {
-  /** Per-ticket completed workshop steps. */
-  steps: Record<string, Partial<Record<WorkshopStep, boolean>>>;
+  /** Per-ticket completed workshop stages. */
+  steps: Record<string, Partial<Record<WorkshopStage, boolean>>>;
+  /** Per-ticket cross-stage results. */
+  results: Record<string, StageResult>;
   /** Per-ticket field dispatch. */
   dispatches: Record<string, DispatchState>;
 
-  completeStep: (ticketId: string, step: WorkshopStep) => void;
-  isProvisioned: (ticketId: string, required: WorkshopStep[]) => boolean;
+  completeStep: (ticketId: string, step: WorkshopStage) => void;
+  setResult: (ticketId: string, patch: StageResult) => void;
+  isProvisioned: (ticketId: string, required: WorkshopStage[]) => boolean;
   startDispatch: (ticketId: string, targetNodeId: string, seconds: number) => void;
   /** 1 Hz tick from the headless HardwareDispatchEngine. */
   tick: () => void;
@@ -44,11 +56,17 @@ const DONE_NOTE = "Physical swap complete — device powered on and back online.
 
 export const useFieldOpsStore = create<FieldOpsState>((set, get) => ({
   steps: {},
+  results: {},
   dispatches: {},
 
   completeStep: (ticketId, step) =>
     set((s) => ({
       steps: { ...s.steps, [ticketId]: { ...s.steps[ticketId], [step]: true } },
+    })),
+
+  setResult: (ticketId, patch) =>
+    set((s) => ({
+      results: { ...s.results, [ticketId]: { ...s.results[ticketId], ...patch } },
     })),
 
   isProvisioned: (ticketId, required) => {
@@ -94,10 +112,12 @@ export const useFieldOpsStore = create<FieldOpsState>((set, get) => ({
     set((s) => {
       const steps = { ...s.steps };
       const dispatches = { ...s.dispatches };
+      const results = { ...s.results };
       delete steps[ticketId];
       delete dispatches[ticketId];
-      return { steps, dispatches };
+      delete results[ticketId];
+      return { steps, dispatches, results };
     }),
 
-  reset: () => set({ steps: {}, dispatches: {} }),
+  reset: () => set({ steps: {}, results: {}, dispatches: {} }),
 }));

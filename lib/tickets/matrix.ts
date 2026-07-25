@@ -421,6 +421,82 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     healthyNode: (_infra, ctx) => ctx.targetNodeId,
   },
 
+  "hw-v2-raid-rebuild": {
+    id: "hw-v2-raid-rebuild",
+    category: "System & Web Services",
+    difficulty: "Tier_3_Hard",
+    track: "helpdesk",
+    severity: "high",
+    priority: "P2",
+    slaDuration: 50 * 60,
+    responseSeconds: 12 * 60,
+    xpReward: 560,
+    personaId: "persona-marcus-calm",
+    tags: ["hardware", "raid", "rebuild", "bios"],
+    origin: "dashboard",
+    summary: "A workstation's RAID array failed — data missing, full rebuild required.",
+    hints: [
+      "Hardware Lab → install two fresh disks (route SATA power + data)",
+      "BIOS → set SATA Mode = RAID, build a RAID 1 mirror",
+      "Partition (EFI/MSR/NTFS), set TCP/IP, join the domain, then dispatch",
+    ],
+    playable: true,
+    makeContext: (infra, rng) => {
+      const ws = Object.values(infra.nodes).filter((n) => n.os === "windows" && n.role === "workstation");
+      if (ws.length === 0) return null;
+      const n = ws.length > 1 ? ws[1 + (int(rng, 0, ws.length - 2))] : ws[0];
+      return { targetNodeId: n.nodeId, targetHostname: n.hostname };
+    },
+    title: (ctx) => `Data loss on ${ctx.targetHostname} — RAID array degraded, rebuild required`,
+    description: (ctx) =>
+      `${ctx.targetHostname} (a high-end design workstation) reports missing data: one disk in its mirror failed and the array is degraded. Rebuild it in the Hardware Lab — install two fresh disks, enter BIOS to create a new RAID 1 array (SATA Mode = RAID), then partition, image, set static IP, join the domain, and dispatch a tech.`,
+    requester: (_ctx, org) => ({ name: "Devan Rao", role: "3D Artist", email: `devan.rao@${mailDomain(org)}`, department: "IT" }),
+    injectFault: (infra, ctx) => {
+      const n = infra.nodes[ctx.targetNodeId as NodeId];
+      if (n) { n.health.status = "critical"; n.health.diskUsedPct = 0; }
+    },
+    win: (infra, ctx) => infra.security.hardwareReplaced.includes(ctx.targetNodeId as NodeId),
+    healthyNode: (_infra, ctx) => ctx.targetNodeId,
+  },
+
+  "sw-v2-domain-trust": {
+    id: "sw-v2-domain-trust",
+    category: "Identity & Access",
+    difficulty: "Tier_2_Medium",
+    track: "helpdesk",
+    severity: "medium",
+    priority: "P3",
+    slaDuration: 30 * 60,
+    responseSeconds: 8 * 60,
+    xpReward: 300,
+    personaId: "persona-tara-calm",
+    tags: ["domain", "trust-relationship", "rejoin"],
+    origin: "dashboard",
+    summary: "A PC can't log in — 'trust relationship between workstation and domain failed'.",
+    hints: [
+      "The machine password is out of sync with AD (secure channel broken)",
+      "Hardware Lab → boot the unit → unjoin, then rejoin triageos.corp",
+      "Use the deployment domain-admin credential from the vault to rejoin",
+    ],
+    playable: true,
+    makeContext: (infra, rng) => {
+      const ws = Object.values(infra.nodes).filter((n) => n.os === "windows" && n.role === "workstation");
+      if (ws.length === 0) return null;
+      const n = ws[int(rng, 0, ws.length - 1)];
+      return { targetNodeId: n.nodeId, targetHostname: n.hostname };
+    },
+    title: (ctx) => `${ctx.targetHostname} — "trust relationship failed", user can't log in`,
+    description: (ctx) =>
+      `A user reports ${ctx.targetHostname} is powered on but rejects their domain login with "The trust relationship between this workstation and the primary domain failed." The machine's secure channel to AD is broken. Boot the unit in the Hardware Lab, remove it from the domain, and rejoin triageos.corp with the deployment domain-admin account to bring it back online.`,
+    requester: (_ctx, org) => ({ name: "Tara Coles", role: "Front Desk", email: `tara.coles@${mailDomain(org)}`, department: "Facilities" }),
+    injectFault: (infra, ctx) => {
+      const n = infra.nodes[ctx.targetNodeId as NodeId];
+      if (n) { n.health.status = "degraded"; }
+    },
+    win: (infra, ctx) => infra.security.hardwareReplaced.includes(ctx.targetNodeId as NodeId),
+    healthyNode: (_infra, ctx) => ctx.targetNodeId,
+  },
+
   "net-t3-dns": {
     id: "net-t3-dns",
     category: "Network & Routing",
