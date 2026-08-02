@@ -17,9 +17,14 @@ import { useHostStore } from "@/lib/host/store";
 import { useTicketStore } from "@/lib/host/tickets-store";
 import { useDialogueStore } from "@/lib/dialogue/store";
 import { useMailStore } from "@/lib/mail/store";
+import { useNotificationStore, unreadCount } from "@/lib/host/notifications-store";
+import { ActionCenter } from "./Notifications";
 import Clock from "./Clock";
+import { useState } from "react";
 
 export default function Taskbar() {
+  const [actionCenter, setActionCenter] = useState(false);
+  const unread = useNotificationStore((s) => unreadCount(s.items));
   const windows = useHostStore((s) => s.windows);
   const startMenuOpen = useHostStore((s) => s.startMenuOpen);
   const toggleStartMenu = useHostStore((s) => s.toggleStartMenu);
@@ -110,15 +115,44 @@ export default function Taskbar() {
         })}
       </div>
 
-      {/* Right: system tray + clock */}
+      {/* Right: system tray + Action Center + clock */}
       <div className="flex flex-1 items-center justify-end gap-1">
         <div className="flex items-center gap-2.5 rounded-md px-2 py-1 text-gray-300 hover:bg-white/10">
           <NetIcon on={host.tray.networkConnected} />
           <VolIcon />
         </div>
+
+        {/* Action Center (notification history) */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setActionCenter((v) => !v); }}
+          aria-label="Notifications"
+          title="Notifications"
+          className={`relative flex h-9 w-9 items-center justify-center rounded-md text-gray-300 transition hover:bg-white/10 ${
+            actionCenter ? "bg-white/10" : ""
+          }`}
+        >
+          <BellIcon />
+          {unread > 0 && (
+            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-info px-1 text-[9px] font-bold text-black">
+              {unread}
+            </span>
+          )}
+        </button>
+
         <Clock h24={host.clock24h} />
       </div>
+
+      {actionCenter && <ActionCenter onClose={() => setActionCenter(false)} />}
     </div>
+  );
+}
+
+function BellIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M18 9a6 6 0 10-12 0c0 4-2 5-2 5h16s-2-1-2-5" />
+      <path d="M10.5 20a2 2 0 003 0" />
+    </svg>
   );
 }
 

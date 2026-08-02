@@ -15,6 +15,7 @@ import { useTicketStore } from "@/lib/host/tickets-store";
 import { useHostStore } from "@/lib/host/store";
 import { useDialogueStore } from "@/lib/dialogue/store";
 import { useSlaStore } from "@/lib/sla/store";
+import { useNotificationStore } from "@/lib/host/notifications-store";
 import { TICKET_TEMPLATES } from "@/lib/tickets/matrix";
 import { computeScore } from "@/lib/scenario/scoring";
 
@@ -49,6 +50,12 @@ export default function TicketReconciler() {
         const score = computeScore(ticket, conv?.csat ?? 70, breached);
 
         useHostStore.getState().awardXp(score.xp);
+        useNotificationStore.getState().push({
+          kind: "success",
+          title: `${ticket.code} resolved`,
+          body: ticket.title,
+          badge: `+${score.xp} XP`,
+        });
         dialogue.note(
           ticket.id,
           `Resolved ${breached ? "(SLA breached)" : "within SLA"} · CSAT ${score.csat}% · +${score.xp} XP`,
