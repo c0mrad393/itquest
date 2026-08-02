@@ -672,6 +672,176 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     healthyNode: (_infra, ctx) => ctx.targetNodeId,
   },
 
+  // ── Active Directory administration (ADUC-driven) ─────────────────────────
+
+  "sw-ad-pw-reset": {
+    id: "sw-ad-pw-reset",
+    category: "Identity & Access",
+    difficulty: "Tier_1_Easy",
+    track: "helpdesk",
+    severity: "medium",
+    priority: "P3",
+    slaDuration: 20 * 60,
+    responseSeconds: 5 * 60,
+    xpReward: 180,
+    personaId: "persona-tara-calm",
+    tags: ["active-directory", "password", "lockout"],
+    origin: "dashboard",
+    summary: "A user is locked out and has forgotten their password.",
+    hints: [
+      "RDP to the domain controller → Active Directory Users and Computers",
+      "Find the user, right-click → Reset Password",
+      "Set the temporary password from this ticket and tick 'must change at next logon'",
+    ],
+    playable: true,
+    makeContext: (infra, rng) => {
+      const dc = findPrimaryDC(infra);
+      const ad = dc?.activeDirectory;
+      if (!dc || !ad) return null;
+      const pool = ad.users.filter((u) => u.enabled && u.samAccountName !== "a.smith");
+      const locked = pool.filter((u) => u.locked);
+      const u = locked.length ? locked[int(rng, 0, locked.length - 1)] : pool[int(rng, 0, pool.length - 1)];
+      if (!u) return null;
+      return {
+        targetNodeId: dc.nodeId,
+        targetHostname: dc.hostname,
+        targetUserId: u.samAccountName,
+        targetUserName: u.displayName,
+        department: u.department,
+        tempPassword: `Temp-${pick(rng, ["Falcon", "Harbor", "Cobalt", "Quartz", "Summit"])}-${int(rng, 1000, 9999)}!`,
+      };
+    },
+    title: (ctx) => `Password reset — ${ctx.targetUserName} is locked out`,
+    description: (ctx) =>
+      `${ctx.targetUserName} (${ctx.targetUserId}, ${ctx.department}) can't sign in — they've forgotten their password and tripped the lockout threshold. Open Active Directory Users and Computers on ${ctx.targetHostname}, find the account and reset the password to the temporary value below, ticking "User must change password at next logon" so they set their own on first sign-in.\n\nTemporary password: ${ctx.tempPassword}`,
+    requester: (ctx, org) => ({
+      name: ctx.targetUserName ?? "Staff User", role: "Employee",
+      email: `${ctx.targetUserId}@${mailDomain(org)}`, department: ctx.department ?? "Operations",
+    }),
+    injectFault: (infra, ctx) => {
+      const dc = infra.nodes[ctx.targetNodeId as NodeId] as WindowsNodeState | undefined;
+      const u = dc?.activeDirectory?.users.find((x) => x.samAccountName === ctx.targetUserId);
+      if (u) { u.locked = true; u.badPwdCount = 8; }
+    },
+    win: (infra, ctx) => {
+      const u = findPrimaryDC(infra)?.activeDirectory?.users.find((x) => x.samAccountName === ctx.targetUserId);
+      return !!u && !u.locked && u.password === ctx.tempPassword && u.mustChangePassword === true;
+    },
+  },
+
+  "sw-ad-onboard": {
+    id: "sw-ad-onboard",
+    category: "Identity & Access",
+    difficulty: "Tier_2_Medium",
+    track: "helpdesk",
+    severity: "medium",
+    priority: "P3",
+    slaDuration: 30 * 60,
+    responseSeconds: 8 * 60,
+    xpReward: 320,
+    personaId: "persona-marcus-calm",
+    tags: ["active-directory", "onboarding", "provisioning"],
+    origin: "dashboard",
+    summary: "A new Marketing hire needs an AD account provisioned.",
+    hints: [
+      "ADUC → New User (create the object in the Marketing OU)",
+      "Set the exact job title from the ticket and an initial password",
+      "Add the account to the Marketing_RW security group",
+    ],
+    playable: true,
+    makeContext: (infra, rng) => {
+      const dc = findPrimaryDC(infra);
+      const ad = dc?.activeDirectory;
+      if (!dc || !ad) return null;
+      if (!ad.ous.some((o) => o.name === "Marketing")) return null;
+      const first = pick(rng, ["Nadia", "Priya", "Owen", "Marta", "Felix", "Iris"]);
+      const last = pick(rng, ["Whitfield", "Okafor", "Lindqvist", "Moreau", "Vance", "Bergstrom"]);
+      let sam = `${first[0].toLowerCase()}.${last.toLowerCase()}`;
+      if (ad.users.some((u) => u.samAccountName === sam)) sam = `${sam}${int(rng, 2, 9)}`;
+      return {
+        targetNodeId: dc.nodeId,
+        targetHostname: dc.hostname,
+        newUserSam: sam,
+        newUserName: `${first} ${last}`,
+        department: "Marketing",
+        targetTitle: "Marketing Associate",
+        targetGroup: "Marketing_RW",
+      };
+    },
+    title: (ctx) => `Onboard new Marketing hire — ${ctx.newUserName} starts Monday`,
+    description: (ctx) =>
+      `${ctx.newUserName} joins Marketing on Monday and needs a domain account before their first day. On ${ctx.targetHostname}, open Active Directory Users and Computers and create the user:\n\n• Name: ${ctx.newUserName}\n• Logon name: ${ctx.newUserSam}\n• OU: Marketing\n• Job title: ${ctx.targetTitle}\n• Set an initial password (tick "must change at next logon")\n• Add to the ${ctx.targetGroup} security group so they can reach the Marketing share.`,
+    requester: (_ctx, org) => ({ name: "Marcus Feld", role: "People Ops Partner", email: `marcus.feld@${mailDomain(org)}`, department: "HR" }),
+    win: (infra, ctx) => {
+      const u = findPrimaryDC(infra)?.activeDirectory?.users.find(
+        (x) => x.samAccountName.toLowerCase() === String(ctx.newUserSam).toLowerCase(),
+      );
+      if (!u) return false;
+      return (
+        u.enabled &&
+        u.department === "Marketing" &&
+        u.title.trim().toLowerCase() === String(ctx.targetTitle).toLowerCase() &&
+        u.memberOf.includes(String(ctx.targetGroup)) &&
+        !!u.password
+      );
+    },
+  },
+
+  "sw-ad-transfer": {
+    id: "sw-ad-transfer",
+    category: "Identity & Access",
+    difficulty: "Tier_2_Medium",
+    track: "helpdesk",
+    severity: "medium",
+    priority: "P3",
+    slaDuration: 30 * 60,
+    responseSeconds: 8 * 60,
+    xpReward: 340,
+    personaId: "persona-marcus-calm",
+    tags: ["active-directory", "transfer", "groups", "rbac"],
+    origin: "dashboard",
+    summary: "An employee transferring departments needs their AD access moved.",
+    hints: [
+      "ADUC → find the user → Properties → General: change Department and Job title",
+      "Member Of tab: remove the old department's groups",
+      "Add the new department's groups (IT and IT_RW), then Apply",
+    ],
+    playable: true,
+    makeContext: (infra, rng) => {
+      const dc = findPrimaryDC(infra);
+      const ad = dc?.activeDirectory;
+      if (!dc || !ad) return null;
+      const sales = ad.users.filter((u) => u.enabled && !u.locked && u.department === "Sales");
+      if (sales.length === 0) return null;
+      const u = sales[int(rng, 0, sales.length - 1)];
+      return {
+        targetNodeId: dc.nodeId,
+        targetHostname: dc.hostname,
+        targetUserId: u.samAccountName,
+        targetUserName: u.displayName,
+        fromDepartment: "Sales",
+        department: "IT",
+        targetTitle: "Support Technician",
+        targetGroup: "IT_RW",
+      };
+    },
+    title: (ctx) => `Department transfer — ${ctx.targetUserName} moves from Sales to IT`,
+    description: (ctx) =>
+      `${ctx.targetUserName} (${ctx.targetUserId}) transfers from ${ctx.fromDepartment} to the IT team effective today, and their access needs to follow. On ${ctx.targetHostname}, open Active Directory Users and Computers and update the account:\n\n• Department: IT (job title: ${ctx.targetTitle})\n• Remove the old Sales groups (Sales and Sales_RW) — they must not keep sales pipeline access\n• Add the IT and ${ctx.targetGroup} security groups.`,
+    requester: (_ctx, org) => ({ name: "Marcus Feld", role: "People Ops Partner", email: `marcus.feld@${mailDomain(org)}`, department: "HR" }),
+    win: (infra, ctx) => {
+      const u = findPrimaryDC(infra)?.activeDirectory?.users.find((x) => x.samAccountName === ctx.targetUserId);
+      if (!u) return false;
+      const has = (g: string) => u.memberOf.includes(g);
+      return (
+        u.department === "IT" &&
+        u.title.trim().toLowerCase() === String(ctx.targetTitle).toLowerCase() &&
+        has("IT") && has(String(ctx.targetGroup)) &&
+        !has("Sales") && !has("Sales_RW")
+      );
+    },
+  },
+
   "net-t3-dns": {
     id: "net-t3-dns",
     category: "Network & Routing",

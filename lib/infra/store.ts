@@ -21,6 +21,26 @@ import { linuxInterpreter, nodeToVM, writeVMToNode } from "./terminal";
 
 type WinServiceAction = "start" | "stop" | "restart";
 
+/** ADUC → New User wizard payload. */
+export interface NewADUserSpec {
+  firstName: string;
+  lastName: string;
+  samAccountName: string;
+  password: string;
+  mustChangePassword: boolean;
+  department: string;
+  title: string;
+  /** Groups to add on creation (beyond the implicit "Domain Users"). */
+  memberOf?: string[];
+}
+
+/** ADUC → Properties editable profile fields. */
+export interface ADUserProfilePatch {
+  title?: string;
+  department?: string;
+  description?: string;
+}
+
 interface InfraStore {
   infra: InfrastructureState;
 
@@ -39,6 +59,14 @@ interface InfraStore {
   // ── Windows GUI mutations (ADUC / services.msc / Control Panel) ──
   unlockADUser: (nodeId: NodeId, samAccountName: string) => void;
   setADUserEnabled: (nodeId: NodeId, samAccountName: string, enabled: boolean) => void;
+  /** ADUC → Reset Password (also clears lockout, like the real console). */
+  resetADUserPassword: (nodeId: NodeId, samAccountName: string, password: string, mustChange: boolean) => void;
+  /** ADUC → New User wizard. Returns nothing; no-op if the sam already exists. */
+  createADUser: (nodeId: NodeId, spec: NewADUserSpec) => void;
+  /** ADUC → Properties: edit profile fields (title / department / description). */
+  updateADUserProfile: (nodeId: NodeId, samAccountName: string, patch: ADUserProfilePatch) => void;
+  /** ADUC → Member Of: replace the user's group membership. */
+  setADUserGroups: (nodeId: NodeId, samAccountName: string, memberOf: string[]) => void;
   controlWindowsService: (nodeId: NodeId, service: string, action: WinServiceAction) => void;
   setWinInterfaceUp: (nodeId: NodeId, iface: string, up: boolean) => void;
   setFirewallProfile: (nodeId: NodeId, profile: "Domain" | "Private" | "Public", enabled: boolean) => void;
@@ -168,6 +196,89 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       const user = clone.activeDirectory!.users.find((u) => u.samAccountName === sam);
       if (!user) return s;
       user.enabled = enabled;
+      return withNode(s, nodeId, clone);
+    }),
+
+  resetADUserPassword: (nodeId, sam, password, mustChange) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node || node.os !== "windows" || !node.activeDirectory) return s;
+      const clone = structuredClone(node);
+      const user = clone.activeDirectory!.users.find((u) => u.samAccountName === sam);
+      if (!user) return s;
+      user.password = password;
+      user.passwordLastSet = Date.now();
+      user.mustChangePassword = mustChange;
+      user.passwordExpired = false;
+      // Resetting a password in ADUC also clears the lockout state.
+      user.locked = false;
+      user.badPwdCount = 0;
+      return withNode(s, nodeId, clone);
+    }),
+
+  createADUser: (nodeId, spec) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node || node.os !== "windows" || !node.activeDirectory) return s;
+      const sam = spec.samAccountName.trim().toLowerCase();
+      if (!sam) return s;
+      const clone = structuredClone(node);
+      const ad = clone.activeDirectory!;
+      if (ad.users.some((u) => u.samAccountName.toLowerCase() === sam)) return s; // already exists
+      const ou = ad.ous.find((o) => o.name === spec.department);
+      const groups = Array.from(new Set(["Domain Users", ...(spec.memberOf ?? [])]));
+      ad.users.push({
+        sid: `S-1-5-21-${Date.now().toString().slice(-9)}-${Math.floor(Math.random() * 9000 + 1000)}`,
+        samAccountName: sam,
+        upn: `${sam}@${ad.domainDns}`,
+        displayName: `${spec.firstName} ${spec.lastName}`.trim(),
+        title: spec.title,
+        department: spec.department,
+        email: `${sam}@${ad.domainDns.replace(".internal", ".com")}`,
+        ou: ou?.dn ?? `OU=${spec.department},DC=${ad.domainDns.split(".").join(",DC=")}`,
+        memberOf: groups,
+        enabled: true,
+        locked: false,
+        passwordExpired: false,
+        mustChangePassword: spec.mustChangePassword,
+        badPwdCount: 0,
+        lastLogon: null,
+        passwordExpiresAt: Date.now() + 90 * 86_400_000,
+        password: spec.password,
+        passwordLastSet: Date.now(),
+        description: spec.title,
+      });
+      return withNode(s, nodeId, clone);
+    }),
+
+  updateADUserProfile: (nodeId, sam, patch) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node || node.os !== "windows" || !node.activeDirectory) return s;
+      const clone = structuredClone(node);
+      const ad = clone.activeDirectory!;
+      const user = ad.users.find((u) => u.samAccountName === sam);
+      if (!user) return s;
+      if (patch.title !== undefined) user.title = patch.title;
+      if (patch.description !== undefined) user.description = patch.description;
+      if (patch.department !== undefined && patch.department !== user.department) {
+        user.department = patch.department;
+        // Moving departments relocates the object into that department's OU.
+        const ou = ad.ous.find((o) => o.name === patch.department);
+        if (ou) user.ou = ou.dn;
+      }
+      return withNode(s, nodeId, clone);
+    }),
+
+  setADUserGroups: (nodeId, sam, memberOf) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node || node.os !== "windows" || !node.activeDirectory) return s;
+      const clone = structuredClone(node);
+      const user = clone.activeDirectory!.users.find((u) => u.samAccountName === sam);
+      if (!user) return s;
+      // "Domain Users" is the primary group — it can't be removed in ADUC.
+      user.memberOf = Array.from(new Set(["Domain Users", ...memberOf]));
       return withNode(s, nodeId, clone);
     }),
 

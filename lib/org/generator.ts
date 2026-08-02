@@ -449,7 +449,7 @@ function generateDirectory(rng: Rng, org: OrganizationProfile): ActiveDirectoryS
       department: dept.name,
       email: `${sam}@${org.domain.replace(".internal", ".com")}`,
       ou: ouDn(dept.name),
-      memberOf: ["Domain Users", dept.name],
+      memberOf: ["Domain Users", dept.name, `${dept.name.replace(/\s+/g, "")}_RW`],
       enabled: overrides.enabled ?? chance(rng, 0.96),
       locked,
       passwordExpired: chance(rng, 0.05),
@@ -500,6 +500,16 @@ function generateDirectory(rng: Rng, org: OrganizationProfile): ActiveDirectoryS
         scope: "Global" as const,
         category: "Security" as const,
         members: [] as string[],
+      })),
+      // Per-department resource groups (share/app access) — onboarding and
+      // department-transfer tickets add/remove membership on these.
+      ...DEPARTMENTS.map((d, i) => ({
+        sid: `S-1-5-21-...-${1800 + i}`,
+        name: `${d.name.replace(/\s+/g, "")}_RW`,
+        scope: "DomainLocal" as const,
+        category: "Security" as const,
+        members: [] as string[],
+        description: `Read/write access to the ${d.name} file share`,
       })),
     ],
     computers: [],

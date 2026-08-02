@@ -41,6 +41,19 @@ export interface TicketDynamicContext {
   linkId?: string; // NetworkLink id
   senderDomain?: string; // phishing origin
   department?: string;
+  // ── Active Directory administration (ADUC tickets) ──
+  /** Temporary password the operator must set via ADUC → Reset Password. */
+  tempPassword?: string;
+  /** Logon name of an account the operator must CREATE (onboarding). */
+  newUserSam?: string;
+  /** Display name for the account to create. */
+  newUserName?: string;
+  /** Job title the operator must set on the target/new account. */
+  targetTitle?: string;
+  /** Security group the operator must ADD the account to. */
+  targetGroup?: string;
+  /** Department (and its groups) the operator must move the account OUT of. */
+  fromDepartment?: string;
 }
 
 export type TicketStatus =

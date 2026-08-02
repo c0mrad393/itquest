@@ -85,15 +85,15 @@ export default function WindowsServerEnv({ nodeId }: { nodeId: string }) {
         <div>{node.hostname} · {node.domain}</div>
       </div>
 
-      {/* Desktop icons */}
-      <div className="relative z-0 flex flex-col gap-4 p-3">
-        <DeskIcon icon="🖥️" label="This PC" onOpen={() => open("explorer")} />
-        <DeskIcon icon="🗄️" label="Server Manager" onOpen={() => open("servermgr")} />
-        <DeskIcon icon="🗑️" label="Recycle Bin" onOpen={() => {}} />
-      </div>
-
-      {/* Windows layer */}
+      {/* Workspace: everything above the taskbar. Desktop icons overlay it
+          (absolute) so they don't steal height from the window layer. */}
       <div className="relative min-h-0 flex-1">
+        <div className="absolute left-0 top-0 z-0 flex flex-col gap-4 p-3">
+          <DeskIcon icon="🖥️" label="This PC" onOpen={() => open("explorer")} />
+          <DeskIcon icon="🗄️" label="Server Manager" onOpen={() => open("servermgr")} />
+          <DeskIcon icon="🗑️" label="Recycle Bin" onOpen={() => {}} />
+        </div>
+
         {wins.filter((w) => w.mode !== "min").map((w, i) => (
           <ServerWindow key={w.app} meta={meta(w.app)} state={w} index={i} focused={focus === w.app}
             onFocus={() => raise(w.app)} onMin={() => setMode(w.app, "min")} onMax={() => setMode(w.app, w.mode === "max" ? "normal" : "max")} onClose={() => close(w.app)}>

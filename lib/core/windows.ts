@@ -48,6 +48,14 @@ export interface ADUser {
   lastLogon: number | null;
   /** Password expiry timestamp (epoch millis); null = never expires. */
   passwordExpiresAt: number | null;
+  /**
+   * SIMULATED password, only ever set by the in-game ADUC "Reset Password"
+   * dialog. This is mock directory data for ticket win-conditions — it is not a
+   * credential store and never leaves the local save.
+   */
+  password?: string;
+  /** When an admin last set the password via ADUC (epoch millis). */
+  passwordLastSet?: number;
   /** Node id of this user's assigned endpoint (drives ADUC Remote Connect). */
   assignedNodeId?: string;
   description?: string;
