@@ -12,6 +12,7 @@ import { useState } from "react";
 import { HOST_APP_REGISTRY, type HostAppDescriptor, type HostAppId } from "@/lib/core";
 import { useHostStore } from "@/lib/host/store";
 import Avatar from "./Avatar";
+import { AppIcon, APP_ICON_SIZE } from "@/components/ui/app-icons";
 
 export default function StartMenu() {
   const open = useHostStore((s) => s.startMenuOpen);
@@ -57,7 +58,9 @@ export default function StartMenu() {
               onClick={() => launch(app.id)}
               className="flex flex-col items-center gap-1.5 rounded-lg p-3 text-center transition hover:bg-white/10"
             >
-              <span className="text-2xl">{app.icon}</span>
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-gray-100">
+                <AppIcon id={app.iconId} size={APP_ICON_SIZE.start} />
+              </span>
               <span className="text-[11px] leading-tight text-gray-200">{app.title}</span>
             </button>
           ))}

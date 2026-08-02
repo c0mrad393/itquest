@@ -17,6 +17,7 @@ import { DIALOGUE_TREES } from "@/lib/dialogue/trees";
 import { EMOTION_META, type Conversation } from "@/lib/dialogue/types";
 import { useNow } from "@/lib/sla/store";
 import { slaSnapshot } from "@/lib/host/ticket-ui";
+import { AppIcon } from "@/components/ui/app-icons";
 
 export default function Mail() {
   const conversations = useDialogueStore((s) => s.conversations);
@@ -66,7 +67,7 @@ export default function Mail() {
                 <div className="flex items-center gap-1">
                   <span className="truncate font-semibold text-gray-100">{persona?.name}</span>
                   <span className={`ml-auto rounded px-1 py-0.5 text-[9px] ${emo.color}`}>
-                    {emo.icon}
+                    <AppIcon id={emo.iconId} size={12} />
                   </span>
                 </div>
                 <div className="truncate text-[11px] text-gray-500">
@@ -128,7 +129,7 @@ function Thread({ conv }: { conv: Conversation }) {
             </span>
           )}
           <span className={`flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${emo.color}`}>
-            {emo.icon} {emo.label}
+            <AppIcon id={emo.iconId} size={12} /> {emo.label}
           </span>
           <div className="text-right">
             <div className="text-[9px] uppercase tracking-wider text-gray-500">CSAT</div>

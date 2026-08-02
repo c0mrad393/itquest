@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AssemblySpec, StockItem } from "@/lib/hardware/types";
 import { STOCK_INVENTORY, componentLabel } from "@/lib/hardware/types";
+import { AppIcon } from "@/components/ui/app-icons";
 
 type Phase = "prep" | "swap" | "cabling" | "fasten" | "close" | "ready";
 
@@ -94,7 +95,7 @@ export default function AdvancedAssembly({
               </>
             )}
             {spec.battery && (
-              <GateBtn done={batteryOff} label="⚡ Disconnect the battery ribbon (safety)" onClick={() => setBatteryOff(true)} danger />
+              <GateBtn done={batteryOff} label="Disconnect the battery ribbon (safety)" onClick={() => setBatteryOff(true)} danger />
             )}
             <ProceedInline enabled={prepDone} label="Open chassis →" onClick={() => setPhase("swap")} />
           </div>
@@ -147,7 +148,7 @@ export default function AdvancedAssembly({
         {phase === "close" && (
           <div className="space-y-2">
             {spec.baffle && <GateBtn done={baffleOn} label="Reinstall the air baffle" onClick={() => setBaffleOn(true)} />}
-            {spec.battery && <GateBtn done={batteryOn} label="⚡ Reconnect the battery ribbon" onClick={() => setBatteryOn(true)} danger />}
+            {spec.battery && <GateBtn done={batteryOn} label="Reconnect the battery ribbon" onClick={() => setBatteryOn(true)} danger />}
             <ProceedInline enabled={true} label="Finish assembly" onClick={proceed} />
             {!closeDone && <div className="text-[10px] text-amber-300/70">Skipping the battery reconnect will cause a power error at boot.</div>}
           </div>
@@ -162,7 +163,7 @@ export default function AdvancedAssembly({
             {stock.map((item) => (
               <button key={item.id} onClick={() => pickStock(item)} disabled={phase !== "swap" || !extracted || installed >= spec.count}
                 className={`flex w-full items-center gap-2 rounded-lg border p-2 text-left transition disabled:opacity-40 ${wrong === item.id ? "border-danger bg-danger/10" : "border-edge hover:border-info/50 hover:bg-info/5"}`}>
-                <span className="text-lg">📦</span>
+                <AppIcon id="package" size={17} />
                 <span className="min-w-0"><span className="block truncate text-[11px] text-gray-100">{item.label}</span><span className="block truncate text-[9px] text-gray-500">{item.spec}</span></span>
               </button>
             ))}

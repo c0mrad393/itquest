@@ -16,6 +16,7 @@ import { useInfraStore } from "@/lib/infra/store";
 import { useHostStore } from "@/lib/host/store";
 import type { RemoteSessionWindow } from "@/lib/host/windows";
 import NodeEnvironment from "./NodeEnvironment";
+import { AppIcon } from "@/components/ui/app-icons";
 
 type Phase = "connecting" | "authenticating" | "negotiating" | "connected" | "error";
 
@@ -145,7 +146,7 @@ function Handshake({ lines }: { lines: string[] }) {
 function SessionError({ message, onClose }: { message: string; onClose: () => void }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 bg-black p-8 text-center">
-      <div className="text-4xl">🔌</div>
+      <div className="text-gray-500"><AppIcon id="plug" size={40} /></div>
       <div className="text-sm font-semibold text-danger">Connection failed</div>
       <p className="max-w-sm text-xs text-gray-400">{message}</p>
       <button

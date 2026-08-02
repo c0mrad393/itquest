@@ -21,11 +21,13 @@ import { useInfraStore } from "@/lib/infra/store";
 import { relativeTime } from "@/lib/host/ticket-ui";
 import type { Ticket } from "@/lib/core";
 import type { EmailBeat } from "@/lib/tickets/matrix";
+import { AppIcon } from "@/components/ui/app-icons";
+import type { HostAppIconId } from "@/lib/core";
 
-const FOLDERS: { id: MailFolder; label: string; icon: string }[] = [
-  { id: "inbox", label: "Inbox", icon: "📥" },
-  { id: "external", label: "External", icon: "🌐" },
-  { id: "sent", label: "Sent", icon: "📤" },
+const FOLDERS: { id: MailFolder; label: string; iconId: HostAppIconId }[] = [
+  { id: "inbox", label: "Inbox", iconId: "inbox" as const },
+  { id: "external", label: "External", iconId: "globe" as const },
+  { id: "sent", label: "Sent", iconId: "send" as const },
 ];
 
 /** A unified row: either ambient mail or a ticket incident thread. */
@@ -112,7 +114,7 @@ export default function CoreMail() {
               folder === f.id ? "bg-info/15 text-info" : "text-gray-300 hover:bg-panel"
             }`}
           >
-            <span>{f.icon}</span>
+            <AppIcon id={f.iconId} size={14} />
             <span>{f.label}</span>
             {f.id === "inbox" && unread > 0 && (
               <span className="ml-auto rounded-full bg-danger px-1.5 text-[10px] font-bold text-white">
@@ -191,7 +193,7 @@ function IncidentRow({
           pending ? "bg-emerald-500/15 text-emerald-300" : "bg-gray-500/15 text-gray-400"
         }`}
       >
-        {pending ? `⚡ ${row.beats.length}-mail escalation — action required` : `✓ On ITSM board · ${row.ticket.code}`}
+        <span className="inline-flex items-center gap-1.5"><AppIcon id={pending ? "alert" : "check"} size={11} />{pending ? `${row.beats.length}-mail escalation — action required` : `On ITSM board · ${row.ticket.code}`}</span>
       </span>
     </button>
   );
@@ -271,7 +273,7 @@ function IncidentReader({ row }: { row: Extract<Row, { kind: "incident" }> }) {
             </>
           ) : (
             <div className="text-center text-[11px] text-emerald-300">
-              ✓ Escalated to the ITSM dashboard as {ticket.code}
+              <span className="inline-flex items-center gap-1.5"><AppIcon id="check" size={12} /> Escalated to the ITSM dashboard as {ticket.code}</span>
             </div>
           ))}
 
@@ -358,7 +360,7 @@ function AmbientReader({ msg }: { msg: MailMessage }) {
             disabled={isFlagged}
             className="rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-semibold text-danger transition hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {isFlagged ? `✓ ${domain} flagged` : `🚩 Flag ${domain} as malicious`}
+            <span className="inline-flex items-center gap-1.5"><AppIcon id={isFlagged ? "check" : "shield"} size={12} />{isFlagged ? `${domain} flagged` : `Flag ${domain} as malicious`}</span>
           </button>
         </div>
       )}
@@ -369,7 +371,7 @@ function AmbientReader({ msg }: { msg: MailMessage }) {
 function Empty() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 text-gray-600">
-      <span className="text-4xl">📧</span>
+      <span className="text-gray-600"><AppIcon id="mail" size={40} /></span>
       <span className="text-xs">Select a message to read.</span>
     </div>
   );

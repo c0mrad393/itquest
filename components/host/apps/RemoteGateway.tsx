@@ -11,9 +11,8 @@
 
 import { useInfraStore } from "@/lib/infra/store";
 import { useHostStore } from "@/lib/host/store";
-import type { HealthStatus, TargetNode } from "@/lib/core";
-
-const OS_ICON: Record<TargetNode["os"], string> = { linux: "🐧", windows: "🪟", macos: "🍎" };
+import type { HealthStatus } from "@/lib/core";
+import { AppIcon, OS_ICON_ID } from "@/components/ui/app-icons";
 
 const HEALTH: Record<HealthStatus, { label: string; dot: string; text: string }> = {
   healthy: { label: "Healthy", dot: "bg-emerald-400", text: "text-emerald-300" },
@@ -56,8 +55,8 @@ export default function RemoteGateway() {
               className="flex flex-col gap-3 rounded-xl border border-edge bg-panelalt p-4"
             >
               <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-black/30 text-xl">
-                  {OS_ICON[node.os]}
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-black/30 text-gray-300">
+                  <AppIcon id={OS_ICON_ID[node.os]} size={20} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold text-gray-100">{node.displayName}</div>
@@ -103,7 +102,7 @@ export default function RemoteGateway() {
                 <button
                   disabled={!canConnect}
                   onClick={() =>
-                    openRemote(node.nodeId, node.displayName, OS_ICON[node.os], node.connection.protocol)
+                    openRemote(node.nodeId, node.displayName, OS_ICON_ID[node.os], node.connection.protocol)
                   }
                   className="w-full rounded-md bg-info px-3 py-2 text-xs font-semibold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500"
                 >

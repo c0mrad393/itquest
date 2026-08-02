@@ -14,6 +14,8 @@ import { useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
 import { useNow } from "@/lib/sla/store";
 import { SCALE_META, SECTOR_META, type NetworkLink } from "@/lib/core";
+import { AppIcon } from "@/components/ui/app-icons";
+import type { HostAppIconId } from "@/lib/core";
 
 export default function NetOpsConsole() {
   useNow(); // subscribe to the 1s tick so metrics re-render live
@@ -22,7 +24,7 @@ export default function NetOpsConsole() {
   const setFirewall = useInfraStore((s) => s.setLinkFirewall);
   const setBlocked = useInfraStore((s) => s.setLinkBlocked);
 
-  const nodeName = (id: string) => (id === "internet" ? "🌐 Internet" : infra.nodes[id]?.hostname ?? id);
+  const nodeName = (id: string) => (id === "internet" ? "Internet" : infra.nodes[id]?.hostname ?? id);
   const avgLoss = infra.links.length
     ? infra.links.reduce((a, l) => a + l.packetLossPct, 0) / infra.links.length
     : 0;
@@ -32,7 +34,7 @@ export default function NetOpsConsole() {
     <div className="flex h-full flex-col bg-panel text-sm text-gray-200">
       {/* Header / org summary */}
       <div className="flex flex-wrap items-center gap-3 border-b border-edge bg-panelalt px-4 py-3">
-        <span className="text-lg">{SECTOR_META[infra.org.sector].icon}</span>
+        <span className="text-info"><AppIcon id={SECTOR_META[infra.org.sector].iconId} size={18} /></span>
         <div>
           <div className="text-sm font-semibold text-gray-100">{infra.org.name}</div>
           <div className="text-[11px] text-gray-500">
@@ -110,7 +112,7 @@ function LinkRow({
         </div>
         <div className="flex items-center gap-1.5 font-mono text-[10px] text-gray-500">
           {link.via}
-          {link.softwareFirewall && <span className="rounded bg-sky-500/15 px-1 text-sky-300">🛡 fw</span>}
+          {link.softwareFirewall && <span className="inline-flex items-center gap-1 rounded bg-sky-500/15 px-1 text-sky-300"><AppIcon id="shield" size={10} /> fw</span>}
           {link.blocked && <span className="rounded bg-danger/20 px-1 text-danger">blocked</span>}
         </div>
       </div>
@@ -145,10 +147,10 @@ function LinkRow({
           ))}
         </select>
         <IconBtn active={link.softwareFirewall} onClick={() => onFirewall(!link.softwareFirewall)} title="Software firewall">
-          🛡
+          <AppIcon id="shield" size={14} />
         </IconBtn>
         <IconBtn active={link.blocked} danger onClick={() => onBlock(!link.blocked)} title="Block link">
-          ⛔
+          <AppIcon id="ban" size={14} />
         </IconBtn>
       </div>
     </div>
@@ -205,7 +207,7 @@ function IncidentActions() {
             onClick={() => { if (ip.trim()) { blockIp(ip.trim()); setIp(""); } }}
             className="rounded border border-danger/40 px-2 py-1 text-[11px] font-semibold text-danger hover:bg-danger/10"
           >
-            ⛔ Block at edge
+            <span className="inline-flex items-center gap-1.5"><AppIcon id="ban" size={12} /> Block at edge</span>
           </button>
         </div>
 
@@ -226,21 +228,21 @@ function IncidentActions() {
             disabled={!nodeId}
             className="rounded border border-amber-500/40 px-2 py-1 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/10 disabled:opacity-40"
           >
-            🔒 Isolate
+            <span className="inline-flex items-center gap-1.5"><AppIcon id="lock" size={12} /> Isolate</span>
           </button>
           <button
             onClick={() => nodeId && runLogRotation(nodeId)}
             disabled={!nodeId}
             className="rounded border border-edge px-2 py-1 text-[11px] text-gray-200 hover:bg-edge disabled:opacity-40"
           >
-            🧹 Rotate logs
+            <span className="inline-flex items-center gap-1.5"><AppIcon id="book" size={12} /> Rotate logs</span>
           </button>
         </div>
 
         {/* One-shot remediations */}
-        <ActionToggle done={sec.credentialsRotated} onClick={rotateCredentials} label="🔑 Rotate service credentials" doneLabel="Credentials rotated" />
-        <ActionToggle done={sec.dnsFixed} onClick={markDnsFixed} label="🌐 Flush DNS + re-point resolvers" doneLabel="Resolvers corrected" />
-        <ActionToggle done={sec.onboardingComplete} onClick={completeOnboarding} label="👥 Re-run onboarding import" doneLabel="Onboarding imported" />
+        <ActionToggle done={sec.credentialsRotated} onClick={rotateCredentials} iconId="key" label="Rotate service credentials" doneLabel="Credentials rotated" />
+        <ActionToggle done={sec.dnsFixed} onClick={markDnsFixed} iconId="globe" label="Flush DNS + re-point resolvers" doneLabel="Resolvers corrected" />
+        <ActionToggle done={sec.onboardingComplete} onClick={completeOnboarding} iconId="users" label="Re-run onboarding import" doneLabel="Onboarding imported" />
       </div>
     </div>
   );
@@ -249,11 +251,13 @@ function IncidentActions() {
 function ActionToggle({
   done,
   onClick,
+  iconId,
   label,
   doneLabel,
 }: {
   done: boolean;
   onClick: () => void;
+  iconId: HostAppIconId;
   label: string;
   doneLabel: string;
 }) {
@@ -267,7 +271,10 @@ function ActionToggle({
           : "border-edge text-gray-200 hover:bg-edge"
       }`}
     >
-      {done ? `✓ ${doneLabel}` : label}
+      <span className="inline-flex items-center gap-1.5">
+        <AppIcon id={done ? "check" : iconId} size={12} />
+        {done ? doneLabel : label}
+      </span>
     </button>
   );
 }

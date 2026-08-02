@@ -10,7 +10,7 @@
  * WM contract is stable when Phase 3 wires the Gateway "Connect" action.
  */
 
-import type { HostAppId } from "@/lib/core";
+import type { HostAppIconId, HostAppId } from "@/lib/core";
 import type { ConnectionProtocol, NodeId } from "@/lib/core";
 
 export type WindowKind = "app" | "remote";
@@ -28,7 +28,8 @@ interface BaseWindow extends WindowRect {
   instanceId: string;
   kind: WindowKind;
   title: string;
-  icon: string;
+  /** Serializable icon key resolved by `AppIcon` at render time — never JSX. */
+  iconId: HostAppIconId;
   z: number;
   mode: WindowMode;
   /** Geometry to restore to when un-maximizing. */

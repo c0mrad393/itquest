@@ -5,13 +5,13 @@
  * No JSX here — just data, so it stays trivially testable.
  */
 
-import type { Ticket, TicketSeverity, TicketStatus, TicketTrack } from "@/lib/core";
+import type { HostAppIconId, Ticket, TicketSeverity, TicketStatus, TicketTrack } from "@/lib/core";
 
-export const TRACK_META: Record<TicketTrack, { label: string; icon: string; color: string }> = {
-  helpdesk: { label: "Helpdesk", icon: "🎧", color: "text-sky-300 bg-sky-500/15 border-sky-500/30" },
-  sysadmin: { label: "Sysadmin", icon: "🛠", color: "text-violet-300 bg-violet-500/15 border-violet-500/30" },
-  netops: { label: "NetOps", icon: "🌐", color: "text-teal-300 bg-teal-500/15 border-teal-500/30" },
-  secops: { label: "SecOps", icon: "🛡", color: "text-rose-300 bg-rose-500/15 border-rose-500/30" },
+export const TRACK_META: Record<TicketTrack, { label: string; iconId: HostAppIconId; color: string }> = {
+  helpdesk: { label: "Helpdesk", iconId: "headset", color: "text-sky-300 bg-sky-500/15 border-sky-500/30" },
+  sysadmin: { label: "Sysadmin", iconId: "wrench", color: "text-violet-300 bg-violet-500/15 border-violet-500/30" },
+  netops: { label: "NetOps", iconId: "globe", color: "text-teal-300 bg-teal-500/15 border-teal-500/30" },
+  secops: { label: "SecOps", iconId: "shield", color: "text-rose-300 bg-rose-500/15 border-rose-500/30" },
 };
 
 export const SEVERITY_META: Record<TicketSeverity, { label: string; color: string; dot: string }> = {

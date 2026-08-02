@@ -16,6 +16,7 @@ import { useSlaStore } from "@/lib/sla/store";
 import { levelForXp } from "@/lib/scenario/scoring";
 import { RIVALS, type LeaderboardEntry as Row } from "@/lib/host/leaderboard-data";
 import Avatar from "../Avatar";
+import { AppIcon } from "@/components/ui/app-icons";
 
 export default function Leaderboard() {
   const user = useHostStore((s) => s.host.user);
@@ -48,7 +49,7 @@ export default function Leaderboard() {
   return (
     <div className="flex h-full flex-col bg-panel text-sm text-gray-200">
       <div className="flex items-center gap-3 border-b border-edge bg-panelalt px-4 py-3">
-        <span className="text-xl">🏆</span>
+        <span className="text-amber-300"><AppIcon id="trophy" size={22} /></span>
         <div>
           <div className="text-sm font-semibold text-gray-100">Global Leaderboard</div>
           <div className="text-[11px] text-gray-500">Ranked by XP · SLA & CSAT tracked</div>
@@ -75,8 +76,19 @@ export default function Leaderboard() {
               r.you ? "bg-info/10" : ""
             }`}
           >
-            <span className={`font-mono text-xs ${i < 3 ? "text-amber-300" : "text-gray-500"}`}>
-              {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
+            {/* Podium places get a metal-tinted medallion rather than a medal emoji. */}
+            <span
+              className={`flex h-6 w-6 items-center justify-center rounded-full font-mono text-[11px] font-bold ${
+                i === 0
+                  ? "bg-amber-300/20 text-amber-200 ring-1 ring-amber-300/50"
+                  : i === 1
+                    ? "bg-slate-300/20 text-slate-200 ring-1 ring-slate-300/50"
+                    : i === 2
+                      ? "bg-orange-400/20 text-orange-300 ring-1 ring-orange-400/50"
+                      : "text-gray-500"
+              }`}
+            >
+              {i + 1}
             </span>
             <span className="flex min-w-0 items-center gap-2">
               <Avatar value={r.avatar} className="h-7 w-7 text-lg" />

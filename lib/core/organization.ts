@@ -6,6 +6,8 @@
  * with the world and can be regenerated bit-identically from `seed`.
  */
 
+import type { HostAppIconId } from "./host";
+
 export type Sector = "finance" | "healthcare" | "tech" | "retail";
 
 export type OrgScale = "small" | "midmarket" | "enterprise";
@@ -27,11 +29,11 @@ export interface OrganizationProfile {
   topologyKind: TopologyKind;
 }
 
-export const SECTOR_META: Record<Sector, { label: string; icon: string }> = {
-  finance: { label: "Financial Services", icon: "🏦" },
-  healthcare: { label: "Healthcare", icon: "🏥" },
-  tech: { label: "Technology", icon: "🧪" },
-  retail: { label: "Retail & E-commerce", icon: "🛍️" },
+export const SECTOR_META: Record<Sector, { label: string; iconId: HostAppIconId }> = {
+  finance: { label: "Financial Services", iconId: "bank" },
+  healthcare: { label: "Healthcare", iconId: "health" },
+  tech: { label: "Technology", iconId: "cpu" },
+  retail: { label: "Retail & E-commerce", iconId: "store" },
 };
 
 export const SCALE_META: Record<

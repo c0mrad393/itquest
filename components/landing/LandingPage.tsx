@@ -12,35 +12,36 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/auth/store";
 import AuthModal from "./AuthModal";
+import { AppIcon } from "@/components/ui/app-icons";
 
 const FEATURES = [
   {
-    icon: "⌨️",
+    iconId: "keyboard" as const,
     title: "Dual CLI / GUI Workspaces",
     body: "A real sandboxed terminal and full Windows management consoles (ADUC, services.msc, Control Panel) drive one shared infrastructure state — fix incidents whichever way a real engineer would.",
   },
   {
-    icon: "🎫",
+    iconId: "ticket" as const,
     title: "Real-World Ticket Queues",
     body: "Helpdesk, Sysadmin, NetOps and SecOps tracks with authentic faults: 502s from crashed upstreams, AD lockouts, DNS failures, IDMZ exfiltration.",
   },
   {
-    icon: "🤖",
+    iconId: "cpu" as const,
     title: "AI Customer Personas",
     body: "Every ticket has a human on the other end. Emotional states shift with your tone and your speed — CSAT and SLA pressure feed your score.",
   },
   {
-    icon: "🖥️",
+    iconId: "monitor" as const,
     title: "Nested Remote Sessions",
     body: "RDP and SSH windows inside your Level-0 workstation. Connect to client nodes through a realistic gateway, handshake and all.",
   },
   {
-    icon: "⏱️",
+    iconId: "clock" as const,
     title: "Live SLA Warfare",
     body: "Countdown clocks on every incident. Breach and the customer knows — resolve in time and your XP multiplies.",
   },
   {
-    icon: "🏆",
+    iconId: "trophy" as const,
     title: "Persistent Progression",
     body: "XP, levels, CSAT averages and a global leaderboard. Your record survives every reboot.",
   },
@@ -148,7 +149,9 @@ export default function LandingPage() {
               key={f.title}
               className="rounded-2xl border border-edge bg-panel/60 p-5 backdrop-blur transition hover:border-info/40"
             >
-              <div className="mb-3 text-2xl">{f.icon}</div>
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-info/15 text-info">
+                <AppIcon id={f.iconId} size={20} />
+              </div>
               <div className="mb-1.5 text-sm font-semibold text-gray-100">{f.title}</div>
               <p className="text-xs leading-relaxed text-gray-400">{f.body}</p>
             </div>

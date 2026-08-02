@@ -10,7 +10,7 @@
 "use client";
 
 import { create } from "zustand";
-import { HOST_APP_REGISTRY, type HostAppId } from "@/lib/core";
+import { HOST_APP_REGISTRY, type HostAppIconId, type HostAppId } from "@/lib/core";
 import type {
   ConnectionProtocol,
   NodeId,
@@ -35,7 +35,7 @@ interface HostStore {
   /** Open (or focus, if singleton + already open) a host app. */
   openApp: (appId: HostAppId) => void;
   /** Open a nested remote session window for a node (used from Phase 3). */
-  openRemote: (nodeId: NodeId, title: string, icon: string, protocol: ConnectionProtocol) => void;
+  openRemote: (nodeId: NodeId, title: string, iconId: HostAppIconId, protocol: ConnectionProtocol) => void;
   close: (instanceId: string) => void;
   focus: (instanceId: string) => void;
   minimize: (instanceId: string) => void;
@@ -91,7 +91,7 @@ export const useHostStore = create<HostStore>((set, get) => ({
       kind: "app",
       appId,
       title: meta.title,
-      icon: meta.icon,
+      iconId: meta.iconId,
       ...rect,
       z,
       mode: "normal",
@@ -99,7 +99,7 @@ export const useHostStore = create<HostStore>((set, get) => ({
     set((s) => ({ windows: [...s.windows, win], topZ: z, startMenuOpen: false }));
   },
 
-  openRemote: (nodeId, title, icon, protocol) => {
+  openRemote: (nodeId, title, iconId, protocol) => {
     const rect = centeredRect(920, 620, get().windows.length);
     const z = get().topZ + 1;
     const win: ManagedWindow = {
@@ -108,7 +108,7 @@ export const useHostStore = create<HostStore>((set, get) => ({
       nodeId,
       protocol,
       title,
-      icon,
+      iconId,
       ...rect,
       z,
       mode: "normal",

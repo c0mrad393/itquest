@@ -15,6 +15,7 @@
 import { useEffect, useState } from "react";
 import { HOST_APP_REGISTRY, type HostAppDescriptor, type HostAppId } from "@/lib/core";
 import { useHostStore } from "@/lib/host/store";
+import { AppIcon, APP_ICON_SIZE } from "@/components/ui/app-icons";
 
 const CELL_H = 92; // px per grid row
 const TASKBAR_H = 48;
@@ -57,8 +58,10 @@ export default function DesktopIcons() {
             selected === app.id ? "bg-info/25 ring-1 ring-info/40" : "hover:bg-white/10"
           }`}
         >
-          <span className="flex h-9 items-center justify-center text-3xl leading-none drop-shadow">
-            {app.icon}
+          {/* Tile behind the stroke glyph: SVG strokes need a backdrop to stay
+              legible over arbitrary wallpapers, where the old emoji did not. */}
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/10 text-gray-100 shadow-sm backdrop-blur-sm">
+            <AppIcon id={app.iconId} size={APP_ICON_SIZE.desktop} />
           </span>
           <span className="line-clamp-2 text-[10px] leading-tight text-gray-100 drop-shadow">
             {app.title}

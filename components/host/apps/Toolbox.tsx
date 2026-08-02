@@ -13,6 +13,7 @@ import { useMemo, useState } from "react";
 import { TICKET_TEMPLATES } from "@/lib/tickets/matrix";
 import { linuxInterpreter } from "@/lib/infra/terminal";
 import { TRACK_META } from "@/lib/host/ticket-ui";
+import { AppIcon } from "@/components/ui/app-icons";
 
 type Tab = "runbooks" | "cli";
 
@@ -24,10 +25,10 @@ export default function Toolbox() {
     <div className="flex h-full flex-col bg-panel text-sm text-gray-200">
       <div className="flex items-center gap-2 border-b border-edge bg-panelalt px-4 py-2.5">
         <TabBtn active={tab === "runbooks"} onClick={() => setTab("runbooks")}>
-          📖 Runbooks
+          <AppIcon id="book" size={13} /> Runbooks
         </TabBtn>
         <TabBtn active={tab === "cli"} onClick={() => setTab("cli")}>
-          ⌨️ CLI Reference
+          <AppIcon id="keyboard" size={13} /> CLI Reference
         </TabBtn>
         <input
           value={query}
@@ -97,8 +98,8 @@ function Runbooks({ query }: { query: string }) {
             className="group rounded-xl border border-edge bg-panelalt open:border-info/40"
           >
             <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3">
-              <span className={`rounded border px-1.5 py-0.5 text-[10px] ${track.color}`}>
-                {track.icon} {s.category}
+              <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] ${track.color}`}>
+                <AppIcon id={track.iconId} size={11} /> {s.category}
               </span>
               <span className="rounded bg-gray-500/15 px-1.5 py-0.5 text-[10px] text-gray-300">
                 {DIFF_LABEL[s.difficulty]}

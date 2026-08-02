@@ -19,6 +19,7 @@ import { useDialogueStore } from "@/lib/dialogue/store";
 import { useMailStore } from "@/lib/mail/store";
 import { useNotificationStore, unreadCount } from "@/lib/host/notifications-store";
 import { ActionCenter } from "./Notifications";
+import { AppIcon, APP_ICON_SIZE } from "@/components/ui/app-icons";
 import Clock from "./Clock";
 import { useState } from "react";
 
@@ -92,11 +93,11 @@ export default function Taskbar() {
                 running ? taskbarActivate(instances[0].instanceId) : openApp(appId)
               }
               title={meta.title}
-              className={`relative flex h-9 w-9 items-center justify-center rounded-md text-lg transition hover:bg-white/10 ${
-                active ? "bg-white/15" : ""
+              className={`relative flex h-9 w-9 items-center justify-center rounded-md transition hover:bg-white/10 ${
+                active ? "bg-white/15 text-white" : "text-gray-300"
               }`}
             >
-              <span>{meta.icon}</span>
+              <AppIcon id={meta.iconId} size={APP_ICON_SIZE.taskbar} />
               {badge != null && (
                 <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[9px] font-bold text-white">
                   {badge}

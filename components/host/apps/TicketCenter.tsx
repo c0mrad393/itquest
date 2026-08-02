@@ -22,6 +22,7 @@ import {
   slaSnapshot,
 } from "@/lib/host/ticket-ui";
 import TicketBrief from "./TicketBrief";
+import { AppIcon } from "@/components/ui/app-icons";
 
 const SEVERITIES: (TicketSeverity | "all")[] = ["all", "low", "medium", "high", "critical"];
 const CATEGORIES: (TicketCategory | "all")[] = [
@@ -175,7 +176,7 @@ function TicketRow({
         </span>
         {emotion && (
           <span className={`rounded px-1 py-0.5 text-[10px] ${EMOTION_META[emotion].color}`} title={EMOTION_META[emotion].label}>
-            {EMOTION_META[emotion].icon}
+            <AppIcon id={EMOTION_META[emotion].iconId} size={11} />
           </span>
         )}
         <span className={`ml-auto rounded px-1.5 py-0.5 text-[10px] font-semibold ${status.color}`}>
@@ -184,8 +185,8 @@ function TicketRow({
       </div>
       <div className="line-clamp-2 text-[13px] leading-snug text-gray-100">{ticket.title}</div>
       <div className="flex items-center gap-2 text-[10px]">
-        <span className={`rounded border px-1.5 py-0.5 ${track.color}`}>
-          {track.icon} {ticket.category}
+        <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 ${track.color}`}>
+          <AppIcon id={track.iconId} size={11} /> {ticket.category}
         </span>
         <span className="text-gray-500">{ticket.requester.name}</span>
         <span className="ml-auto text-gray-500">{relativeTime(ticket.createdAt)}</span>
@@ -220,8 +221,8 @@ function TicketDetail({ ticket }: { ticket: Ticket }) {
       <div>
         <div className="flex items-center gap-2">
           <span className="font-mono text-xs text-gray-500">{ticket.code}</span>
-          <span className={`rounded border px-1.5 py-0.5 text-[10px] ${track.color}`}>
-            {track.icon} {track.label}
+          <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] ${track.color}`}>
+            <AppIcon id={track.iconId} size={11} /> {track.label}
           </span>
           <span className={`rounded border px-1.5 py-0.5 text-[10px] ${sev.color}`}>
             {sev.label}

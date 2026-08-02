@@ -19,6 +19,7 @@ import { levelForXp, xpForLevel } from "@/lib/scenario/scoring";
 import { rankForXp } from "@/lib/host/leaderboard-data";
 import { AVATAR_PRESETS, isImageAvatar } from "@/lib/core";
 import Avatar from "../Avatar";
+import { AppIcon } from "@/components/ui/app-icons";
 
 const PROVIDER_META = {
   google: { label: "Google account", color: "bg-sky-500/15 text-sky-300" },
@@ -98,7 +99,7 @@ export default function ProfileApp() {
         </div>
         {savedFlash && (
           <span className="rounded-full bg-accent/20 px-2.5 py-1 text-[10px] font-semibold text-accent">
-            ✓ Saved
+            <span className="inline-flex items-center gap-1"><AppIcon id="check" size={12} /> Saved</span>
           </span>
         )}
       </div>

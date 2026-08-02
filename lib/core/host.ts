@@ -26,14 +26,65 @@ export type HostAppId =
 
 export type HostAppCategory = "work" | "system";
 
+/**
+ * Stable, serializable icon KEY — never a React node and never an emoji.
+ *
+ * SessionState (and the window manager, which copies the key onto each open
+ * window) must stay plain JSON, so the shell stores this id and resolves it to
+ * an SVG component at render time via `AppIcon` in components/ui/app-icons.tsx.
+ * Adding a member here without adding a case there is a type error.
+ */
+export type HostAppIconId =
+  | "ticket"
+  | "messages"
+  | "mail"
+  | "globe"
+  | "monitor"
+  | "wrench"
+  | "boxes"
+  | "rack"
+  | "toolbox"
+  | "trophy"
+  | "gear"
+  | "id-card"
+  // OS marks — remote-session windows carry these instead of an app id.
+  | "os-linux"
+  | "os-windows"
+  | "os-macos"
+  // Shared shell glyphs (ticket tracks, mail folders, toolbox tabs, …). Same
+  // mapper, so any surface of the host UI can stay emoji-free with one import.
+  | "headset"
+  | "shield"
+  | "inbox"
+  | "send"
+  | "book"
+  | "keyboard"
+  | "terminal"
+  | "clock"
+  | "cpu"
+  | "truck"
+  | "key"
+  | "users"
+  | "lock"
+  | "ban"
+  | "check"
+  | "alert"
+  | "plug"
+  | "server"
+  | "laptop"
+  | "package"
+  | "bank"
+  | "health"
+  | "store";
+
 /** Which live counter, if any, drives an app's taskbar/Start badge. */
 export type HostAppBadgeSource = "unread-tickets" | "unread-mail" | "unread-coremail" | "sla-alerts";
 
 export interface HostAppDescriptor {
   id: HostAppId;
   title: string;
-  /** Emoji/glyph placeholder; Phase 2 may swap for an SVG asset key. */
-  icon: string;
+  /** Key into the SVG icon set — see `AppIcon`. Kept a string so this stays data. */
+  iconId: HostAppIconId;
   category: HostAppCategory;
   description: string;
   defaultSize: { w: number; h: number };
@@ -55,7 +106,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
   itsm: {
     id: "itsm",
     title: "Ticket Center",
-    icon: "🎫",
+    iconId: "ticket",
     category: "work",
     description: "Incoming enterprise incidents across Helpdesk, Sysadmin, NetOps, and SecOps.",
     defaultSize: { w: 960, h: 640 },
@@ -68,7 +119,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
   mail: {
     id: "mail",
     title: "Conversations",
-    icon: "💬",
+    iconId: "messages",
     category: "work",
     description: "Direct ticket conversations with AI customer personas (emotion + CSAT).",
     defaultSize: { w: 880, h: 600 },
@@ -81,7 +132,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
   coremail: {
     id: "coremail",
     title: "CoreMail",
-    icon: "📧",
+    iconId: "mail",
     category: "work",
     description: "Corporate mailbox: internal staff requests, ISP notices, and vendor advisories.",
     defaultSize: { w: 1000, h: 660 },
@@ -94,7 +145,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
   netops: {
     id: "netops",
     title: "NetOps Console",
-    icon: "🌐",
+    iconId: "globe",
     category: "work",
     description: "Live network topology: link metrics, re-routing, and software firewalls.",
     defaultSize: { w: 960, h: 640 },
@@ -106,7 +157,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
   gateway: {
     id: "gateway",
     title: "Remote Gateway",
-    icon: "🖥️",
+    iconId: "monitor",
     category: "work",
     description: "Client servers and workstations. Connect to open an RDP/SSH session.",
     defaultSize: { w: 820, h: 560 },
@@ -118,7 +169,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
   hardwarelab: {
     id: "hardwarelab",
     title: "Hardware Lab & Deployment",
-    icon: "🔧",
+    iconId: "wrench",
     category: "work",
     description: "Provision hardware, image endpoints, and dispatch field teams for physical swaps.",
     defaultSize: { w: 940, h: 640 },
@@ -130,7 +181,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
   assetmanager: {
     id: "assetmanager",
     title: "AssetManager",
-    icon: "▤",
+    iconId: "boxes",
     category: "work",
     description: "Hardware inventory: stock levels, allocations and repairs.",
     defaultSize: { w: 900, h: 600 },
@@ -142,7 +193,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
   racklab: {
     id: "racklab",
     title: "Rack & Network Lab",
-    icon: "▥",
+    iconId: "rack",
     category: "work",
     description: "Build the rack, cable it, configure switches and servers, and test connectivity.",
     defaultSize: { w: 1080, h: 680 },
@@ -154,7 +205,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
   toolbox: {
     id: "toolbox",
     title: "Tech Toolbox",
-    icon: "🧰",
+    iconId: "toolbox",
     category: "work",
     description: "Searchable runbooks, network diagrams, and command references.",
     defaultSize: { w: 900, h: 620 },
@@ -166,7 +217,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
   leaderboard: {
     id: "leaderboard",
     title: "Leaderboard",
-    icon: "🏆",
+    iconId: "trophy",
     category: "work",
     description: "Global ranking by XP, SLA compliance, and escalation rate.",
     defaultSize: { w: 720, h: 560 },
@@ -178,7 +229,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
   settings: {
     id: "settings",
     title: "Settings",
-    icon: "⚙️",
+    iconId: "gear",
     category: "system",
     description: "Workstation preferences, theme, and profile.",
     defaultSize: { w: 680, h: 520 },
@@ -190,7 +241,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
   profile: {
     id: "profile",
     title: "My Profile",
-    icon: "🪪",
+    iconId: "id-card",
     category: "system",
     description: "Your operator account: identity, avatar, stats, and sign-out.",
     defaultSize: { w: 700, h: 560 },

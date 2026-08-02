@@ -14,6 +14,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { LAB_ADMIN, LAB_DOMAIN, type ImagingSpec, type PartitionKind } from "@/lib/hardware/types";
+import { AppIcon } from "@/components/ui/app-icons";
 
 export interface NetExpectation { ip: string; mask: string; gateway: string }
 
@@ -139,7 +140,7 @@ function Applying({ host, faulty, fault, onFault, onDone }: { host: string; faul
   if (failed) {
     return (
       <div className="rounded-lg border border-danger/50 bg-danger/10 p-5 text-center">
-        <div className="text-3xl">⚠️</div>
+        <div className="text-danger"><AppIcon id="alert" size={30} /></div>
         <div className="mt-1 font-semibold text-danger">Hardware Interrupt / Power Error</div>
         <div className="mt-1 text-[11px] text-gray-400">Imaging aborted at POST — {fault ?? "assembly incomplete"}. Fix the bench unit and re-image.</div>
         <button onClick={onFault} className="mt-3 rounded-md border border-danger/50 px-3 py-1.5 text-xs font-semibold text-danger hover:bg-danger/15">← Back to Assembly</button>
@@ -171,7 +172,7 @@ function NetworkConfig({ net, onDone }: { net: NetExpectation; onDone: () => voi
       <div className="mb-1 text-sm font-semibold text-gray-100">Internet Protocol Version 4 (TCP/IPv4) Properties</div>
       <div className="mb-3 text-[11px] text-gray-500">Use the static addressing from the deployment work order.</div>
       <div className="mb-3 rounded border border-info/30 bg-info/5 p-2 text-[11px] text-info">
-        📋 Work order — IP {net.ip} · Mask {net.mask} · Gateway {net.gateway}
+        <AppIcon id="book" size={12} /> Work order — IP {net.ip} · Mask {net.mask} · Gateway {net.gateway}
       </div>
       <div className="space-y-2">
         <Field label="IP address" value={ip} onChange={(v) => { setIp(v); setErr(false); }} />
@@ -211,7 +212,7 @@ function DomainJoin({ mode, onDone }: { mode: "install" | "repair"; onDone: () =
       <div className="mb-1 text-sm font-semibold text-gray-100">{mode === "repair" ? "Rejoin Active Directory Domain" : "Join Active Directory Domain"}</div>
       <div className="mb-3 text-[11px] text-gray-500">Provide the domain and a high-privilege account authorized to join computers.</div>
       <div className="mb-3 rounded border border-emerald-500/30 bg-emerald-500/5 p-2 text-[11px] text-emerald-300">
-        🔐 Deployment vault — {LAB_ADMIN.user}@{LAB_DOMAIN} · pwd: <span className="font-mono">{LAB_ADMIN.password}</span>
+        <AppIcon id="lock" size={12} /> Deployment vault — {LAB_ADMIN.user}@{LAB_DOMAIN} · pwd: <span className="font-mono">{LAB_ADMIN.password}</span>
       </div>
       <div className="space-y-2">
         <Field label="Domain" value={domain} onChange={(v) => { setDomain(v); setErr(null); }} placeholder={LAB_DOMAIN} />

@@ -80,13 +80,22 @@ export const EMOTION_BASE: Record<Emotion, number> = {
   angry: 12,
 };
 
-export const EMOTION_META: Record<Emotion, { label: string; icon: string; color: string }> = {
-  relieved: { label: "Relieved", icon: "😌", color: "text-emerald-300 bg-emerald-500/15" },
-  calm: { label: "Calm", icon: "🙂", color: "text-sky-300 bg-sky-500/15" },
-  stressed: { label: "Stressed", icon: "😟", color: "text-amber-300 bg-amber-500/15" },
-  irritated: { label: "Irritated", icon: "😠", color: "text-orange-300 bg-orange-500/15" },
-  panicked: { label: "Panicked", icon: "😰", color: "text-rose-300 bg-rose-500/15" },
-  angry: { label: "Angry", icon: "😡", color: "text-red-300 bg-red-500/15" },
+/** Serializable face-glyph keys, resolved by `AppIcon`. */
+export type EmotionIconId =
+  | "face-relieved"
+  | "face-calm"
+  | "face-stressed"
+  | "face-irritated"
+  | "face-panicked"
+  | "face-angry";
+
+export const EMOTION_META: Record<Emotion, { label: string; iconId: EmotionIconId; color: string }> = {
+  relieved: { label: "Relieved", iconId: "face-relieved", color: "text-emerald-300 bg-emerald-500/15" },
+  calm: { label: "Calm", iconId: "face-calm", color: "text-sky-300 bg-sky-500/15" },
+  stressed: { label: "Stressed", iconId: "face-stressed", color: "text-amber-300 bg-amber-500/15" },
+  irritated: { label: "Irritated", iconId: "face-irritated", color: "text-orange-300 bg-orange-500/15" },
+  panicked: { label: "Panicked", iconId: "face-panicked", color: "text-rose-300 bg-rose-500/15" },
+  angry: { label: "Angry", iconId: "face-angry", color: "text-red-300 bg-red-500/15" },
 };
 
 /** Map a 0-100 meter value to the nearest emotion label. */

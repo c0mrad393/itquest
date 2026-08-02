@@ -19,6 +19,7 @@ import AdvancedAssembly from "./hardware/AdvancedAssembly";
 import BiosSim from "./hardware/BiosSim";
 import ImagingSuite, { type NetExpectation } from "./hardware/ImagingSuite";
 import type { Ticket } from "@/lib/core";
+import { AppIcon } from "@/components/ui/app-icons";
 
 const DISPATCH_SECONDS = 14;
 
@@ -50,7 +51,7 @@ export default function HardwareLab() {
   return (
     <div className="flex h-full flex-col bg-panel text-gray-200">
       <div className="flex items-center gap-3 border-b border-edge bg-panelalt px-4 py-2.5">
-        <span className="text-lg">🔧</span>
+        <AppIcon id="wrench" size={18} />
         <span className="text-sm font-semibold">Hardware Lab &amp; Deployment</span>
         <div className="ml-4 flex rounded-lg border border-edge p-0.5 text-xs">
           <TabBtn active={view === "tickets"} onClick={() => setView("tickets")}>Active Deployment Tickets</TabBtn>
@@ -70,7 +71,7 @@ export default function HardwareLab() {
               return (
                 <button key={t.id} onClick={() => setSelectedId(t.id)} className={`block w-full border-b border-edge/50 px-3 py-2.5 text-left ${selectedId === t.id ? "bg-info/10" : "hover:bg-panelalt"}`}>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm">{j?.assembly?.archetype === "server" ? "🗄️" : j?.assembly?.archetype === "laptop" ? "💻" : t.templateId.startsWith("sw-") ? "🔑" : "🖥️"}</span>
+                    <AppIcon size={14} id={j?.assembly?.archetype === "server" ? "server" : j?.assembly?.archetype === "laptop" ? "laptop" : t.templateId.startsWith("sw-") ? "key" : "monitor"} />
                     <span className="truncate text-xs text-gray-100">{j?.targetHostname ?? "—"}</span>
                     <span className="ml-auto">{statusChip(d?.status, prov)}</span>
                   </div>
@@ -127,7 +128,7 @@ function DeploymentDetail({ ticket, job, done, provisioned, dispatch, onGoToWork
       <div className={`rounded-lg border p-3 ${completed ? "border-emerald-500/40 bg-emerald-500/5" : provisioned ? "border-info/40 bg-info/5" : "border-edge bg-panelalt/50"}`}>
         <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Field dispatch</div>
         {completed ? (
-          <div className="text-xs text-emerald-300">✅ {dispatch?.note} — {job.targetHostname} is online at 100% health.</div>
+          <div className="flex items-center gap-1.5 text-xs text-emerald-300"><AppIcon id="check" size={13} /> {dispatch?.note} — {job.targetHostname} is online at 100% health.</div>
         ) : dispatch?.status === "in_progress" ? (
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-xs text-gray-200"><span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />{dispatch.note}</div>
@@ -135,7 +136,7 @@ function DeploymentDetail({ ticket, job, done, provisioned, dispatch, onGoToWork
             <div className="text-right font-mono text-[10px] text-gray-500">ETA {dispatch.timeLeft}s · rack 4B</div>
           </div>
         ) : (
-          <button onClick={onDispatch} disabled={!provisioned} className="w-full rounded-md bg-info px-3 py-2 text-xs font-semibold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500">🚚 Dispatch Field Team for Physical Swap</button>
+          <button onClick={onDispatch} disabled={!provisioned} className="w-full rounded-md bg-info px-3 py-2 text-xs font-semibold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500"><span className="inline-flex items-center justify-center gap-1.5"><AppIcon id="truck" size={14} /> Dispatch Field Team for Physical Swap</span></button>
         )}
         {!provisioned && !dispatch && <div className="mt-2 text-[10px] text-gray-500">Complete provisioning in the Workshop to unlock dispatch.</div>}
       </div>
@@ -205,7 +206,7 @@ function Workshop({ ticket, job, done, onProvisioned }: { ticket: Ticket; job: H
 
       {allDone && (
         <div className="flex items-center gap-3 rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3 text-xs text-emerald-300">
-          ✅ Device fully provisioned.
+          <span className="inline-flex items-center gap-1.5"><AppIcon id="check" size={13} /> Device fully provisioned.</span>
           <button onClick={onProvisioned} className="ml-auto rounded-md bg-emerald-500/80 px-3 py-1.5 font-semibold text-black hover:brightness-110">Go to dispatch →</button>
         </div>
       )}

@@ -13,6 +13,7 @@ import { useHostStore } from "@/lib/host/store";
 import type { ManagedWindow } from "@/lib/host/windows";
 import { renderHostApp } from "./app-registry";
 import RemoteSession from "./remote/RemoteSession";
+import { AppIcon, APP_ICON_SIZE } from "@/components/ui/app-icons";
 
 export default function WindowFrame({ win }: { win: ManagedWindow }) {
   const { focus, close, minimize, toggleMaximize, move } = useHostStore();
@@ -57,7 +58,9 @@ export default function WindowFrame({ win }: { win: ManagedWindow }) {
         onPointerUp={onPointerUp}
         onDoubleClick={() => toggleMaximize(win.instanceId)}
       >
-        <span className="text-sm">{win.icon}</span>
+        <span className="flex items-center text-gray-400">
+          <AppIcon id={win.iconId} size={APP_ICON_SIZE.titlebar} />
+        </span>
         <span className="select-none text-xs font-medium text-gray-200">{win.title}</span>
         {win.kind === "remote" && (
           <span className="rounded bg-info/15 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-info">
