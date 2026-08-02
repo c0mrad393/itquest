@@ -12,6 +12,8 @@ import type { WindowsNodeState } from "./windows";
 import type { MacNodeState } from "./mac";
 import type { ConnectionProtocol, NodeId } from "./nodes";
 import type { OrganizationProfile } from "./organization";
+import type { InventoryState } from "./inventory";
+import type { RackState } from "./rack";
 
 /** Discriminated union of every node kind. Narrow on `.os`. */
 export type TargetNode = LinuxNodeState | WindowsNodeState | MacNodeState;
@@ -98,6 +100,10 @@ export interface InfrastructureState {
   gateway: GatewayEntry[];
   /** Incident-response actions the operator has taken. */
   security: SecurityState;
+  /** Physical asset store room (AssetManager app). */
+  inventory: InventoryState;
+  /** Server rack: mounted devices, cabling and logical config. */
+  rack: RackState;
 
   loadedAt: number;
 }

@@ -21,6 +21,8 @@ export * from "./linux";
 export * from "./windows";
 export * from "./mac";
 export * from "./endpoint";
+export * from "./inventory";
+export * from "./rack";
 export * from "./infrastructure";
 export * from "./tickets";
 export * from "./host";

@@ -26,6 +26,7 @@ import type {
   TicketTrack,
   WindowsNodeState,
 } from "@/lib/core";
+import { isPowered, uplinkOf } from "@/lib/core";
 import { findFaultWeb, findFirstWorkstation, findPrimaryDC } from "@/lib/org/generator";
 import { int, pick, type Rng } from "@/lib/org/rng";
 
@@ -670,6 +671,86 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     injectFault: (infra, ctx) => { const n = infra.nodes[ctx.targetNodeId as NodeId]; if (n) { n.health.status = "critical"; n.connection.online = false; } },
     win: (infra, ctx) => infra.security.hardwareReplaced.includes(ctx.targetNodeId as NodeId),
     healthyNode: (_infra, ctx) => ctx.targetNodeId,
+  },
+
+  // ── Rack & network infrastructure lab ──────────────────────────────────────
+
+  "net-rack-vlan": {
+    id: "net-rack-vlan",
+    category: "Network & Routing",
+    difficulty: "Tier_2_Medium",
+    track: "netops",
+    severity: "medium",
+    priority: "P3",
+    slaDuration: 30 * 60,
+    responseSeconds: 8 * 60,
+    xpReward: 330,
+    personaId: "persona-marcus-calm",
+    tags: ["rack", "switch", "vlan", "cli"],
+    origin: "dashboard",
+    summary: "The Sales VLAN must be created and trunked to a switch port.",
+    hints: [
+      "Rack & Network Lab → drag a 24-port switch into the rack, power it from the UPS/PDU",
+      "Select the switch → Console (CLI): enable, conf t, vlan <id>",
+      "interface <port> → switchport access vlan <id> → no shutdown",
+    ],
+    playable: true,
+    makeContext: () => ({ rackVlanId: 20, rackPort: "gi0/3" }),
+    title: (ctx) => `Configure the Sales VLAN (${ctx.rackVlanId}) on the core switch`,
+    description: (ctx) =>
+      `Sales are moving to their own broadcast domain. In the Rack & Network Lab, make sure a switch is racked and powered from the UPS/PDU, then open its console and create VLAN ${ctx.rackVlanId}. Put port ${ctx.rackPort} into that VLAN as an access port and leave it administratively up.\n\nCLI: enable → conf t → vlan ${ctx.rackVlanId} → interface ${ctx.rackPort} → switchport access vlan ${ctx.rackVlanId} → no shutdown`,
+    requester: (_ctx, org) => ({ name: "Marcus Feld", role: "Network Engineer", email: `marcus.feld@${mailDomain(org)}`, department: "IT" }),
+    win: (infra, ctx) => {
+      const vlan = Number(ctx.rackVlanId);
+      const port = String(ctx.rackPort);
+      return infra.rack.devices.some((d) => {
+        if (d.kind !== "switch" && d.kind !== "router") return false;
+        if (!d.switchConfig || !isPowered(infra.rack, d.id)) return false;
+        if (!d.switchConfig.vlans.includes(vlan)) return false;
+        const i = d.switchConfig.interfaces.find((x) => x.name === port);
+        return !!i && i.accessVlan === vlan && i.up;
+      });
+    },
+  },
+
+  "net-rack-webserver": {
+    id: "net-rack-webserver",
+    category: "Network & Routing",
+    difficulty: "Tier_3_Hard",
+    track: "netops",
+    severity: "high",
+    priority: "P2",
+    slaDuration: 55 * 60,
+    responseSeconds: 12 * 60,
+    xpReward: 580,
+    personaId: "persona-marcus-calm",
+    tags: ["rack", "server", "provisioning", "cabling", "ping"],
+    origin: "dashboard",
+    summary: "A new web server must be racked, cabled, addressed and proven reachable.",
+    hints: [
+      "Rack the UPS/PDU first — nothing powers on without it",
+      "Rack a switch and two servers; power each from the UPS/PDU (Cabling → Power)",
+      "Patch both servers into the switch (Cabling → Data), then set IPs in the same subnet",
+      "Enable the web service, then run the Ping test between the two servers",
+    ],
+    playable: true,
+    makeContext: () => ({ rackIpv4: "10.20.30.10", rackNetmask: "255.255.255.0" }),
+    title: (ctx) => `Provision the new web server in Rack A (${ctx.rackIpv4})`,
+    description: (ctx) =>
+      `The new customer-facing web server needs building out in Rack A end to end.\n\n• Rack a UPS or PDU, a switch, and two rack servers (the new web host plus the app host it must talk to).\n• Power every device from the UPS/PDU and patch both servers into the switch.\n• Address the web server as ${ctx.rackIpv4} / ${ctx.rackNetmask} and give the second server another address in the same subnet.\n• Start the web service on the new host.\n• Prove it with the Ping tool — the ticket closes only when a test between the two servers succeeds.`,
+    requester: (_ctx, org) => ({ name: "Marcus Feld", role: "Site Reliability Engineer", email: `marcus.feld@${mailDomain(org)}`, department: "IT" }),
+    win: (infra, ctx) => {
+      const rack = infra.rack;
+      const web = rack.devices.find(
+        (d) => d.kind === "server" && d.serverConfig?.ipv4.trim() === String(ctx.rackIpv4),
+      );
+      if (!web || !web.serverConfig) return false;
+      if (!web.serverConfig.services.web) return false;
+      if (!isPowered(rack, web.id) || !uplinkOf(rack, web.id)) return false;
+      // A recorded, successful ping involving the new host proves the whole
+      // chain end to end (power + patching + VLAN + addressing).
+      return rack.tests.some((t) => t.ok && (t.fromName === web.name || t.toName === web.name));
+    },
   },
 
   // ── Active Directory administration (ADUC-driven) ─────────────────────────

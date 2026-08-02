@@ -12,6 +12,8 @@ import type { HostAppId } from "@/lib/core";
 import TicketCenter from "./apps/TicketCenter";
 import RemoteGateway from "./apps/RemoteGateway";
 import HardwareLab from "./apps/HardwareLab";
+import AssetManager from "./apps/AssetManager";
+import RackSimulator from "./apps/RackSimulator";
 import Mail from "./apps/Mail";
 import CoreMail from "./apps/CoreMail";
 import NetOpsConsole from "./apps/NetOpsConsole";
@@ -28,6 +30,10 @@ export function renderHostApp(appId: HostAppId): React.ReactNode {
       return <RemoteGateway />;
     case "hardwarelab":
       return <HardwareLab />;
+    case "assetmanager":
+      return <AssetManager />;
+    case "racklab":
+      return <RackSimulator />;
     case "mail":
       return <Mail />;
     case "coremail":

@@ -16,6 +16,8 @@ export type HostAppId =
   | "coremail" // Outlook-style corporate mailbox (internal + external mail)
   | "gateway" // Remote Gateway Manager (RDP/SSH launcher)
   | "hardwarelab" // Hardware Provisioning Lab & Field Dispatch
+  | "assetmanager" // Hardware inventory / store room
+  | "racklab" // Server rack & network infrastructure simulator
   | "netops" // Network topology console (link optimization)
   | "toolbox" // Tech Toolbox & Documentation Center
   | "leaderboard" // Global ranking
@@ -121,6 +123,30 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     description: "Provision hardware, image endpoints, and dispatch field teams for physical swaps.",
     defaultSize: { w: 940, h: 640 },
     minSize: { w: 680, h: 480 },
+    singleton: true,
+    pinnedToTaskbar: true,
+    showOnDesktop: true,
+  },
+  assetmanager: {
+    id: "assetmanager",
+    title: "AssetManager",
+    icon: "▤",
+    category: "work",
+    description: "Hardware inventory: stock levels, allocations and repairs.",
+    defaultSize: { w: 900, h: 600 },
+    minSize: { w: 640, h: 420 },
+    singleton: true,
+    pinnedToTaskbar: true,
+    showOnDesktop: true,
+  },
+  racklab: {
+    id: "racklab",
+    title: "Rack & Network Lab",
+    icon: "▥",
+    category: "work",
+    description: "Build the rack, cable it, configure switches and servers, and test connectivity.",
+    defaultSize: { w: 1080, h: 680 },
+    minSize: { w: 820, h: 520 },
     singleton: true,
     pinnedToTaskbar: true,
     showOnDesktop: true,

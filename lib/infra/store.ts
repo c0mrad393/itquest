@@ -10,10 +10,16 @@
 
 import { create } from "zustand";
 import type {
+  CableKind,
   InfrastructureState,
+  NetworkTestResult,
+  RackDevice,
+  ServerConfig,
+  SwitchConfig,
   TargetNode,
   WindowsService,
 } from "@/lib/core";
+import { availableOf, canMount, pingCheck } from "@/lib/core";
 import type { CommandResult, NodeId } from "@/lib/core";
 import { generateWorld } from "@/lib/org/generator";
 import { freshSeed } from "@/lib/org/rng";
@@ -107,6 +113,29 @@ interface InfraStore {
   runLogRotation: (nodeId: NodeId) => void;
   /** Complete the fixed bulk onboarding import. */
   completeOnboarding: () => void;
+
+  // ── Inventory (AssetManager) ──
+  /** Book stock out of the store room against a ticket / person / rack. */
+  allocateAsset: (itemId: string, qty: number, assignedTo: string, ticket?: { id: string; code: string }) => void;
+  /** Return a previous allocation to the shelf. */
+  returnAllocation: (allocationId: string) => void;
+  /** Move units between available and the repair bench. */
+  setAssetRepair: (itemId: string, qty: number) => void;
+
+  // ── Rack simulator ──
+  /** Mount an inventory asset into the rack at `uStart` (consumes 1 unit). */
+  rackMountDevice: (assetItemId: string, uStart: number) => void;
+  /** Unmount a device, returning it (and its cables) to stock. */
+  rackRemoveDevice: (deviceId: string) => void;
+  /** Patch or power a cable between two device ports (consumes a cable). */
+  rackConnectCable: (cable: { kind: CableKind; fromDeviceId: string; fromPort: string; toDeviceId: string; toPort: string }) => void;
+  rackDisconnectCable: (cableId: string) => void;
+  /** Apply switch CLI results (VLAN db + per-interface access VLAN / shutdown). */
+  rackUpdateSwitch: (deviceId: string, patch: Partial<SwitchConfig>) => void;
+  /** Apply the server config modal (addressing + services). */
+  rackUpdateServer: (deviceId: string, patch: Partial<ServerConfig>) => void;
+  /** Run the ping tool and record the result. */
+  rackRunPing: (fromId: string, toId: string) => NetworkTestResult;
   /** Field dispatch complete: mark hardware replaced + bring the node online/healthy. */
   completeHardwareReplacement: (nodeId: NodeId) => void;
   /** Replace the whole infrastructure (used by factory fault injection). */
@@ -485,6 +514,233 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
     }),
 
   completeOnboarding: () => set((s) => patchSecurity(s, { onboardingComplete: true })),
+
+  // ── Inventory ──────────────────────────────────────────────────────────────
+
+  allocateAsset: (itemId, qty, assignedTo, ticket) =>
+    set((s) => {
+      const inv = s.infra.inventory;
+      const item = inv.items.find((i) => i.id === itemId);
+      if (!item || qty <= 0 || availableOf(item) < qty) return s;
+      const items = inv.items.map((i) => (i.id === itemId ? { ...i, deployed: i.deployed + qty } : i));
+      const alloc = {
+        id: `al-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        itemId, itemName: item.name, qty, assignedTo,
+        ticketId: ticket?.id, ticketCode: ticket?.code, at: Date.now(),
+      };
+      return { infra: { ...s.infra, inventory: { items, allocations: [alloc, ...inv.allocations] } } };
+    }),
+
+  returnAllocation: (allocationId) =>
+    set((s) => {
+      const inv = s.infra.inventory;
+      const alloc = inv.allocations.find((a) => a.id === allocationId);
+      if (!alloc) return s;
+      const items = inv.items.map((i) =>
+        i.id === alloc.itemId ? { ...i, deployed: Math.max(0, i.deployed - alloc.qty) } : i,
+      );
+      return {
+        infra: {
+          ...s.infra,
+          inventory: { items, allocations: inv.allocations.filter((a) => a.id !== allocationId) },
+        },
+      };
+    }),
+
+  setAssetRepair: (itemId, qty) =>
+    set((s) => {
+      const inv = s.infra.inventory;
+      const item = inv.items.find((i) => i.id === itemId);
+      if (!item) return s;
+      const next = Math.max(0, Math.min(qty, item.total - item.deployed));
+      return {
+        infra: {
+          ...s.infra,
+          inventory: { ...inv, items: inv.items.map((i) => (i.id === itemId ? { ...i, inRepair: next } : i)) },
+        },
+      };
+    }),
+
+  // ── Rack simulator ─────────────────────────────────────────────────────────
+
+  rackMountDevice: (assetItemId, uStart) =>
+    set((s) => {
+      const inv = s.infra.inventory;
+      const rack = s.infra.rack;
+      const item = inv.items.find((i) => i.id === assetItemId);
+      if (!item || !item.deviceKind || availableOf(item) < 1) return s;
+      const uSize = item.uSize ?? 1;
+      if (!canMount(rack, uStart, uSize)) return s;
+
+      const seq = rack.devices.filter((d) => d.kind === item.deviceKind).length + 1;
+      const shortName = (k: string) => ({ server: "SRV", switch: "SW", router: "RTR", firewall: "FW", "patch-panel": "PP", ups: "UPS", pdu: "PDU" }[k] ?? "DEV");
+      const name = `${shortName(item.deviceKind)}-${String(seq).padStart(2, "0")}`;
+
+      const device: RackDevice = {
+        id: `rd-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        kind: item.deviceKind,
+        name,
+        assetItemId,
+        uStart,
+        uSize,
+        // Data ports plus a PSU inlet; power distribution units expose outlets.
+        ports:
+          item.deviceKind === "ups" || item.deviceKind === "pdu"
+            ? Array.from({ length: 8 }, (_, i) => `out${i + 1}`)
+            : [
+                ...(item.deviceKind === "switch" || item.deviceKind === "router"
+                  ? Array.from({ length: 8 }, (_, i) => `gi0/${i + 1}`)
+                  : item.deviceKind === "patch-panel"
+                    ? Array.from({ length: 8 }, (_, i) => `p${i + 1}`)
+                    : ["eth0", "eth1"]),
+                "psu",
+              ],
+        switchConfig:
+          item.deviceKind === "switch" || item.deviceKind === "router"
+            ? {
+                hostname: name,
+                vlans: [1],
+                interfaces: Array.from({ length: 8 }, (_, i) => ({ name: `gi0/${i + 1}`, accessVlan: null, up: true })),
+              }
+            : undefined,
+        serverConfig:
+          item.deviceKind === "server"
+            ? { hostname: name, ipv4: "", netmask: "255.255.255.0", gateway: "", services: { web: false, dns: false } }
+            : undefined,
+      };
+
+      return {
+        infra: {
+          ...s.infra,
+          inventory: { ...inv, items: inv.items.map((i) => (i.id === assetItemId ? { ...i, deployed: i.deployed + 1 } : i)) },
+          rack: { ...rack, devices: [...rack.devices, device] },
+        },
+      };
+    }),
+
+  rackRemoveDevice: (deviceId) =>
+    set((s) => {
+      const rack = s.infra.rack;
+      const dev = rack.devices.find((d) => d.id === deviceId);
+      if (!dev) return s;
+      // Returning a device also reclaims every cable attached to it.
+      const freed = rack.cables.filter((c) => c.fromDeviceId === deviceId || c.toDeviceId === deviceId);
+      let items = s.infra.inventory.items.map((i) =>
+        i.id === dev.assetItemId ? { ...i, deployed: Math.max(0, i.deployed - 1) } : i,
+      );
+      for (const c of freed) {
+        const sku = c.kind === "power" ? "sku-power-c13" : "sku-rj45-3m";
+        items = items.map((i) => (i.id === sku ? { ...i, deployed: Math.max(0, i.deployed - 1) } : i));
+      }
+      return {
+        infra: {
+          ...s.infra,
+          inventory: { ...s.infra.inventory, items },
+          rack: {
+            ...rack,
+            devices: rack.devices.filter((d) => d.id !== deviceId),
+            cables: rack.cables.filter((c) => c.fromDeviceId !== deviceId && c.toDeviceId !== deviceId),
+          },
+        },
+      };
+    }),
+
+  rackConnectCable: (cable) =>
+    set((s) => {
+      const rack = s.infra.rack;
+      const inv = s.infra.inventory;
+      if (cable.fromDeviceId === cable.toDeviceId) return s;
+      // A port can only carry one cable of a given kind.
+      const taken = rack.cables.some(
+        (c) =>
+          c.kind === cable.kind &&
+          ((c.fromDeviceId === cable.fromDeviceId && c.fromPort === cable.fromPort) ||
+            (c.toDeviceId === cable.fromDeviceId && c.toPort === cable.fromPort) ||
+            (c.fromDeviceId === cable.toDeviceId && c.fromPort === cable.toPort) ||
+            (c.toDeviceId === cable.toDeviceId && c.toPort === cable.toPort)),
+      );
+      if (taken) return s;
+
+      const sku = cable.kind === "power" ? "sku-power-c13" : "sku-rj45-3m";
+      const stock = inv.items.find((i) => i.id === sku);
+      if (!stock || availableOf(stock) < 1) return s; // out of cable
+
+      return {
+        infra: {
+          ...s.infra,
+          inventory: { ...inv, items: inv.items.map((i) => (i.id === sku ? { ...i, deployed: i.deployed + 1 } : i)) },
+          rack: {
+            ...rack,
+            cables: [...rack.cables, { ...cable, id: `cb-${Date.now()}-${Math.floor(Math.random() * 1000)}` }],
+          },
+        },
+      };
+    }),
+
+  rackDisconnectCable: (cableId) =>
+    set((s) => {
+      const rack = s.infra.rack;
+      const cable = rack.cables.find((c) => c.id === cableId);
+      if (!cable) return s;
+      const sku = cable.kind === "power" ? "sku-power-c13" : "sku-rj45-3m";
+      return {
+        infra: {
+          ...s.infra,
+          inventory: {
+            ...s.infra.inventory,
+            items: s.infra.inventory.items.map((i) =>
+              i.id === sku ? { ...i, deployed: Math.max(0, i.deployed - 1) } : i,
+            ),
+          },
+          rack: { ...rack, cables: rack.cables.filter((c) => c.id !== cableId) },
+        },
+      };
+    }),
+
+  rackUpdateSwitch: (deviceId, patch) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        rack: {
+          ...s.infra.rack,
+          devices: s.infra.rack.devices.map((d) =>
+            d.id === deviceId && d.switchConfig ? { ...d, switchConfig: { ...d.switchConfig, ...patch } } : d,
+          ),
+        },
+      },
+    })),
+
+  rackUpdateServer: (deviceId, patch) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        rack: {
+          ...s.infra.rack,
+          devices: s.infra.rack.devices.map((d) =>
+            d.id === deviceId && d.serverConfig ? { ...d, serverConfig: { ...d.serverConfig, ...patch } } : d,
+          ),
+        },
+      },
+    })),
+
+  rackRunPing: (fromId, toId) => {
+    const rack = get().infra.rack;
+    const a = rack.devices.find((d) => d.id === fromId);
+    const b = rack.devices.find((d) => d.id === toId);
+    const res = pingCheck(rack, fromId, toId);
+    const entry: NetworkTestResult = {
+      id: `t-${Date.now()}`,
+      at: Date.now(),
+      fromName: a?.name ?? fromId,
+      toName: b?.name ?? toId,
+      ok: res.ok,
+      detail: res.detail,
+    };
+    set((s) => ({
+      infra: { ...s.infra, rack: { ...s.infra.rack, tests: [entry, ...s.infra.rack.tests].slice(0, 25) } },
+    }));
+    return entry;
+  },
 
   completeHardwareReplacement: (nodeId) =>
     set((s) => {

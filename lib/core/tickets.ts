@@ -54,6 +54,15 @@ export interface TicketDynamicContext {
   targetGroup?: string;
   /** Department (and its groups) the operator must move the account OUT of. */
   fromDepartment?: string;
+  // ── Rack & network lab ──
+  /** Static IPv4 the operator must configure on the racked server. */
+  rackIpv4?: string;
+  /** Subnet mask required alongside `rackIpv4`. */
+  rackNetmask?: string;
+  /** VLAN id that must exist and be assigned on the switch. */
+  rackVlanId?: number;
+  /** Switch interface that must carry `rackVlanId`. */
+  rackPort?: string;
 }
 
 export type TicketStatus =

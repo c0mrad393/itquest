@@ -45,6 +45,7 @@ import {
 } from "@/lib/core";
 import { chance, int, mulberry32, pick, sample, shuffle, type Rng } from "./rng";
 import { COMPANY_PARTS, DEPARTMENTS, FIRST_NAMES, LAST_NAMES } from "./namegen";
+import { createInventory, createRack } from "@/lib/inventory/seed";
 
 const now = Date.now();
 const DAY = 86_400_000;
@@ -995,6 +996,8 @@ export function generateWorld(seed: number): InfrastructureState {
       onboardingComplete: false,
       hardwareReplaced: [],
     },
+    inventory: createInventory(),
+    rack: createRack(),
     loadedAt: now,
   };
 }
