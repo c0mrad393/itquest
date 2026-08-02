@@ -21,6 +21,8 @@ import type { Session, User } from "@supabase/supabase-js";
 import { getSupabase, isSupabaseConfigured } from "./supabase";
 import { loadSave, setSaveScope } from "@/lib/persistence/save";
 import type { AuthStatus, UserProfile } from "@/lib/core";
+import { GOD_MODE_USERNAME, GOD_MODE_XP, isGodMode } from "@/lib/host/god-mode";
+import { levelForXp } from "@/lib/scenario/scoring";
 
 const GUEST_FLAG = "triageos-guest";
 
@@ -41,6 +43,17 @@ const GUEST_DEFAULTS: UserProfile = {
  * MUST be called after setSaveScope("guest").
  */
 function guestProfile(): UserProfile {
+  // God Mode overrides the guest identity outright: its whole point is that
+  // nothing is progression-locked, and applyProfileToHost would otherwise write
+  // the ordinary guest XP/level straight over the QA seed.
+  if (isGodMode()) {
+    return {
+      ...GUEST_DEFAULTS,
+      username: GOD_MODE_USERNAME,
+      xp: GOD_MODE_XP,
+      level: levelForXp(GOD_MODE_XP),
+    };
+  }
   const saved = loadSave()?.user;
   if (!saved) return GUEST_DEFAULTS;
   return {

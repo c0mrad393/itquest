@@ -14,6 +14,7 @@
  */
 
 import { createSeedVM } from "@/lib/vm/seed";
+import { isGodMode } from "@/lib/host/god-mode";
 import {
   SCALE_META,
   SECTOR_META,
@@ -407,7 +408,13 @@ function generateProfile(seed: number, rng: Rng): OrganizationProfile {
   const sector = pick(rng, Object.keys(SECTOR_META) as Sector[]);
   const parts = COMPANY_PARTS[sector];
   const name = `${pick(rng, parts.pre)} ${pick(rng, parts.post)}`;
-  const scale = pick(rng, ["small", "midmarket", "enterprise"] as OrgScale[]);
+  // God Mode always builds the largest topology. Many ticket templates bind to
+  // roles a small org never generates (database replica, web-server cluster, …)
+  // and would silently drop out of the queue — which defeats a QA profile whose
+  // whole point is that every scenario is reachable.
+  const scale = isGodMode()
+    ? "enterprise"
+    : pick(rng, ["small", "midmarket", "enterprise"] as OrgScale[]);
   const slug = name.split(" ")[0].toLowerCase();
   return {
     id: `org-${seed.toString(16)}`,

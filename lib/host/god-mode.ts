@@ -31,13 +31,21 @@ export function isGodMode(): boolean {
   }
 }
 
-export function setGodMode(on: boolean): void {
+/**
+ * Flip the flag. Returns true when the mode actually CHANGED — callers use that
+ * to wipe the save slot, because a God Mode world (every template at once) and
+ * a normal world are not interchangeable in either direction.
+ */
+export function setGodMode(on: boolean): boolean {
+  const changed = isGodMode() !== on;
   try {
     if (on) localStorage.setItem(KEY, "1");
     else localStorage.removeItem(KEY);
   } catch {
     /* storage unavailable — QA mode simply stays off */
+    return false;
   }
+  return changed;
 }
 
 /** Expose a tiny console handle for testers. */

@@ -11,9 +11,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { setGodMode } from "@/lib/host/god-mode";
-import { clearSave } from "@/lib/persistence/save";
+import { clearSave, setSaveScope } from "@/lib/persistence/save";
 import { useAuthStore } from "@/lib/auth/store";
 import { isSupabaseConfigured } from "@/lib/auth/supabase";
+import { IconX } from "@/components/ui/icons";
 
 type Mode = "signin" | "signup";
 
@@ -38,16 +39,27 @@ export default function AuthModal({ open, onClose }: { open: boolean; onClose: (
     if (ok) router.push("/desktop");
   }
 
-  function qaTester() {
-    // Sticky per browser; the ticket factory and host seed read it on boot.
-    setGodMode(true);
-    clearSave();
+  /**
+   * Both local-session entry points share one shape: flip the QA flag, wipe the
+   * guest slot if the mode changed (a God Mode world and a normal world can't be
+   * loaded into each other), sign in, and land on the desktop.
+   */
+  function localSession(godMode: boolean) {
+    const changed = setGodMode(godMode);
+    // Scope the wipe explicitly — continueAsGuest builds its profile from the
+    // save it finds, so the slot has to be cleared before it runs.
+    setSaveScope("guest");
+    if (changed) clearSave();
     continueAsGuest();
-  }
 
-  function guest() {
-    setGodMode(false);
-    continueAsGuest();
+    if (changed) {
+      // The infra store builds its world at MODULE INIT (generateWorld runs in
+      // the store initializer), which already happened on this landing page —
+      // before the flag flipped. A client-side push would carry that stale
+      // world over, so a mode change needs a real page load to rebuild it.
+      window.location.assign("/desktop");
+      return;
+    }
     router.push("/desktop");
   }
 
@@ -66,7 +78,7 @@ export default function AuthModal({ open, onClose }: { open: boolean; onClose: (
           aria-label="Close"
           className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-md text-gray-500 hover:bg-edge hover:text-gray-200"
         >
-          ✕
+          <IconX size={14} />
         </button>
 
         <div className="mb-5 text-center">
@@ -165,14 +177,17 @@ export default function AuthModal({ open, onClose }: { open: boolean; onClose: (
             </div>
           )}
           <div>
-            <button onClick={guest} className="text-gray-400 hover:text-gray-200 hover:underline">
+            <button
+              onClick={() => localSession(false)}
+              className="text-gray-400 hover:text-gray-200 hover:underline"
+            >
               Continue as Guest (local session)
             </button>
           </div>
           {/* QA profile: every ticket unlocked, progression bypassed. */}
           <div>
             <button
-              onClick={qaTester}
+              onClick={() => localSession(true)}
               title="Loads every ticket at once and bypasses XP progression"
               className="rounded border border-amber-500/40 px-2 py-1 text-[11px] text-amber-300 hover:bg-amber-500/10"
             >
