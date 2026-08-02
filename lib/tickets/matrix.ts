@@ -376,7 +376,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     },
     title: (ctx) => `${ctx.targetHostname} crashing — out-of-memory, needs RAM upgrade`,
     description: (ctx) =>
-      `A developer on ${ctx.targetHostname} keeps hitting hard crashes under load — the box is out of memory and 8GB isn't enough for their build tooling. Provision a 32GB memory upgrade in the Hardware Lab, image the unit, and dispatch a field team for the physical swap.`,
+      `User request:\nA developer says **${ctx.targetHostname} keeps crashing** whenever they run a build.\n\nWhat we found:\n• The box only has 8GB and is sitting at 98% memory\n• Their build tooling needs far more headroom\n\nObjective:\n• Fit a **32GB memory upgrade** and re-image the unit\n• Dispatch a field tech to swap it on the user's desk`,
     requester: (_ctx, org) => ({ name: "Devan Rao", role: "Software Engineer", email: `devan.rao@${mailDomain(org)}`, department: "IT" }),
     injectFault: (infra, ctx) => {
       const n = infra.nodes[ctx.targetNodeId as NodeId];
@@ -412,7 +412,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     },
     title: (ctx) => `Disk array I/O failure on ${ctx.targetHostname} (/dev/sdb)`,
     description: (ctx) =>
-      `${ctx.targetHostname} is logging I/O errors on the storage array — the drive at /dev/sdb has a hardware fault and the array is degraded. Provision a hot-swap replacement drive in the Hardware Lab and dispatch a field team to swap it in rack 4B before the array loses redundancy.`,
+      `Alert:\n**${ctx.targetHostname}** is logging I/O errors on its storage array.\n\nWhat we found:\n• The drive at **/dev/sdb** has a hardware fault\n• The array is degraded and has lost redundancy cover\n\nObjective:\n• Hot-swap in a replacement enterprise drive\n• Dispatch a field tech to rack 4B — do this before a second drive goes`,
     requester: (_ctx, org) => ({ name: "Marcus Feld", role: "Infrastructure Engineer", email: `marcus.feld@${mailDomain(org)}`, department: "IT" }),
     injectFault: (infra, ctx) => {
       const n = infra.nodes[ctx.targetNodeId as NodeId];
@@ -488,7 +488,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     },
     title: (ctx) => `${ctx.targetHostname} — "trust relationship failed", user can't log in`,
     description: (ctx) =>
-      `A user reports ${ctx.targetHostname} is powered on but rejects their domain login with "The trust relationship between this workstation and the primary domain failed." The machine's secure channel to AD is broken. Boot the unit in the Hardware Lab, remove it from the domain, and rejoin triageos.corp with the deployment domain-admin account to bring it back online.`,
+      `User request:\n"My PC is on but it won't let me log in — it says **the trust relationship failed**."\n\nWhat we found:\n• **${ctx.targetHostname}**'s secure channel to Active Directory is broken\n• Its machine password is out of sync with the domain\n\nObjective:\n• **Unjoin** the machine from the domain\n• **Rejoin** triageos.corp using the deployment domain-admin credential`,
     requester: (_ctx, org) => ({ name: "Tara Coles", role: "Front Desk", email: `tara.coles@${mailDomain(org)}`, department: "Facilities" }),
     injectFault: (infra, ctx) => {
       const n = infra.nodes[ctx.targetNodeId as NodeId];
@@ -528,7 +528,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     },
     title: (ctx) => `${ctx.targetHostname} — "Missing Operating System" at boot`,
     description: (ctx) =>
-      `${ctx.targetHostname} powers on to a black screen reading 'Missing Operating System'. The boot order drifted to PXE and the EFI System Partition is damaged — the Windows install itself and the user's data are intact. Enter BIOS to fix the boot order, then rebuild ONLY the EFI partition in the Imaging Suite (do not wipe the data drive) and dispatch a tech.`,
+      `User request:\n"My PC won't start — it just says **Missing Operating System**."\n\nWhat we found:\n• Boot order has drifted to PXE (network) instead of the disk\n• The EFI System Partition is damaged\n• **The Windows install and the user's data are intact**\n\nObjective:\n• Fix the boot order in BIOS\n• Rebuild **only the EFI partition** — do not wipe the data drive\n• Dispatch a tech to return the unit`,
     requester: (_ctx, org) => ({ name: "Tara Coles", role: "Front Desk", email: `tara.coles@${mailDomain(org)}`, department: "Facilities" }),
     injectFault: (infra, ctx) => { const n = infra.nodes[ctx.targetNodeId as NodeId]; if (n) n.health.status = "degraded"; },
     win: (infra, ctx) => infra.security.hardwareReplaced.includes(ctx.targetNodeId as NodeId),
@@ -563,7 +563,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     },
     title: (ctx) => `VIP build — provision the CEO's new ultra-light laptop (${ctx.targetHostname})`,
     description: (ctx) =>
-      `The CEO's replacement ultra-light (${ctx.targetHostname}) needs a full white-glove build for tomorrow. In the Hardware Lab: disconnect the battery ribbon, seat the NVMe SSD, reconnect and fasten the tiny screws. Enable Secure Boot in BIOS, image with strict EFI/MSR/NTFS partitioning, join the domain, and dispatch for hand-delivery.`,
+      `User request:\nThe CEO needs their **new ultra-light laptop ready for tomorrow** — white-glove build.\n\nObjective:\n• Disconnect the battery ribbon before opening the chassis (safety)\n• Fit the **NVMe SSD**, reconnect the battery and fasten the screws\n• Enable **Secure Boot** (required for Windows 11)\n• Partition **EFI → MSR → NTFS**, then join the domain\n• Dispatch for hand-delivery`,
     requester: (_ctx, org) => ({ name: "Marcus Feld", role: "Executive Support", email: `marcus.feld@${mailDomain(org)}`, department: "IT" }),
     injectFault: (infra, ctx) => { const n = infra.nodes[ctx.targetNodeId as NodeId]; if (n) { n.health.status = "critical"; n.connection.online = false; } },
     win: (infra, ctx) => infra.security.hardwareReplaced.includes(ctx.targetNodeId as NodeId),
@@ -598,7 +598,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     },
     title: (ctx) => `${ctx.targetHostname} compromised by ransomware — wipe & reimage`,
     description: (ctx) =>
-      `EDR quarantined ${ctx.targetHostname} after a ransomware detonation. The hardware is fine but the OS is untrustworthy — do NOT recover in place. In the Imaging Suite, wipe and re-create the partition table (EFI/MSR/NTFS), lay down a clean Windows image, re-join the domain, and dispatch it back.`,
+      `Security alert:\nEDR has quarantined **${ctx.targetHostname}** after a ransomware detonation.\n\nWhat we found:\n• The hardware is healthy — only the OS is compromised\n• **Do not attempt to clean it in place.** The machine gets flattened\n\nObjective:\n• Wipe and re-create the partition table (**EFI / MSR / NTFS**)\n• Lay down a clean Windows image and re-join the domain\n• Dispatch the rebuilt machine back to the user`,
     requester: (_ctx, org) => ({ name: "Tara Coles", role: "Front Desk", email: `tara.coles@${mailDomain(org)}`, department: "Facilities" }),
     injectFault: (infra, ctx) => { const n = infra.nodes[ctx.targetNodeId as NodeId]; if (n) { n.health.status = "critical"; n.connection.online = false; } },
     win: (infra, ctx) => infra.security.hardwareReplaced.includes(ctx.targetNodeId as NodeId),
@@ -633,7 +633,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     },
     title: (ctx) => `${ctx.targetHostname} won't power on — motherboard failure, board swap`,
     description: (ctx) =>
-      `A developer's workstation (${ctx.targetHostname}) is completely dead — the motherboard failed (no POST). Swap the board in the Hardware Lab: re-seat the RAM and route the 24-pin ATX and 8-pin CPU power cables. The replacement board defaults to PXE, so fix the boot order in BIOS, then do a fresh OS install (partition, static IP, domain join) and dispatch.`,
+      `User request:\n"My workstation is **completely dead** — no lights, no POST."\n\nWhat we found:\n• The motherboard has failed and needs replacing\n\nObjective:\n• Re-seat the RAM on the new board\n• Route the **24-pin ATX** and **8-pin CPU** power cables\n• The replacement board ships defaulting to PXE — set boot order to **Disk**\n• Fresh OS install: partition, static IP, domain join, then dispatch`,
     requester: (_ctx, org) => ({ name: "Marcus Feld", role: "Infrastructure Engineer", email: `marcus.feld@${mailDomain(org)}`, department: "IT" }),
     injectFault: (infra, ctx) => { const n = infra.nodes[ctx.targetNodeId as NodeId]; if (n) { n.health.status = "critical"; n.connection.online = false; } },
     win: (infra, ctx) => infra.security.hardwareReplaced.includes(ctx.targetNodeId as NodeId),
@@ -666,7 +666,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     },
     title: (ctx) => `Storage failure on web node ${ctx.targetHostname} — rack rebuild`,
     description: (ctx) =>
-      `The rack node ${ctx.targetHostname} dropped both drives in its storage array and fell out of the load-balancer pool. Rebuild it in the Hardware Lab: slide out the tray, pull the air baffle, hot-swap the two failed NVMe drives and route the backplane cables. In BIOS set SATA to RAID and build a RAID 1 mirror, then lay down the Linux image (EFI + ext4) with a static IP and dispatch a tech to rack 4B.`,
+      `Alert:\n**${ctx.targetHostname}** dropped both drives and fell out of the load-balancer pool.\n\nObjective:\n• Slide out the rack tray and remove the air baffle\n• Hot-swap **both failed NVMe drives** and route the backplane cables\n• In BIOS: set SATA mode to **RAID** and build a **RAID 1** mirror\n• Image with Linux (**EFI + ext4**) and set the static IP\n• Dispatch a tech to rack 4B`,
     requester: (_ctx, org) => ({ name: "Marcus Feld", role: "Site Reliability Engineer", email: `marcus.feld@${mailDomain(org)}`, department: "IT" }),
     injectFault: (infra, ctx) => { const n = infra.nodes[ctx.targetNodeId as NodeId]; if (n) { n.health.status = "critical"; n.connection.online = false; } },
     win: (infra, ctx) => infra.security.hardwareReplaced.includes(ctx.targetNodeId as NodeId),
@@ -698,7 +698,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     makeContext: () => ({ rackVlanId: 20, rackPort: "gi0/3" }),
     title: (ctx) => `Configure the Sales VLAN (${ctx.rackVlanId}) on the core switch`,
     description: (ctx) =>
-      `Sales are moving to their own broadcast domain. In the Rack & Network Lab, make sure a switch is racked and powered from the UPS/PDU, then open its console and create VLAN ${ctx.rackVlanId}. Put port ${ctx.rackPort} into that VLAN as an access port and leave it administratively up.\n\nCLI: enable → conf t → vlan ${ctx.rackVlanId} → interface ${ctx.rackPort} → switchport access vlan ${ctx.rackVlanId} → no shutdown`,
+      `Request from Networks:\nSales are moving onto **their own broadcast domain**.\n\nObjective:\n• Make sure a switch is racked and **powered from the UPS/PDU**\n• Create **VLAN ${ctx.rackVlanId}** on the switch\n• Put port **${ctx.rackPort}** into that VLAN as an access port, left up\n\nCLI:\nenable → conf t → vlan ${ctx.rackVlanId} → interface ${ctx.rackPort} → switchport access vlan ${ctx.rackVlanId} → no shutdown`,
     requester: (_ctx, org) => ({ name: "Marcus Feld", role: "Network Engineer", email: `marcus.feld@${mailDomain(org)}`, department: "IT" }),
     win: (infra, ctx) => {
       const vlan = Number(ctx.rackVlanId);
@@ -737,7 +737,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     makeContext: () => ({ rackIpv4: "10.20.30.10", rackNetmask: "255.255.255.0" }),
     title: (ctx) => `Provision the new web server in Rack A (${ctx.rackIpv4})`,
     description: (ctx) =>
-      `The new customer-facing web server needs building out in Rack A end to end.\n\n• Rack a UPS or PDU, a switch, and two rack servers (the new web host plus the app host it must talk to).\n• Power every device from the UPS/PDU and patch both servers into the switch.\n• Address the web server as ${ctx.rackIpv4} / ${ctx.rackNetmask} and give the second server another address in the same subnet.\n• Start the web service on the new host.\n• Prove it with the Ping tool — the ticket closes only when a test between the two servers succeeds.`,
+      `Project request:\nBuild out the **new customer-facing web server** in Rack A, end to end.\n\nHardware:\n• Rack a **UPS or PDU**, a **switch**, and **two servers** (the web host plus the app host it talks to)\n• Power every device from the UPS/PDU\n• Patch both servers into the switch\n\nConfiguration:\n• Address the web server as **${ctx.rackIpv4} / ${ctx.rackNetmask}**\n• Give the second server another address **in the same subnet**\n• Start the **web service** on the new host\n\nSign-off:\n• Prove it with the **Ping tool** — the ticket only closes on a successful test`,
     requester: (_ctx, org) => ({ name: "Marcus Feld", role: "Site Reliability Engineer", email: `marcus.feld@${mailDomain(org)}`, department: "IT" }),
     win: (infra, ctx) => {
       const rack = infra.rack;
@@ -794,7 +794,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     },
     title: (ctx) => `Password reset — ${ctx.targetUserName} is locked out`,
     description: (ctx) =>
-      `${ctx.targetUserName} (${ctx.targetUserId}, ${ctx.department}) can't sign in — they've forgotten their password and tripped the lockout threshold. Open Active Directory Users and Computers on ${ctx.targetHostname}, find the account and reset the password to the temporary value below, ticking "User must change password at next logon" so they set their own on first sign-in.\n\nTemporary password: ${ctx.tempPassword}`,
+      `User request:\n"I've forgotten my password and now I'm **locked out**." — ${ctx.targetUserName} (${ctx.department})\n\nAccount:\n• Logon name: **${ctx.targetUserId}**\n• Domain controller: ${ctx.targetHostname}\n\nObjective:\n• Reset the password to **${ctx.tempPassword}**\n• Tick **"User must change password at next logon"** so they pick their own\n• Resetting also clears the lockout`,
     requester: (ctx, org) => ({
       name: ctx.targetUserName ?? "Staff User", role: "Employee",
       email: `${ctx.targetUserId}@${mailDomain(org)}`, department: ctx.department ?? "Operations",
@@ -851,7 +851,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     },
     title: (ctx) => `Onboard new Marketing hire — ${ctx.newUserName} starts Monday`,
     description: (ctx) =>
-      `${ctx.newUserName} joins Marketing on Monday and needs a domain account before their first day. On ${ctx.targetHostname}, open Active Directory Users and Computers and create the user:\n\n• Name: ${ctx.newUserName}\n• Logon name: ${ctx.newUserSam}\n• OU: Marketing\n• Job title: ${ctx.targetTitle}\n• Set an initial password (tick "must change at next logon")\n• Add to the ${ctx.targetGroup} security group so they can reach the Marketing share.`,
+      `User request:\nHR: "**${ctx.newUserName}** starts in Marketing on Monday and needs an account before day one."\n\nCreate this account:\n• Full name: **${ctx.newUserName}**\n• Logon name: **${ctx.newUserSam}**\n• OU: **Marketing**\n• Job title: **${ctx.targetTitle}**\n• Set an initial password and tick "must change at next logon"\n• Add to **${ctx.targetGroup}** so they can reach the Marketing share`,
     requester: (_ctx, org) => ({ name: "Marcus Feld", role: "People Ops Partner", email: `marcus.feld@${mailDomain(org)}`, department: "HR" }),
     win: (infra, ctx) => {
       const u = findPrimaryDC(infra)?.activeDirectory?.users.find(
@@ -908,7 +908,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     },
     title: (ctx) => `Department transfer — ${ctx.targetUserName} moves from Sales to IT`,
     description: (ctx) =>
-      `${ctx.targetUserName} (${ctx.targetUserId}) transfers from ${ctx.fromDepartment} to the IT team effective today, and their access needs to follow. On ${ctx.targetHostname}, open Active Directory Users and Computers and update the account:\n\n• Department: IT (job title: ${ctx.targetTitle})\n• Remove the old Sales groups (Sales and Sales_RW) — they must not keep sales pipeline access\n• Add the IT and ${ctx.targetGroup} security groups.`,
+      `User request:\nHR: "**${ctx.targetUserName}** moves from ${ctx.fromDepartment} to IT today — please move their access."\n\nAccount: **${ctx.targetUserId}**\n\nObjective:\n• Set department to **IT** and job title to **${ctx.targetTitle}**\n• **Remove** the old groups: Sales and Sales_RW (no lingering pipeline access)\n• **Add** the new groups: IT and **${ctx.targetGroup}**`,
     requester: (_ctx, org) => ({ name: "Marcus Feld", role: "People Ops Partner", email: `marcus.feld@${mailDomain(org)}`, department: "HR" }),
     win: (infra, ctx) => {
       const u = findPrimaryDC(infra)?.activeDirectory?.users.find((x) => x.samAccountName === ctx.targetUserId);

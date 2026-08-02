@@ -143,5 +143,7 @@ export interface Ticket {
 
   /** Base XP awarded on clean, in-SLA resolution (modified by performance). */
   xpReward: number;
+  /** Step-by-step resolution guidance, rendered as the ticket checklist. */
+  hints?: string[];
   escalationCount: number;
 }

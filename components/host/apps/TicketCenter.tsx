@@ -21,6 +21,7 @@ import {
   relativeTime,
   slaSnapshot,
 } from "@/lib/host/ticket-ui";
+import TicketBrief from "./TicketBrief";
 
 const SEVERITIES: (TicketSeverity | "all")[] = ["all", "low", "medium", "high", "critical"];
 const CATEGORIES: (TicketCategory | "all")[] = [
@@ -265,7 +266,7 @@ function TicketDetail({ ticket }: { ticket: Ticket }) {
       </Field>
 
       <Field label="Description">
-        <p className="whitespace-pre-wrap leading-relaxed text-gray-300">{ticket.description}</p>
+        <TicketBrief ticket={ticket} />
       </Field>
 
       <Field label="Affected nodes">
