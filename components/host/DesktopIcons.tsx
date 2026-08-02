@@ -3,17 +3,36 @@
 /**
  * TriageOS — Desktop icons
  * ------------------------
- * Top-left icon column for apps flagged `showOnDesktop` in HOST_APP_REGISTRY.
- * Single-click selects; double-click launches (Windows behavior).
+ * Snap-to-grid icon field for apps flagged `showOnDesktop`. Icons flow down a
+ * fixed-height row grid and wrap into a new column when they run out of
+ * vertical space — like a real desktop, so nothing is ever clipped.
+ *
+ * Single-click selects, double-click launches. Sits at z-10: below the windows
+ * layer (z-20) but above the wallpaper, and the windows layer is
+ * pointer-events-none so clicks reach these icons on empty desktop.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { HOST_APP_REGISTRY, type HostAppDescriptor, type HostAppId } from "@/lib/core";
 import { useHostStore } from "@/lib/host/store";
+
+const CELL_H = 92; // px per grid row
+const TASKBAR_H = 48;
+const PAD = 16;
 
 export default function DesktopIcons() {
   const openApp = useHostStore((s) => s.openApp);
   const [selected, setSelected] = useState<HostAppId | null>(null);
+  const [rows, setRows] = useState(6);
+
+  // Recompute how many icons fit per column so the grid always snaps cleanly.
+  useEffect(() => {
+    const calc = () =>
+      setRows(Math.max(3, Math.floor((window.innerHeight - TASKBAR_H - PAD * 2) / CELL_H)));
+    calc();
+    window.addEventListener("resize", calc);
+    return () => window.removeEventListener("resize", calc);
+  }, []);
 
   const desktopApps = (Object.values(HOST_APP_REGISTRY) as HostAppDescriptor[]).filter(
     (a) => a.showOnDesktop,
@@ -21,7 +40,8 @@ export default function DesktopIcons() {
 
   return (
     <div
-      className="absolute left-2 top-2 z-0 flex flex-col gap-1"
+      className="absolute left-2 top-2 z-10 grid grid-flow-col justify-start gap-x-1"
+      style={{ gridTemplateRows: `repeat(${rows}, ${CELL_H}px)` }}
       onClick={() => setSelected(null)}
     >
       {desktopApps.map((app) => (
@@ -32,12 +52,15 @@ export default function DesktopIcons() {
             setSelected(app.id);
           }}
           onDoubleClick={() => openApp(app.id)}
-          className={`flex w-20 flex-col items-center gap-1 rounded p-2 text-center transition ${
+          title={`${app.title} — double-click to open`}
+          className={`flex w-20 flex-col items-center justify-start gap-1 rounded p-2 text-center transition ${
             selected === app.id ? "bg-info/25 ring-1 ring-info/40" : "hover:bg-white/10"
           }`}
         >
-          <span className="text-3xl drop-shadow">{app.icon}</span>
-          <span className="text-[10px] leading-tight text-gray-100 drop-shadow">
+          <span className="flex h-9 items-center justify-center text-3xl leading-none drop-shadow">
+            {app.icon}
+          </span>
+          <span className="line-clamp-2 text-[10px] leading-tight text-gray-100 drop-shadow">
             {app.title}
           </span>
         </button>

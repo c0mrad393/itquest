@@ -19,6 +19,7 @@ import SlaEngine from "./SlaEngine";
 import NetworkEngine from "./NetworkEngine";
 import PersistenceManager from "./PersistenceManager";
 import HardwareDispatchEngine from "./HardwareDispatchEngine";
+import { ToastHost } from "./Notifications";
 
 export default function HostDesktop() {
   const windows = useHostStore((s) => s.windows);
@@ -47,7 +48,10 @@ export default function HostDesktop() {
       <DesktopIcons />
 
       {/* Windows layer */}
-      <div className="absolute inset-0 bottom-12">
+      {/* Windows layer. `pointer-events-none` so empty desktop space stays
+          clickable (each WindowFrame re-enables events for itself) — otherwise
+          this full-size div swallows every click meant for the icons below. */}
+      <div className="pointer-events-none absolute inset-0 bottom-12 z-20">
         {windows.map((win) => (
           <WindowFrame key={win.instanceId} win={win} />
         ))}
@@ -55,6 +59,9 @@ export default function HostDesktop() {
 
       {/* Start menu (renders above windows, below taskbar) */}
       <StartMenu />
+
+      {/* Toast stack (above the taskbar, below nothing) */}
+      <ToastHost />
 
       {/* Taskbar */}
       <Taskbar />

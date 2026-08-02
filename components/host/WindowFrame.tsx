@@ -14,8 +14,6 @@ import type { ManagedWindow } from "@/lib/host/windows";
 import { renderHostApp } from "./app-registry";
 import RemoteSession from "./remote/RemoteSession";
 
-const TASKBAR_H = 48;
-
 export default function WindowFrame({ win }: { win: ManagedWindow }) {
   const { focus, close, minimize, toggleMaximize, move } = useHostStore();
   const drag = useRef<{ dx: number; dy: number } | null>(null);
@@ -23,8 +21,11 @@ export default function WindowFrame({ win }: { win: ManagedWindow }) {
   if (win.mode === "minimized") return null;
 
   const maximized = win.mode === "maximized";
+  // The windows layer is already inset above the taskbar (see HostDesktop), so a
+  // maximized window fills it exactly — subtracting the taskbar again here is
+  // what used to leave a gap along the bottom edge.
   const rect = maximized
-    ? { left: 0, top: 0, width: "100%", height: `calc(100% - ${TASKBAR_H}px)` }
+    ? { left: 0, top: 0, width: "100%", height: "100%" }
     : { left: win.x, top: win.y, width: win.w, height: win.h };
 
   function onPointerDown(e: React.PointerEvent) {
@@ -44,7 +45,7 @@ export default function WindowFrame({ win }: { win: ManagedWindow }) {
 
   return (
     <div
-      className="absolute flex flex-col overflow-hidden border border-edge bg-panel shadow-2xl shadow-black/60"
+      className="pointer-events-auto absolute flex flex-col overflow-hidden border border-edge bg-panel shadow-2xl shadow-black/60"
       style={{ ...rect, zIndex: win.z, borderRadius: maximized ? 0 : 10 }}
       onMouseDown={() => focus(win.instanceId)}
     >
