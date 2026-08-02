@@ -15,6 +15,7 @@
 import type { InfrastructureState, Ticket } from "@/lib/core";
 import { mulberry32, shuffle, type Rng } from "@/lib/org/rng";
 import { TICKET_TEMPLATES, type EmailBeat, type TicketTemplate } from "./matrix";
+import { isGodMode } from "@/lib/host/god-mode";
 
 let ticketSeq = 4820;
 
@@ -29,7 +30,8 @@ export function buildTicket(
 
   const org = infra.org;
   const code = `TCK-${ticketSeq++}`;
-  const mailOnly = template.origin === "mail";
+  // God Mode surfaces mail-only tickets straight onto the ITSM board.
+  const mailOnly = template.origin === "mail" && !isGodMode();
 
   const ticket: Ticket = {
     id: `t-${template.id}-${code}`,
@@ -57,6 +59,7 @@ export function buildTicket(
     createdAt: Date.now() - 1000 * 60 * (template.difficulty === "Tier_3_Hard" ? 4 : 12),
     tags: template.tags,
     xpReward: template.xpReward,
+    hints: template.hints,
     escalationCount: 0,
   };
 
@@ -88,12 +91,16 @@ export function generateTicketQueue(infra: InfrastructureState): GeneratedQueue 
   const byTier = (tier: string) =>
     Object.values(TICKET_TEMPLATES).filter((t) => t.difficulty === tier);
 
-  // Guaranteed spread: all four Tier-1s + 2 Tier-2s + 2 Tier-3s.
-  const chosen: TicketTemplate[] = [
-    ...byTier("Tier_1_Easy"),
-    ...shuffle(rng, byTier("Tier_2_Medium")).slice(0, 2),
-    ...shuffle(rng, byTier("Tier_3_Hard")).slice(0, 2),
-  ];
+  // God Mode (QA): every template at once so any ticket can be tested without
+  // playing through the tiers. Normal play gets the curated starter spread:
+  // all Tier-1s + 2 Tier-2s + 2 Tier-3s.
+  const chosen: TicketTemplate[] = isGodMode()
+    ? Object.values(TICKET_TEMPLATES)
+    : [
+        ...byTier("Tier_1_Easy"),
+        ...shuffle(rng, byTier("Tier_2_Medium")).slice(0, 2),
+        ...shuffle(rng, byTier("Tier_3_Hard")).slice(0, 2),
+      ];
 
   const tickets: Ticket[] = [];
   const emailThreads: Record<string, EmailBeat[]> = {};

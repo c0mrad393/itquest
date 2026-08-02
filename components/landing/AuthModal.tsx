@@ -10,6 +10,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { setGodMode } from "@/lib/host/god-mode";
+import { clearSave } from "@/lib/persistence/save";
 import { useAuthStore } from "@/lib/auth/store";
 import { isSupabaseConfigured } from "@/lib/auth/supabase";
 
@@ -36,7 +38,15 @@ export default function AuthModal({ open, onClose }: { open: boolean; onClose: (
     if (ok) router.push("/desktop");
   }
 
+  function qaTester() {
+    // Sticky per browser; the ticket factory and host seed read it on boot.
+    setGodMode(true);
+    clearSave();
+    continueAsGuest();
+  }
+
   function guest() {
+    setGodMode(false);
     continueAsGuest();
     router.push("/desktop");
   }
@@ -157,6 +167,16 @@ export default function AuthModal({ open, onClose }: { open: boolean; onClose: (
           <div>
             <button onClick={guest} className="text-gray-400 hover:text-gray-200 hover:underline">
               Continue as Guest (local session)
+            </button>
+          </div>
+          {/* QA profile: every ticket unlocked, progression bypassed. */}
+          <div>
+            <button
+              onClick={qaTester}
+              title="Loads every ticket at once and bypasses XP progression"
+              className="rounded border border-amber-500/40 px-2 py-1 text-[11px] text-amber-300 hover:bg-amber-500/10"
+            >
+              Continue as QA Tester (God Mode)
             </button>
           </div>
         </div>

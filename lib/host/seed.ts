@@ -6,16 +6,28 @@
  */
 
 import type { HostWorkstationState } from "@/lib/core";
+import { GOD_MODE_USERNAME, GOD_MODE_XP, isGodMode } from "./god-mode";
+import { levelForXp } from "@/lib/scenario/scoring";
 
 export function createHostWorkstation(): HostWorkstationState {
+  // God Mode (QA) starts fully progressed so nothing is level-gated.
+  const god = isGodMode();
   return {
-    user: {
-      displayName: "O. Kharebashvili",
-      role: "Tier-2 Systems Engineer",
-      avatar: "🧑‍💻",
-      level: 4,
-      xp: 6420,
-    },
+    user: god
+      ? {
+          displayName: GOD_MODE_USERNAME,
+          role: "QA / Test Engineer",
+          avatar: "\u{1F9EA}",
+          level: levelForXp(GOD_MODE_XP),
+          xp: GOD_MODE_XP,
+        }
+      : {
+          displayName: "O. Kharebashvili",
+          role: "Tier-2 Systems Engineer",
+          avatar: "\u{1F9D1}\u200D\u{1F4BB}",
+          level: 4,
+          xp: 6420,
+        },
     wallpaper: "bloom",
     clock24h: true,
     tray: { networkConnected: true, volume: 65, notifications: 3 },
