@@ -37,12 +37,16 @@ export default function ImagingSuite({
   onFault: () => void;
   onComplete: () => void;
 }) {
-  const seq: Phase[] =
-    spec.mode === "repair"
-      ? ["unjoin", "domain"]
-      : (["partition", "applying", "network", "domain"] as Phase[]).filter(
-          (p) => p === "partition" || p === "applying" || spec.phases.includes(p as "network" | "domain"),
-        );
+  const seq: Phase[] = [];
+  if (spec.phases.includes("partition")) {
+    seq.push("partition");
+    if (spec.mode === "install") seq.push("applying"); // repair rebuilds a partition without re-imaging
+  }
+  if (spec.phases.includes("network")) seq.push("network");
+  if (spec.phases.includes("domain")) {
+    if (spec.mode === "repair") seq.push("unjoin");
+    seq.push("domain");
+  }
   const [i, setI] = useState(0);
   const phase = seq[i] ?? "done";
   function next() { setI((n) => Math.min(n + 1, seq.length)); }

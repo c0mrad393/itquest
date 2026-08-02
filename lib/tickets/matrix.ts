@@ -497,6 +497,181 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     healthyNode: (_infra, ctx) => ctx.targetNodeId,
   },
 
+  // ── Hardware Lab v2 · expanded provisioning pool ───────────────────────────
+
+  "sw-v2-efi-repair": {
+    id: "sw-v2-efi-repair",
+    category: "System & Web Services",
+    difficulty: "Tier_1_Easy",
+    track: "helpdesk",
+    severity: "medium",
+    priority: "P3",
+    slaDuration: 20 * 60,
+    responseSeconds: 5 * 60,
+    xpReward: 200,
+    personaId: "persona-tara-calm",
+    tags: ["boot", "efi", "bcd"],
+    origin: "dashboard",
+    summary: "A workstation boots to 'Missing Operating System'.",
+    hints: [
+      "Hardware Lab → BIOS: the boot order points at the network, set it to Disk",
+      "Imaging Suite → rebuild ONLY the EFI System Partition (don't wipe the data drive)",
+      "Dispatch a tech to return the unit",
+    ],
+    playable: true,
+    makeContext: (infra, rng) => {
+      const ws = Object.values(infra.nodes).filter((n) => n.os === "windows" && n.role === "workstation");
+      if (ws.length === 0) return null;
+      const n = ws[int(rng, 0, ws.length - 1)];
+      return { targetNodeId: n.nodeId, targetHostname: n.hostname };
+    },
+    title: (ctx) => `${ctx.targetHostname} — "Missing Operating System" at boot`,
+    description: (ctx) =>
+      `${ctx.targetHostname} powers on to a black screen reading 'Missing Operating System'. The boot order drifted to PXE and the EFI System Partition is damaged — the Windows install itself and the user's data are intact. Enter BIOS to fix the boot order, then rebuild ONLY the EFI partition in the Imaging Suite (do not wipe the data drive) and dispatch a tech.`,
+    requester: (_ctx, org) => ({ name: "Tara Coles", role: "Front Desk", email: `tara.coles@${mailDomain(org)}`, department: "Facilities" }),
+    injectFault: (infra, ctx) => { const n = infra.nodes[ctx.targetNodeId as NodeId]; if (n) n.health.status = "degraded"; },
+    win: (infra, ctx) => infra.security.hardwareReplaced.includes(ctx.targetNodeId as NodeId),
+    healthyNode: (_infra, ctx) => ctx.targetNodeId,
+  },
+
+  "hw-v2-ceo-laptop": {
+    id: "hw-v2-ceo-laptop",
+    category: "System & Web Services",
+    difficulty: "Tier_2_Medium",
+    track: "helpdesk",
+    severity: "high",
+    priority: "P2",
+    slaDuration: 40 * 60,
+    responseSeconds: 10 * 60,
+    xpReward: 400,
+    personaId: "persona-marcus-calm",
+    tags: ["hardware", "laptop", "vip", "provisioning"],
+    origin: "dashboard",
+    summary: "The CEO needs a new ultra-light laptop provisioned.",
+    hints: [
+      "Hardware Lab → Laptop: disconnect the battery, install the NVMe SSD, reconnect",
+      "BIOS: Secure Boot ON for Windows 11",
+      "Image with strict EFI/MSR/NTFS partitioning, then Domain Join",
+    ],
+    playable: true,
+    makeContext: (infra, rng) => {
+      const ws = Object.values(infra.nodes).filter((n) => n.os === "windows" && n.role === "workstation");
+      if (ws.length === 0) return null;
+      const n = ws[int(rng, 0, ws.length - 1)];
+      return { targetNodeId: n.nodeId, targetHostname: n.hostname };
+    },
+    title: (ctx) => `VIP build — provision the CEO's new ultra-light laptop (${ctx.targetHostname})`,
+    description: (ctx) =>
+      `The CEO's replacement ultra-light (${ctx.targetHostname}) needs a full white-glove build for tomorrow. In the Hardware Lab: disconnect the battery ribbon, seat the NVMe SSD, reconnect and fasten the tiny screws. Enable Secure Boot in BIOS, image with strict EFI/MSR/NTFS partitioning, join the domain, and dispatch for hand-delivery.`,
+    requester: (_ctx, org) => ({ name: "Marcus Feld", role: "Executive Support", email: `marcus.feld@${mailDomain(org)}`, department: "IT" }),
+    injectFault: (infra, ctx) => { const n = infra.nodes[ctx.targetNodeId as NodeId]; if (n) { n.health.status = "critical"; n.connection.online = false; } },
+    win: (infra, ctx) => infra.security.hardwareReplaced.includes(ctx.targetNodeId as NodeId),
+    healthyNode: (_infra, ctx) => ctx.targetNodeId,
+  },
+
+  "sw-v2-ransomware-wipe": {
+    id: "sw-v2-ransomware-wipe",
+    category: "Security & Incident",
+    difficulty: "Tier_2_Medium",
+    track: "secops",
+    severity: "high",
+    priority: "P1",
+    slaDuration: 35 * 60,
+    responseSeconds: 8 * 60,
+    xpReward: 420,
+    personaId: "persona-tara-calm",
+    tags: ["ransomware", "reimage", "wipe"],
+    origin: "dashboard",
+    summary: "A ransomware-infected workstation must be wiped and reimaged.",
+    hints: [
+      "No hardware swap — the disk is fine, the OS is compromised",
+      "Imaging Suite → wipe: re-create EFI/MSR/NTFS from scratch, then image",
+      "Re-join the domain and dispatch the clean unit",
+    ],
+    playable: true,
+    makeContext: (infra, rng) => {
+      const ws = Object.values(infra.nodes).filter((n) => n.os === "windows" && n.role === "workstation");
+      if (ws.length === 0) return null;
+      const n = ws[int(rng, 0, ws.length - 1)];
+      return { targetNodeId: n.nodeId, targetHostname: n.hostname };
+    },
+    title: (ctx) => `${ctx.targetHostname} compromised by ransomware — wipe & reimage`,
+    description: (ctx) =>
+      `EDR quarantined ${ctx.targetHostname} after a ransomware detonation. The hardware is fine but the OS is untrustworthy — do NOT recover in place. In the Imaging Suite, wipe and re-create the partition table (EFI/MSR/NTFS), lay down a clean Windows image, re-join the domain, and dispatch it back.`,
+    requester: (_ctx, org) => ({ name: "Tara Coles", role: "Front Desk", email: `tara.coles@${mailDomain(org)}`, department: "Facilities" }),
+    injectFault: (infra, ctx) => { const n = infra.nodes[ctx.targetNodeId as NodeId]; if (n) { n.health.status = "critical"; n.connection.online = false; } },
+    win: (infra, ctx) => infra.security.hardwareReplaced.includes(ctx.targetNodeId as NodeId),
+    healthyNode: (_infra, ctx) => ctx.targetNodeId,
+  },
+
+  "hw-v2-mobo-swap": {
+    id: "hw-v2-mobo-swap",
+    category: "System & Web Services",
+    difficulty: "Tier_3_Hard",
+    track: "helpdesk",
+    severity: "high",
+    priority: "P2",
+    slaDuration: 50 * 60,
+    responseSeconds: 12 * 60,
+    xpReward: 540,
+    personaId: "persona-marcus-calm",
+    tags: ["hardware", "motherboard", "cabling", "rebuild"],
+    origin: "dashboard",
+    summary: "A dev workstation's motherboard is dead — full board swap.",
+    hints: [
+      "Hardware Lab → re-seat RAM and route the ATX + CPU power cables",
+      "BIOS: the new board defaults to PXE — set boot order to Disk",
+      "Fresh OS install: partition, static IP, domain join",
+    ],
+    playable: true,
+    makeContext: (infra, rng) => {
+      const ws = Object.values(infra.nodes).filter((n) => n.os === "windows" && n.role === "workstation");
+      if (ws.length === 0) return null;
+      const n = ws[int(rng, 0, ws.length - 1)];
+      return { targetNodeId: n.nodeId, targetHostname: n.hostname };
+    },
+    title: (ctx) => `${ctx.targetHostname} won't power on — motherboard failure, board swap`,
+    description: (ctx) =>
+      `A developer's workstation (${ctx.targetHostname}) is completely dead — the motherboard failed (no POST). Swap the board in the Hardware Lab: re-seat the RAM and route the 24-pin ATX and 8-pin CPU power cables. The replacement board defaults to PXE, so fix the boot order in BIOS, then do a fresh OS install (partition, static IP, domain join) and dispatch.`,
+    requester: (_ctx, org) => ({ name: "Marcus Feld", role: "Infrastructure Engineer", email: `marcus.feld@${mailDomain(org)}`, department: "IT" }),
+    injectFault: (infra, ctx) => { const n = infra.nodes[ctx.targetNodeId as NodeId]; if (n) { n.health.status = "critical"; n.connection.online = false; } },
+    win: (infra, ctx) => infra.security.hardwareReplaced.includes(ctx.targetNodeId as NodeId),
+    healthyNode: (_infra, ctx) => ctx.targetNodeId,
+  },
+
+  "hw-v2-web-node-crash": {
+    id: "hw-v2-web-node-crash",
+    category: "System & Web Services",
+    difficulty: "Tier_3_Hard",
+    track: "netops",
+    severity: "critical",
+    priority: "P1",
+    slaDuration: 55 * 60,
+    responseSeconds: 12 * 60,
+    xpReward: 600,
+    personaId: "persona-marcus-calm",
+    tags: ["hardware", "server", "raid", "storage", "linux"],
+    origin: "dashboard",
+    summary: "A web-server rack node lost its storage array — full rebuild.",
+    hints: [
+      "Hardware Lab → Server: extract the rack tray, remove the baffle, swap 2× NVMe",
+      "Route both backplane cables; BIOS: RAID mode + build a RAID 1 mirror",
+      "Linux image: partition EFI + ext4, set the static IP",
+    ],
+    playable: true,
+    makeContext: (infra) => {
+      const web = Object.values(infra.nodes).find((n) => n.role === "web-server");
+      return web ? { targetNodeId: web.nodeId, targetHostname: web.hostname } : null;
+    },
+    title: (ctx) => `Storage failure on web node ${ctx.targetHostname} — rack rebuild`,
+    description: (ctx) =>
+      `The rack node ${ctx.targetHostname} dropped both drives in its storage array and fell out of the load-balancer pool. Rebuild it in the Hardware Lab: slide out the tray, pull the air baffle, hot-swap the two failed NVMe drives and route the backplane cables. In BIOS set SATA to RAID and build a RAID 1 mirror, then lay down the Linux image (EFI + ext4) with a static IP and dispatch a tech to rack 4B.`,
+    requester: (_ctx, org) => ({ name: "Marcus Feld", role: "Site Reliability Engineer", email: `marcus.feld@${mailDomain(org)}`, department: "IT" }),
+    injectFault: (infra, ctx) => { const n = infra.nodes[ctx.targetNodeId as NodeId]; if (n) { n.health.status = "critical"; n.connection.online = false; } },
+    win: (infra, ctx) => infra.security.hardwareReplaced.includes(ctx.targetNodeId as NodeId),
+    healthyNode: (_infra, ctx) => ctx.targetNodeId,
+  },
+
   "net-t3-dns": {
     id: "net-t3-dns",
     category: "Network & Routing",

@@ -95,7 +95,11 @@ export const STOCK_INVENTORY: Record<ComponentKind, StockItem[]> = {
     { id: "hdd-2", kind: "hdd", label: "2TB Enterprise SAS", spec: "Hot-swap · 12Gb/s" },
     { id: "hdd-nvme", kind: "hdd", label: "1TB NVMe SSD", spec: "M.2 · not hot-swap" },
   ],
-  ssd: [{ id: "ssd-1", kind: "ssd", label: "1TB NVMe SSD", spec: "M.2 Gen4" }],
+  ssd: [
+    { id: "ssd-500", kind: "ssd", label: "500GB SATA SSD", spec: "Consumer" },
+    { id: "ssd-1", kind: "ssd", label: "1TB NVMe SSD", spec: "M.2 Gen4" },
+    { id: "ssd-2", kind: "ssd", label: "2TB Enterprise NVMe", spec: "U.2 · mixed-use" },
+  ],
   psu: [{ id: "psu-1", kind: "psu", label: "750W Platinum", spec: "Redundant" }],
   gpu: [{ id: "gpu-1", kind: "gpu", label: "Pro GPU 16GB", spec: "Workstation" }],
   nic: [{ id: "nic-1", kind: "nic", label: "10GbE NIC", spec: "Dual-port" }],
@@ -144,12 +148,42 @@ export function jobForTicket(t: Ctx): HardwareJob | null {
         stages: ["imaging"],
         imaging: { os: "windows", phases: ["domain"], requiredPartitions: [], mode: "repair" },
       };
-    case "laptop-battery": // reserved archetype demo
+    case "hw-v2-ceo-laptop":
       return {
         ...base,
-        stages: ["assembly", "imaging"],
-        assembly: { archetype: "laptop", defective: "psu", replacementLabel: "750W Platinum", count: 1, battery: true, baffle: false, screws: 6, cabling: [] },
-        imaging: { os: "windows", phases: ["network", "domain"], requiredPartitions: [], mode: "repair" },
+        stages: ["assembly", "bios", "imaging"],
+        assembly: { archetype: "laptop", defective: "ssd", replacementLabel: "1TB NVMe SSD", count: 1, battery: true, baffle: false, screws: 6, cabling: [] },
+        bios: { requireSecureBoot: true, requireBootOrder: "Disk" },
+        imaging: { os: "windows", phases: ["partition", "domain"], requiredPartitions: ["EFI", "MSR", "WINDOWS"], mode: "install" },
+      };
+    case "hw-v2-web-node-crash":
+      return {
+        ...base,
+        stages: ["assembly", "bios", "imaging"],
+        assembly: { archetype: "server", defective: "ssd", replacementLabel: "2TB Enterprise NVMe", count: 2, battery: false, baffle: true, screws: 4, cabling: [{ from: "NVMe-A", to: "Backplane-1" }, { from: "NVMe-B", to: "Backplane-2" }] },
+        bios: { requireSataMode: "RAID", requireRaid: "RAID1" },
+        imaging: { os: "linux", phases: ["partition", "network"], requiredPartitions: ["EFI", "LINUX"], mode: "install" },
+      };
+    case "sw-v2-ransomware-wipe":
+      return {
+        ...base,
+        stages: ["imaging"],
+        imaging: { os: "windows", phases: ["partition", "domain"], requiredPartitions: ["EFI", "MSR", "WINDOWS"], mode: "install" },
+      };
+    case "hw-v2-mobo-swap":
+      return {
+        ...base,
+        stages: ["assembly", "bios", "imaging"],
+        assembly: { archetype: "desktop", defective: "ram", replacementLabel: "32GB DDR5", count: 1, battery: false, baffle: false, screws: 4, cabling: [{ from: "24pin-ATX", to: "Board-PWR" }, { from: "CPU-8pin", to: "Board-CPU" }] },
+        bios: { requireBootOrder: "Disk" },
+        imaging: { os: "windows", phases: ["partition", "network", "domain"], requiredPartitions: ["EFI", "MSR", "WINDOWS"], mode: "install" },
+      };
+    case "sw-v2-efi-repair":
+      return {
+        ...base,
+        stages: ["bios", "imaging"],
+        bios: { requireBootOrder: "Disk" },
+        imaging: { os: "windows", phases: ["partition"], requiredPartitions: ["EFI"], mode: "repair" },
       };
     default:
       return null;
