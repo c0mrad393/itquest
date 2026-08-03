@@ -13,6 +13,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
+import { playCue } from "@/lib/audio/engine";
 
 type Mode = "user" | "priv" | "config" | "config-if" | "config-vlan";
 
@@ -46,7 +47,12 @@ export default function SwitchCli({ deviceId }: { deviceId: string }) {
     mode === "config-if" ? `${host}(config-if)#` :
     `${host}(config-vlan)#`;
 
-  function out(...l: string[]) { setLines((prev) => [...prev, ...l]); }
+  function out(...l: string[]) {
+    // Cisco prefixes every rejection with "%", so one hook here covers every
+    // validation path in the interpreter rather than eight call sites.
+    if (l.some((x) => x.startsWith("%"))) playCue("error");
+    setLines((prev) => [...prev, ...l]);
+  }
 
   function run(raw: string) {
     const cmd = raw.trim();

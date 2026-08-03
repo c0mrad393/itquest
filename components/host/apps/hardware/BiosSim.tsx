@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from "react";
 import type { BiosSpec } from "@/lib/hardware/types";
+import { playCue } from "@/lib/audio/engine";
 
 type Screen = "post" | "no-boot" | "setup";
 
@@ -36,7 +37,7 @@ export default function BiosSim({ spec, onComplete }: { spec: BiosSpec; onComple
     if (spec.requireSataMode && sataMode !== spec.requireSataMode) missing.push(`SATA Mode must be ${spec.requireSataMode}`);
     if (spec.requireBootOrder && bootOrder !== spec.requireBootOrder) missing.push(`First boot device must be ${spec.requireBootOrder}`);
     if (spec.requireRaid && !raidCreated) missing.push(`A ${spec.requireRaid} volume must be created`);
-    if (missing.length) { setError(missing); return; }
+    if (missing.length) { playCue("error"); setError(missing); return; }
     onComplete();
   }
 

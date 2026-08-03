@@ -28,6 +28,8 @@ export default function SettingsApp() {
   const infra = useInfraStore((s) => s.infra);
   const wallpaper = useHostStore((s) => s.host.wallpaper);
   const setWallpaper = useHostStore((s) => s.setWallpaper);
+  const soundEnabled = useHostStore((s) => s.host.soundEnabled);
+  const setSoundEnabled = useHostStore((s) => s.setSoundEnabled);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [lastSaved, setLastSaved] = useState<number | null>(() =>
     typeof window === "undefined" ? null : savedAt(),
@@ -71,7 +73,28 @@ export default function SettingsApp() {
       {/* Personalization */}
       <Section title="Personalization">
         <div className="mb-3 text-[11px] leading-relaxed text-gray-500">
-          Desktop background. Applies immediately and is saved with your session.
+          Sound and appearance. Both apply immediately and are saved with your session.
+        </div>
+        <label className="mb-4 flex cursor-pointer items-center gap-3 rounded-lg border border-edge bg-panel/60 px-3 py-2.5">
+          <span className={soundEnabled ? "text-info" : "text-gray-600"}>
+            <AppIcon id={soundEnabled ? "activity" : "ban"} size={16} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[12px] font-medium text-gray-200">System sounds</span>
+            <span className="block text-[10px] text-gray-500">
+              Synthesised UI cues for windows, alerts and resolutions.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={soundEnabled}
+            onChange={(e) => setSoundEnabled(e.target.checked)}
+            className="h-4 w-4 shrink-0 accent-info"
+          />
+        </label>
+
+        <div className="mb-1.5 text-[10px] uppercase tracking-wider text-gray-600">
+          Desktop background
         </div>
         {(["gradient", "solid", "pattern"] as const).map((family) => (
           <div key={family} className="mb-3 last:mb-0">

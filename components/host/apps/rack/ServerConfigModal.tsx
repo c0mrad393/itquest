@@ -10,6 +10,7 @@ import { useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
 import { isPowered, isValidIpv4, uplinkOf } from "@/lib/core";
 import { IconAlert, IconCheck, IconLink, IconPower } from "@/components/ui/icons";
+import { playCue } from "@/lib/audio/engine";
 
 export default function ServerConfigModal({ deviceId }: { deviceId: string }) {
   const rack = useInfraStore((s) => s.infra.rack);
@@ -30,9 +31,9 @@ export default function ServerConfigModal({ deviceId }: { deviceId: string }) {
   const link = uplinkOf(rack, device.id);
 
   function apply() {
-    if (ipv4 && !isValidIpv4(ipv4)) { setErr("IPv4 address is not valid."); return; }
-    if (netmask && !isValidIpv4(netmask)) { setErr("Subnet mask is not valid."); return; }
-    if (gateway && !isValidIpv4(gateway)) { setErr("Default gateway is not valid."); return; }
+    if (ipv4 && !isValidIpv4(ipv4)) { playCue("error"); setErr("IPv4 address is not valid."); return; }
+    if (netmask && !isValidIpv4(netmask)) { playCue("error"); setErr("Subnet mask is not valid."); return; }
+    if (gateway && !isValidIpv4(gateway)) { playCue("error"); setErr("Default gateway is not valid."); return; }
     update(deviceId, { hostname: hostname.trim() || cfg!.hostname, ipv4: ipv4.trim(), netmask: netmask.trim(), gateway: gateway.trim() });
     setErr(null); setSaved(true);
     setTimeout(() => setSaved(false), 1800);

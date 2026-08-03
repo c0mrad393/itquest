@@ -19,6 +19,7 @@ export type HostAppId =
   | "assetmanager" // Hardware inventory / store room
   | "racklab" // Server rack & network infrastructure simulator
   | "netops" // Network topology console (link optimization)
+  | "monitor" // Infrastructure metrics dashboard (observability)
   | "wiki" // Company Wiki / intranet documentation portal
   | "toolbox" // Per-ticket runbooks — QA/debug only, see `godModeOnly`
   | "leaderboard" // Global ranking
@@ -201,6 +202,18 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     pinnedToTaskbar: true,
     showOnDesktop: true,
   },
+  monitor: {
+    id: "monitor",
+    title: "Monitor",
+    iconId: "activity",
+    category: "work",
+    description: "Live infrastructure telemetry: CPU, memory and network per host.",
+    defaultSize: { w: 1040, h: 680 },
+    minSize: { w: 700, h: 480 },
+    singleton: true,
+    pinnedToTaskbar: true,
+    showOnDesktop: true,
+  },
   gateway: {
     id: "gateway",
     title: "Remote Gateway",
@@ -349,6 +362,8 @@ export interface SystemTrayState {
 export interface HostWorkstationState {
   user: HostUser;
   wallpaper: string; // asset key / gradient id
+  /** Personalization: master switch for the synthesised UI sound cues. */
+  soundEnabled: boolean;
   clock24h: boolean;
   tray: SystemTrayState;
 }

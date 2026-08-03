@@ -22,12 +22,13 @@ import { useDialogueStore } from "@/lib/dialogue/store";
 import { useSlaStore } from "@/lib/sla/store";
 import { useMailStore, type MailMessage } from "@/lib/mail/store";
 import { useHostStore } from "@/lib/host/store";
+import { setAudioEnabled } from "@/lib/audio/engine";
 import type { HostUser, InfrastructureState, Ticket } from "@/lib/core";
 import type { Conversation } from "@/lib/dialogue/types";
 import type { EmailBeat } from "@/lib/tickets/matrix";
 
 const BASE_KEY = "triageos-save";
-const VERSION = 13;
+const VERSION = 14;
 
 /**
  * Save-slot scope (per-account saves). Set by the auth layer BEFORE the
@@ -58,6 +59,8 @@ export interface PersistedState {
   user: HostUser;
   /** Personalization — desktop wallpaper id (see lib/host/wallpapers.ts). */
   wallpaper: string;
+  /** Personalization — UI sound cues on/off. */
+  soundEnabled: boolean;
 }
 
 /** Snapshot every persistent store. */
@@ -75,6 +78,7 @@ export function capture(): PersistedState {
     mailThreads: useTicketStore.getState().mailThreads,
     user: useHostStore.getState().host.user,
     wallpaper: useHostStore.getState().host.wallpaper,
+    soundEnabled: useHostStore.getState().host.soundEnabled,
   };
 }
 
@@ -107,8 +111,16 @@ export function applySave(s: PersistedState): void {
   useSlaStore.setState({ warned: s.slaWarned, breached: s.slaBreached });
   if (s.mail) useMailStore.setState({ messages: s.mail });
   useHostStore.setState((st) => ({
-    host: { ...st.host, user: s.user, wallpaper: s.wallpaper ?? st.host.wallpaper },
+    host: {
+      ...st.host,
+      user: s.user,
+      wallpaper: s.wallpaper ?? st.host.wallpaper,
+      soundEnabled: s.soundEnabled ?? st.host.soundEnabled,
+    },
   }));
+  // The audio engine caches the flag so playCue() stays a plain call — push the
+  // hydrated preference into it or a muted session comes back unmuted.
+  setAudioEnabled(useHostStore.getState().host.soundEnabled);
 }
 
 export function savedAt(): number | null {

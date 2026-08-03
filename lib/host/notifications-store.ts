@@ -9,6 +9,7 @@
  */
 
 import { create } from "zustand";
+import { playCue } from "@/lib/audio/engine";
 
 export type NotificationKind = "success" | "info" | "warning";
 
@@ -44,6 +45,10 @@ export const useNotificationStore = create<NotificationState>((set) => ({
     const id = `ntf-${Date.now()}-${++seq}`;
     const entry: AppNotification = { ...n, id, at: Date.now(), read: false };
     set((s) => ({ items: [entry, ...s.items].slice(0, 50), toasts: [...s.toasts, id] }));
+    // Cue fires with the state change, so it lands on the toast's slide-in
+    // frame rather than trailing it. A resolution gets the reward arpeggio;
+    // everything else gets the discreet two-tone chime.
+    playCue(n.kind === "success" ? "success" : "notify");
     // Auto-dismiss the toast; the entry stays in the Action Center.
     setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t !== id) })), 6000);
   },

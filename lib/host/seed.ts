@@ -29,6 +29,7 @@ export function createHostWorkstation(): HostWorkstationState {
           xp: 6420,
         },
     wallpaper: "bloom",
+    soundEnabled: true,
     clock24h: true,
     tray: { networkConnected: true, volume: 65, notifications: 3 },
   };

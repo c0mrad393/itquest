@@ -19,6 +19,7 @@ import SlaEngine from "./SlaEngine";
 import NetworkEngine from "./NetworkEngine";
 import PersistenceManager from "./PersistenceManager";
 import HardwareDispatchEngine from "./HardwareDispatchEngine";
+import TelemetryEngine from "./TelemetryEngine";
 import { ToastHost } from "./Notifications";
 import { wallpaperById } from "@/lib/host/wallpapers";
 
@@ -50,6 +51,7 @@ export default function HostDesktop() {
       <SlaEngine />
       <NetworkEngine />
       <HardwareDispatchEngine />
+      <TelemetryEngine />
 
       {/* Desktop icons */}
       <DesktopIcons />

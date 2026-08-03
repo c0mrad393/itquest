@@ -20,6 +20,7 @@ import { createHostWorkstation } from "./seed";
 import type { HostWorkstationState } from "@/lib/core";
 import { levelForXp } from "@/lib/scenario/scoring";
 import { reportProgress } from "@/lib/auth/store";
+import { playCue, setAudioEnabled } from "@/lib/audio/engine";
 
 const DESKTOP_MARGIN = 16;
 const TASKBAR_H = 48;
@@ -52,6 +53,8 @@ interface HostStore {
   awardXp: (amount: number) => void;
   /** Personalization: set the desktop wallpaper (persisted with the save). */
   setWallpaper: (id: string) => void;
+  /** Personalization: master switch for UI sound cues (persisted). */
+  setSoundEnabled: (on: boolean) => void;
 }
 
 function centeredRect(w: number, h: number, offset: number): WindowRect {
@@ -99,6 +102,7 @@ export const useHostStore = create<HostStore>((set, get) => ({
       mode: "normal",
     };
     set((s) => ({ windows: [...s.windows, win], topZ: z, startMenuOpen: false }));
+    playCue("open");
   },
 
   openRemote: (nodeId, title, iconId, protocol) => {
@@ -116,10 +120,13 @@ export const useHostStore = create<HostStore>((set, get) => ({
       mode: "normal",
     };
     set((s) => ({ windows: [...s.windows, win], topZ: z, startMenuOpen: false }));
+    playCue("open");
   },
 
-  close: (instanceId) =>
-    set((s) => ({ windows: s.windows.filter((w) => w.instanceId !== instanceId) })),
+  close: (instanceId) => {
+    playCue("close");
+    set((s) => ({ windows: s.windows.filter((w) => w.instanceId !== instanceId) }));
+  },
 
   focus: (instanceId) =>
     set((s) => {
@@ -134,12 +141,14 @@ export const useHostStore = create<HostStore>((set, get) => ({
       };
     }),
 
-  minimize: (instanceId) =>
+  minimize: (instanceId) => {
+    playCue("minimize");
     set((s) => ({
       windows: s.windows.map((w) =>
         w.instanceId === instanceId ? { ...w, mode: "minimized" } : w,
       ),
-    })),
+    }));
+  },
 
   toggleMaximize: (instanceId) =>
     set((s) => {
@@ -225,4 +234,12 @@ export const useHostStore = create<HostStore>((set, get) => ({
   },
 
   setWallpaper: (id) => set((s) => ({ host: { ...s.host, wallpaper: id } })),
+
+  setSoundEnabled: (on) => {
+    // The engine holds its own flag so `playCue` stays a plain function call
+    // from anywhere, without every caller reaching into the store.
+    setAudioEnabled(on);
+    if (on) playCue("open"); // confirm the change audibly
+    set((s) => ({ host: { ...s.host, soundEnabled: on } }));
+  },
 }));

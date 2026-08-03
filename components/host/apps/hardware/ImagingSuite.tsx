@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import { LAB_ADMIN, LAB_DOMAIN, type ImagingSpec, type PartitionKind } from "@/lib/hardware/types";
 import { AppIcon } from "@/components/ui/app-icons";
+import { playCue } from "@/lib/audio/engine";
 
 export interface NetExpectation { ip: string; mask: string; gateway: string }
 
@@ -87,6 +88,7 @@ function PartitionManager({ required, os, onDone }: { required: PartitionKind[];
 
   function add(kind: PartitionKind) {
     if (kind !== nextNeeded) {
+      playCue("error");
       setErr(`Wrong order — ${os === "windows" ? "Windows" : "Linux"} needs ${required.map((r) => r).join(" → ")}. Create ${nextNeeded} next.`);
       setTimeout(() => setErr(null), 2200);
       return;
