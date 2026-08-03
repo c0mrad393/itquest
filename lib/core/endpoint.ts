@@ -10,6 +10,8 @@
  * so the endpoint environments render deterministically per user.
  */
 
+import type { HostAppIconId } from "./host";
+
 export type WallpaperKind =
   // Corporate branded solids-ish gradients
   | "corp-blue"
@@ -199,25 +201,25 @@ export const WALLPAPER_SIZE: Partial<Record<WallpaperKind, string>> = {
   "abstract-dots": "18px 18px, auto",
 };
 
-/** File-type → emoji glyph for desktop / explorer icons. */
-export const FILE_GLYPH: Record<string, string> = {
-  xlsx: "📊",
-  csv: "📈",
-  docx: "📄",
-  pdf: "📕",
-  pptx: "📙",
-  py: "🐍",
-  js: "📜",
-  sh: "🖥️",
-  txt: "📃",
-  zip: "🗜️",
-  png: "🖼️",
-  key: "🔑",
-  folder: "📁",
-  default: "📄",
+/** File-type → SVG icon key (see `AppIcon`). No emoji: keys only. */
+export const FILE_GLYPH: Record<string, HostAppIconId> = {
+  xlsx: "file-sheet",
+  csv: "file-chart",
+  docx: "file-text",
+  pdf: "file-pdf",
+  pptx: "file-slides",
+  py: "file-code",
+  js: "file-code",
+  sh: "terminal",
+  txt: "file-text",
+  zip: "file-zip",
+  png: "file-image",
+  key: "file-key",
+  folder: "folder",
+  default: "file-text",
 };
 
-export function fileGlyph(item: { kind: string; ext?: string }): string {
+export function fileGlyph(item: { kind: string; ext?: string }): HostAppIconId {
   if (item.kind === "folder") return FILE_GLYPH.folder;
   return FILE_GLYPH[item.ext ?? "default"] ?? FILE_GLYPH.default;
 }

@@ -13,6 +13,7 @@ import { useMemo, useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
 import { adAccountStatus, type ADUser, type TargetNode, type WindowsNodeState } from "@/lib/core";
 import EndpointSession from "../endpoints/EndpointSession";
+import { AppIcon } from "@/components/ui/app-icons";
 
 const PAGE_SIZE = 12;
 
@@ -104,7 +105,7 @@ export default function ADUCPanel({ nodeId }: { nodeId: string }) {
         </span>
         {lockedCount > 0 && (
           <span className="rounded-full bg-danger/15 px-2 py-0.5 text-[10px] font-semibold text-danger">
-            🔒 {lockedCount} locked
+            <AppIcon id="lock" size={12} /> {lockedCount} locked
           </span>
         )}
         <input
@@ -156,8 +157,9 @@ export default function ADUCPanel({ nodeId }: { nodeId: string }) {
                   }`}
                 >
                   <span className="min-w-0">
-                    <span className="block truncate text-gray-100">
-                      {u.locked ? "🔒 " : ""}{u.displayName}
+                    <span className="flex items-center gap-1 truncate text-gray-100">
+                      {u.locked && <AppIcon id="lock" size={11} />}
+                      {u.displayName}
                     </span>
                     <span className="block truncate font-mono text-[10px] text-gray-500">
                       {u.samAccountName} · {u.title}
@@ -220,9 +222,9 @@ export default function ADUCPanel({ nodeId }: { nodeId: string }) {
 }
 
 const OS_LABEL: Record<string, { name: string; protocol: string; icon: string }> = {
-  windows: { name: "Windows", protocol: "RDP", icon: "🪟" },
-  macos: { name: "macOS", protocol: "RDP", icon: "🍎" },
-  linux: { name: "Linux", protocol: "SSH", icon: "🐧" },
+  windows: { name: "Windows", protocol: "RDP", icon: "os-windows" },
+  macos: { name: "macOS", protocol: "RDP", icon: "os-macos" },
+  linux: { name: "Linux", protocol: "SSH", icon: "os-linux" },
 };
 
 function UserDetail({
@@ -245,7 +247,7 @@ function UserDetail({
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-center gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-full bg-info/20 text-xl">
-          {user.locked ? "🔒" : "👤"}
+          {user.locked ? "lock" : "user"}
         </div>
         <div className="min-w-0">
           <div className="truncate text-base font-semibold text-gray-50">{user.displayName}</div>
@@ -276,7 +278,7 @@ function UserDetail({
         {assignedNode ? (
           <>
             <div className="flex items-center gap-2">
-              <span className="text-lg">{osMeta?.icon ?? "🖥️"}</span>
+              <AppIcon id={osMeta?.icon ?? "monitor"} size={17} />
               <div className="min-w-0">
                 <div className="truncate text-xs text-gray-100">{assignedNode.hostname}</div>
                 <div className="truncate font-mono text-[10px] text-gray-500">
@@ -292,7 +294,7 @@ function UserDetail({
               disabled={!online}
               className="mt-3 flex w-full items-center justify-center gap-2 rounded-md bg-info px-3 py-2 text-xs font-semibold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500"
             >
-              🛰️ Remote Connect ({osMeta?.protocol ?? "RDP"})
+              <AppIcon id="monitor" size={13} /> Remote Connect ({osMeta?.protocol ?? "RDP"})
             </button>
           </>
         ) : (

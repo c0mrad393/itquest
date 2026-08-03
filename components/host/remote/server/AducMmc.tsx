@@ -17,13 +17,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
 import { adAccountStatus, type ADUser, type TargetNode, type WindowsNodeState } from "@/lib/core";
 import EndpointSession from "../endpoints/EndpointSession";
+import { AppIcon } from "@/components/ui/app-icons";
 
 type Row =
   | { kind: "user"; user: ADUser }
   | { kind: "computer"; name: string; os: string }
   | { kind: "group"; name: string; desc: string };
 
-const ICON = { user: "🧑‍💼", computer: "🖥️", group: "👥", ou: "📁", domain: "🌐", builtin: "🗂️" };
+const ICON = { user: "user", computer: "monitor", group: "users", ou: "folder", domain: "globe", builtin: "folder" };
 
 const BUILTIN_GROUPS = [
   { name: "Administrators", desc: "Administrators have complete and unrestricted access" },
@@ -100,21 +101,21 @@ export default function AducMmc({ nodeId }: { nodeId: string }) {
       {/* toolbar + action bar */}
       <div className="flex shrink-0 items-center gap-2 border-b border-[#d0d0d0] bg-[#eee] px-3 py-1 text-[13px] text-[#555]">
         <span title="Back">◀</span><span title="Forward">▶</span><span className="text-[#ccc]">|</span>
-        <span title="Up">⬆️</span><span title="Refresh">🔄</span><span className="text-[#ccc]">|</span>
+        <span title="Up"><AppIcon id="chevron-up" size={12} /></span><span title="Refresh"><AppIcon id="link" size={12} /></span><span className="text-[#ccc]">|</span>
         <ActionBtn label="New User" icon="➕" onClick={() => setDialog({ kind: "new", ou: currentOu || "Marketing" })} />
-        <ActionBtn label="Reset Password" icon="🔑" disabled={!selectedUser} onClick={() => selectedUser && setDialog({ kind: "reset", sam: selectedUser.samAccountName })} />
-        <ActionBtn label="Properties" icon="📄" disabled={!selectedUser} onClick={() => selectedUser && setDialog({ kind: "props", sam: selectedUser.samAccountName })} />
+        <ActionBtn label="Reset Password" icon="key" disabled={!selectedUser} onClick={() => selectedUser && setDialog({ kind: "reset", sam: selectedUser.samAccountName })} />
+        <ActionBtn label="Properties" icon="file-text" disabled={!selectedUser} onClick={() => selectedUser && setDialog({ kind: "props", sam: selectedUser.samAccountName })} />
         <span className="ml-auto text-[10px] text-[#888]">Console Root · Active Directory Users and Computers</span>
       </div>
 
       <div className="flex min-h-0 flex-1">
         {/* Console tree */}
         <div className="w-56 shrink-0 overflow-y-auto border-r border-[#d0d0d0] bg-white py-1">
-          <div className="flex items-center gap-1 px-2 py-0.5"><span>🗃️</span><span className="truncate">Active Directory Users and Computers [ {node.hostname} ]</span></div>
+          <div className="flex items-center gap-1 px-2 py-0.5"><AppIcon id="folder" size={12} /><span className="truncate">Active Directory Users and Computers [ {node.hostname} ]</span></div>
           <div className="flex items-center gap-1 py-0.5 pl-3"><span className="text-[9px] text-[#666]">▾</span><span>{ICON.domain}</span><span className="truncate">{ad.domainDns}</span></div>
           <TreeLeaf icon={ICON.builtin} label="Builtin" active={sel === "Builtin"} onClick={() => setSel("Builtin")} />
           <TreeLeaf icon={ICON.ou} label="Computers" active={sel === "Computers"} onClick={() => setSel("Computers")} />
-          <TreeLeaf icon="🧭" label="Domain Controllers" active={sel === "Domain Controllers"} onClick={() => setSel("Domain Controllers")} />
+          <TreeLeaf icon="compass" label="Domain Controllers" active={sel === "Domain Controllers"} onClick={() => setSel("Domain Controllers")} />
           <TreeLeaf icon={ICON.group} label="Groups" active={sel === "Groups"} onClick={() => setSel("Groups")} />
           <TreeLeaf icon={ICON.ou} label="Users" active={sel === "Users"} onClick={() => setSel("Users")} />
           {departments.map((d) => (
@@ -145,7 +146,7 @@ export default function AducMmc({ nodeId }: { nodeId: string }) {
       {/* Status bar */}
       <div className="flex shrink-0 items-center gap-3 border-t border-[#d0d0d0] bg-[#f3f3f3] px-3 py-0.5 text-[10px] text-[#666]">
         <span>{ad.users.length} users</span><span>{ad.computers.length} computers</span><span>{ad.groups.length} groups</span>
-        {ad.users.filter((u) => u.locked).length > 0 && <span className="text-red-600">🔒 {ad.users.filter((u) => u.locked).length} locked</span>}
+        {ad.users.filter((u) => u.locked).length > 0 && <span className="text-red-600"><AppIcon id="lock" size={12} /> {ad.users.filter((u) => u.locked).length} locked</span>}
       </div>
 
       {/* Context menu */}
@@ -212,7 +213,7 @@ function RowView({ row, selected, onSelect, onOpen, onContext }: {
         title="Double-click for Properties · right-click for actions"
         className={`grid w-full grid-cols-[1fr_130px_1fr] items-center gap-2 border-b border-[#f0f0f0] px-3 py-1 text-left ${selected ? "bg-[#cde0f4]" : "hover:bg-[#eef4fb]"}`}
       >
-        <span className="flex min-w-0 items-center gap-2"><span>{row.user.locked ? "🔒" : ICON.user}</span><span className="truncate">{row.user.displayName}</span></span>
+        <span className="flex min-w-0 items-center gap-2"><span>{row.user.locked ? "lock" : ICON.user}</span><span className="truncate">{row.user.displayName}</span></span>
         <span className="text-[#555]">User{status !== "Active" ? ` · ${status}` : ""}</span>
         <span className="truncate text-[#555]">{row.user.title}</span>
       </button>
@@ -237,7 +238,7 @@ function RowView({ row, selected, onSelect, onOpen, onContext }: {
 function TreeLeaf({ icon, label, active, onClick }: { icon: string; label: string; active: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick} className={`flex w-full items-center gap-1.5 py-0.5 pl-9 pr-2 text-left ${active ? "bg-[#cde0f4] text-[#12395f]" : "text-[#333] hover:bg-[#eef4fb]"}`}>
-      <span>{icon}</span><span className="truncate">{label}</span>
+      <AppIcon id={icon} size={12} /><span className="truncate">{label}</span>
     </button>
   );
 }
@@ -246,7 +247,7 @@ function ActionBtn({ label, icon, onClick, disabled }: { label: string; icon: st
   return (
     <button onClick={onClick} disabled={disabled}
       className="flex items-center gap-1 rounded-sm border border-transparent px-1.5 py-0.5 text-[11px] text-[#333] hover:border-[#b0c8e0] hover:bg-[#e5f1fb] disabled:cursor-not-allowed disabled:text-[#aaa] disabled:hover:border-transparent disabled:hover:bg-transparent">
-      <span>{icon}</span>{label}
+      <AppIcon id={icon} size={12} />{label}
     </button>
   );
 }
@@ -264,7 +265,7 @@ function DialogShell({ title, icon, wide, onClose, children, footer }: {
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/30 p-3" onClick={onClose}>
       <div className={`flex max-h-full ${wide ? "w-[440px]" : "w-[380px]"} flex-col overflow-hidden rounded-sm border border-[#7a7a7a] bg-[#f0f0f0] shadow-2xl`} onClick={(e) => e.stopPropagation()}>
         <div className="flex shrink-0 items-center gap-2 bg-[#f6f6f6] px-3 py-1.5 text-[12px]">
-          <span>{icon}</span><span className="font-semibold">{title}</span>
+          <AppIcon id={icon} size={13} /><span className="font-semibold">{title}</span>
           <button onClick={onClose} aria-label="Close" className="ml-auto flex h-6 w-8 items-center justify-center hover:bg-[#e81123] hover:text-white">✕</button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto bg-white">{children}</div>
@@ -298,7 +299,7 @@ function ResetPasswordDialog({ nodeId, sam, ad, onClose, onDone }: {
   }
 
   return (
-    <DialogShell title="Reset Password" icon="🔑" onClose={onClose}
+    <DialogShell title="Reset Password" icon="key" onClose={onClose}
       footer={<><span className="text-[10px] text-[#777]">{user.upn}</span><button onClick={onClose} className={`ml-auto ${btnPlain}`}>Cancel</button><button onClick={apply} className={btnPrimary}>OK</button></>}>
       <div className="space-y-3 p-4 text-[12px]">
         <div className="text-[#333]">Reset the password for <span className="font-semibold">{user.displayName}</span> ({user.samAccountName}).</div>
@@ -409,7 +410,7 @@ function NewUserDialog({ nodeId, ad, defaultOu, onClose, onDone }: {
 // ── User Properties (editable + Member Of) ───────────────────────────────────
 
 const OS_LABEL: Record<string, { name: string; protocol: string; icon: string }> = {
-  windows: { name: "Windows", protocol: "RDP", icon: "🪟" }, macos: { name: "macOS", protocol: "RDP", icon: "🍎" }, linux: { name: "Linux", protocol: "SSH", icon: "🐧" },
+  windows: { name: "Windows", protocol: "RDP", icon: "os-windows" }, macos: { name: "macOS", protocol: "RDP", icon: "os-macos" }, linux: { name: "Linux", protocol: "SSH", icon: "os-linux" },
 };
 
 function UserProperties({ nodeId, user, allGroups, departments, assignedNode, onRemote, onClose, onSaved }: {
@@ -470,9 +471,9 @@ function UserProperties({ nodeId, user, allGroups, departments, assignedNode, on
               <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[#777]">Managed device</div>
               {assignedNode ? (
                 <div className="flex items-center gap-2">
-                  <span className="text-base">{os?.icon}</span>
+                  <AppIcon id={os?.icon ?? "monitor"} size={15} />
                   <div className="min-w-0"><div className="truncate">{assignedNode.hostname}</div><div className="truncate text-[10px] text-[#888]">{os?.name} · {assignedNode.connection.ip}</div></div>
-                  <button onClick={onRemote} disabled={!online} className={`ml-auto ${btnPrimary}`}>🛰️ Remote Connect ({os?.protocol})</button>
+                  <button onClick={onRemote} disabled={!online} className={`ml-auto ${btnPrimary}`}><AppIcon id="monitor" size={13} /> Remote Connect ({os?.protocol})</button>
                 </div>
               ) : <div className="text-[11px] text-[#999]">No workstation mapped to this account.</div>}
             </div>

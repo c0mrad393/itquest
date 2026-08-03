@@ -7,6 +7,7 @@
  */
 
 import type { WindowsNodeState } from "@/lib/core";
+import { AppIcon } from "@/components/ui/app-icons";
 
 type ServerApp = "servermgr" | "aduc" | "gpmc" | "services" | "eventvwr" | "controlpanel" | "explorer" | "powershell";
 
@@ -22,7 +23,7 @@ export default function ServerManager({ node, onOpen }: { node: WindowsNodeState
     <div className="flex h-full flex-col bg-[#e6e6e6] text-[#1f1f1f]">
       {/* Title / breadcrumb bar */}
       <div className="flex items-center gap-2 bg-[#2b5797] px-3 py-1.5 text-[12px] text-white">
-        <span>🗄️</span>
+        <span><AppIcon id="server" size={17} /></span>
         <span className="font-semibold">Server Manager</span>
         <span className="text-white/60">·</span>
         <span className="text-white/80">Dashboard</span>

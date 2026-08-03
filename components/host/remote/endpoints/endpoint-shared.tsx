@@ -15,6 +15,7 @@ import {
   type EndpointAppId,
   type EndpointVisualState,
 } from "@/lib/core";
+import { AppIcon } from "@/components/ui/app-icons";
 
 /** Full-bleed procedural wallpaper for an endpoint. */
 export function WallpaperLayer({ visual }: { visual: EndpointVisualState }) {
@@ -102,7 +103,13 @@ function ItemIcon({ item }: { item: DesktopItem }) {
       </span>
     );
   }
-  return <span className="desktop-glyph text-[26px] leading-none">{fileGlyph(item)}</span>;
+  // File/folder: the stroke glyph sits on a translucent tile so it stays legible
+  // over any wallpaper, matching how the app tiles above are drawn.
+  return (
+    <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-white/15 text-white shadow-md shadow-black/30 ring-1 ring-white/15 backdrop-blur-sm">
+      <AppIcon id={fileGlyph(item)} size={18} />
+    </span>
+  );
 }
 
 /**
@@ -138,7 +145,11 @@ export function DesktopIconGrid({
           <span className="flex h-8 items-center justify-center">
             <span className="relative">
               <ItemIcon item={item} />
-              {item.isLocked && <span className="absolute -bottom-1.5 -right-1.5 text-[12px] drop-shadow">🔒</span>}
+              {item.isLocked && (
+                <span className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-400 text-black shadow">
+                  <AppIcon id="lock" size={9} strokeWidth={2.4} />
+                </span>
+              )}
             </span>
           </span>
           <span className={`desktop-label w-full truncate text-[10px] leading-tight ${labelColor}`}>
@@ -169,7 +180,7 @@ function FilePreview({ item, user, onClose }: { item: DesktopItem; user: string;
             aria-label="Close"
             className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-danger hover:text-white"
           >
-            ✕
+            <AppIcon id="x" size={13} />
           </button>
         </div>
         <div className="p-4 text-xs text-gray-400">

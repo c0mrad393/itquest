@@ -14,11 +14,12 @@ import { useInfraStore } from "@/lib/infra/store";
 import WindowsEndpointEnv from "./WindowsEndpointEnv";
 import MacOSEndpointEnv from "./MacOSEndpointEnv";
 import LinuxSSHEnv from "./LinuxSSHEnv";
+import { AppIcon } from "@/components/ui/app-icons";
 
 const OS_META = {
-  windows: { protocol: "RDP", icon: "🪟" },
-  macos: { protocol: "RDP", icon: "🍎" },
-  linux: { protocol: "SSH", icon: "🐧" },
+  windows: { protocol: "RDP", icon: "os-windows" },
+  macos: { protocol: "RDP", icon: "os-macos" },
+  linux: { protocol: "SSH", icon: "os-linux" },
 } as const;
 
 export default function EndpointSession({
@@ -39,7 +40,7 @@ export default function EndpointSession({
   if (!node) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 bg-black text-center">
-        <div className="text-3xl">🔌</div>
+        <div className="text-3xl"><AppIcon id="plug" size={28} /></div>
         <div className="text-sm text-danger">Endpoint not found.</div>
         <button onClick={onDisconnect} className="rounded border border-edge px-3 py-1 text-xs text-gray-200 hover:bg-panelalt">Back</button>
       </div>
@@ -56,7 +57,7 @@ export default function EndpointSession({
         <span className="text-gray-500">·</span>
         <span className="font-mono">{node.connection.ip}:{node.connection.port}</span>
         <span className="text-gray-500">·</span>
-        <span>{meta.icon} {node.hostname}</span>
+        <span className="inline-flex items-center gap-1.5"><AppIcon id={meta.icon} size={12} /> {node.hostname}</span>
         <span className="ml-auto text-gray-400">Connected</span>
         <button
           onClick={onDisconnect}

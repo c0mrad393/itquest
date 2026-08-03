@@ -19,6 +19,7 @@ import ServicesPanel from "../apps-windows/ServicesPanel";
 import ControlPanel from "../apps-windows/ControlPanel";
 import EventViewer from "../apps-windows/EventViewer";
 import FileExplorer from "../apps-windows/FileExplorer";
+import { AppIcon } from "@/components/ui/app-icons";
 
 const SEGOE = '"Segoe UI", "Segoe UI Variable", system-ui, sans-serif';
 
@@ -26,14 +27,14 @@ type AppId = "servermgr" | "aduc" | "gpmc" | "services" | "eventvwr" | "controlp
 
 interface AppMeta { id: AppId; title: string; icon: string; needs?: "ad" | "gpo" }
 const APPS: AppMeta[] = [
-  { id: "servermgr", title: "Server Manager", icon: "🗄️" },
-  { id: "aduc", title: "Active Directory Users and Computers", icon: "👥", needs: "ad" },
-  { id: "gpmc", title: "Group Policy Management", icon: "📜", needs: "gpo" },
-  { id: "services", title: "Services", icon: "⚙️" },
-  { id: "eventvwr", title: "Event Viewer", icon: "📋" },
-  { id: "controlpanel", title: "Control Panel", icon: "🎛️" },
-  { id: "explorer", title: "File Explorer", icon: "🗂️" },
-  { id: "powershell", title: "Windows PowerShell", icon: "⌨️" },
+  { id: "servermgr", title: "Server Manager", icon: "server" },
+  { id: "aduc", title: "Active Directory Users and Computers", icon: "users", needs: "ad" },
+  { id: "gpmc", title: "Group Policy Management", icon: "policy", needs: "gpo" },
+  { id: "services", title: "Services", icon: "gear" },
+  { id: "eventvwr", title: "Event Viewer", icon: "list" },
+  { id: "controlpanel", title: "Control Panel", icon: "sliders" },
+  { id: "explorer", title: "File Explorer", icon: "folder" },
+  { id: "powershell", title: "Windows PowerShell", icon: "terminal" },
 ];
 
 interface WinState { app: AppId; z: number; mode: "normal" | "min" | "max" }
@@ -77,7 +78,7 @@ export default function WindowsServerEnv({ nodeId }: { nodeId: string }) {
       {/* Desktop watermark + edition */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-[10vw] leading-none text-white/[0.04]">🪟</div>
+          <div className="text-[10vw] leading-none text-white/[0.04]"><AppIcon id="os-windows" size={110} /></div>
         </div>
       </div>
       <div className="pointer-events-none absolute bottom-14 right-4 text-right text-[11px] text-white/40">
@@ -89,9 +90,9 @@ export default function WindowsServerEnv({ nodeId }: { nodeId: string }) {
           (absolute) so they don't steal height from the window layer. */}
       <div className="relative min-h-0 flex-1">
         <div className="absolute left-0 top-0 z-0 flex flex-col gap-4 p-3">
-          <DeskIcon icon="🖥️" label="This PC" onOpen={() => open("explorer")} />
-          <DeskIcon icon="🗄️" label="Server Manager" onOpen={() => open("servermgr")} />
-          <DeskIcon icon="🗑️" label="Recycle Bin" onOpen={() => {}} />
+          <DeskIcon icon="monitor" label="This PC" onOpen={() => open("explorer")} />
+          <DeskIcon icon="server" label="Server Manager" onOpen={() => open("servermgr")} />
+          <DeskIcon icon="recycle" label="Recycle Bin" onOpen={() => {}} />
         </div>
 
         {wins.filter((w) => w.mode !== "min").map((w, i) => (
@@ -116,15 +117,15 @@ export default function WindowsServerEnv({ nodeId }: { nodeId: string }) {
           return (
             <button key={a} onClick={(e) => { e.stopPropagation(); running ? (focus === a ? setMode(a, "min") : raise(a)) : open(a); }} title={meta(a).title}
               className={`relative flex h-8 w-9 items-center justify-center rounded text-base ${focus === a ? "bg-white/20" : "hover:bg-white/10"}`}>
-              {meta(a).icon}
+              <AppIcon id={meta(a).icon} size={17} />
               {running && <span className={`absolute bottom-0 left-1/2 h-0.5 -translate-x-1/2 rounded-full ${focus === a ? "w-5 bg-[#4cc2ff]" : "w-3 bg-white/50"}`} />}
             </button>
           );
         })}
         {/* system tray */}
         <div className="ml-auto flex items-center gap-3 pr-2 text-[11px] text-gray-200">
-          <span title="Network" className="text-[13px]">📶</span>
-          <span title="Volume" className="text-[13px]">🔊</span>
+          <span title="Network" className="text-[13px]"><AppIcon id="globe" size={13} /></span>
+          <span title="Volume" className="text-[13px]"><AppIcon id="activity" size={13} /></span>
           <div className="text-right leading-tight">
             <div>{now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
             <div className="text-[10px] text-gray-400">{now.toLocaleDateString()}</div>
@@ -168,7 +169,7 @@ function ServerWindow({
     >
       {/* Title bar */}
       <div className={`flex h-8 shrink-0 items-center gap-2 pl-2 pr-0 ${focused ? "bg-[#f6f6f6]" : "bg-[#eaeaea]"}`}>
-        <span className="text-[13px]">{meta.icon}</span>
+        <AppIcon id={meta.icon} size={13} />
         <span className="truncate text-[12px] text-[#1f1f1f]">{meta.title}</span>
         <div className="ml-auto flex h-full">
           <TitleBtn onClick={onMin} label="Minimize"><rect x="2" y="6" width="8" height="1" fill="#1f1f1f" /></TitleBtn>
@@ -195,7 +196,7 @@ function TitleBtn({ onClick, label, danger, children }: { onClick: () => void; l
 function DeskIcon({ icon, label, onOpen }: { icon: string; label: string; onOpen: () => void }) {
   return (
     <button onDoubleClick={onOpen} className="flex w-16 flex-col items-center gap-1 rounded p-1 text-center hover:bg-white/10">
-      <span className="text-2xl drop-shadow">{icon}</span>
+      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 text-white shadow ring-1 ring-white/20"><AppIcon id={icon} size={19} /></span>
       <span className="text-[11px] leading-tight text-white drop-shadow" style={{ textShadow: "0 1px 2px rgba(0,0,0,.8)" }}>{label}</span>
     </button>
   );
@@ -209,11 +210,11 @@ function StartMenu({ node, apps, onOpen }: { node: WindowsNodeState; apps: AppMe
       <div className="mb-1 px-2 text-[10px] uppercase tracking-wider text-gray-400">Administrative Tools</div>
       {apps.map((a) => (
         <button key={a.id} onClick={() => onOpen(a.id)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12px] hover:bg-white/10">
-          <span>{a.icon}</span> {a.title}
+          <AppIcon id={a.icon} size={15} /> {a.title}
         </button>
       ))}
       <div className="mt-2 flex items-center gap-2 border-t border-white/10 pt-2 text-[12px]">
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#0078d4]">👤</span>
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#0078d4]"><AppIcon id="user" size={15} /></span>
         <span>Administrator</span>
         <span className="ml-auto text-gray-400">⏻</span>
       </div>
@@ -240,7 +241,7 @@ function PowerShell({ node }: { node: WindowsNodeState }) {
 function GpmcStub() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 bg-white text-center text-[#1f1f1f]">
-      <div className="text-3xl">📜</div>
+      <div className="text-3xl"><AppIcon id="policy" size={30} /></div>
       <div className="text-sm">Group Policy Management</div>
       <div className="text-[11px] text-gray-500">GPO editing surfaces in a later content pass. Policy state is live on the node.</div>
     </div>

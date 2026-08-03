@@ -9,6 +9,7 @@ import { useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
 import { getNode, listDir, resolvePath } from "@/lib/vm/fs";
 import type { TargetNode } from "@/lib/core";
+import { AppIcon } from "@/components/ui/app-icons";
 
 export default function FileExplorer({ nodeId }: { nodeId: string }) {
   const node = useInfraStore((s) => s.infra.nodes[nodeId]) as TargetNode | undefined;
@@ -61,7 +62,7 @@ export default function FileExplorer({ nodeId }: { nodeId: string }) {
                 onClick={() => open(name)}
                 className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs hover:bg-panelalt"
               >
-                <span>{isDir ? "📁" : "📄"}</span>
+                <AppIcon id={isDir ? "folder" : "file-text"} size={15} />
                 <span className={isDir ? "text-info" : "text-gray-300"}>{name}</span>
               </button>
             );

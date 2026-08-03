@@ -112,6 +112,7 @@ export const IconBoxes = (p: IconProps) => (
   <Svg {...p}><rect x="3" y="3" width="8" height="8" rx="1" /><rect x="13" y="3" width="8" height="8" rx="1" /><rect x="3" y="13" width="8" height="8" rx="1" /><rect x="13" y="13" width="8" height="8" rx="1" /></Svg>
 );
 export const IconChevronRight = (p: IconProps) => (<Svg {...p}><path d="M9 6l6 6-6 6" /></Svg>);
+export const IconChevronUp = (p: IconProps) => (<Svg {...p}><path d="M6 15l6-6 6 6" /></Svg>);
 
 // ── Host application glyphs (Level-0 shell: desktop, taskbar, Start) ────────
 
@@ -217,6 +218,84 @@ export const IconFacePanicked = (p: IconProps) => (
 );
 export const IconFaceAngry = (p: IconProps) => (
   <Face {...p} mouth="M8.2 16.8c1.1-1.2 2.4-1.8 3.8-1.8s2.7.6 3.8 1.8" brows="M6.6 6.8l2.8 1.8M17.4 6.8l-2.8 1.8" />
+);
+
+// ── File-type glyphs (endpoint desktops, explorers, Finder) ─────────────────
+// One sheet outline with a folded corner, differentiated by the mark inside.
+
+const Sheet = ({ mark, ...p }: IconProps & { mark?: React.ReactNode }) => (
+  <Svg {...p}>
+    <path d="M14 2.5H7a2 2 0 00-2 2v15a2 2 0 002 2h10a2 2 0 002-2V7.5z" />
+    <path d="M14 2.5V7a.5.5 0 00.5.5H19" />
+    {mark}
+  </Svg>
+);
+
+export const IconFolder = (p: IconProps) => (
+  <Svg {...p}><path d="M3 7.5a2 2 0 012-2h4.2l1.8 2.2H19a2 2 0 012 2v8.3a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></Svg>
+);
+export const IconFolderLocked = (p: IconProps) => (
+  <Svg {...p}><path d="M3 7.5a2 2 0 012-2h4.2l1.8 2.2H19a2 2 0 012 2V12" /><path d="M3 9.7v9.3a2 2 0 002 2h6" /><rect x="13.5" y="15.5" width="8" height="6" rx="1.5" /><path d="M15.5 15.5v-1.8a2 2 0 014 0v1.8" /></Svg>
+);
+export const IconFileText = (p: IconProps) => <Sheet {...p} mark={<path d="M8.5 12.5h7M8.5 15.5h7M8.5 18h4" />} />;
+export const IconFileSheet = (p: IconProps) => (
+  <Sheet {...p} mark={<><rect x="8" y="11.5" width="8" height="7" rx="0.6" /><path d="M8 14.5h8M12 11.5v7" /></>} />
+);
+export const IconFileChart = (p: IconProps) => <Sheet {...p} mark={<path d="M8.5 18v-3M12 18v-5.5M15.5 18v-2" />} />;
+export const IconFilePdf = (p: IconProps) => (
+  <Sheet {...p} mark={<path d="M8.3 18.5c2-1 3.3-2.6 4-4.4.5-1.3.2-2.3-.5-2.3s-.9 1.2-.2 2.8c.7 1.7 2 3.1 3.6 3.6" />} />
+);
+export const IconFileSlides = (p: IconProps) => (
+  <Sheet {...p} mark={<><rect x="8" y="12" width="8" height="5" rx="0.6" /><path d="M12 17v1.8M10 19h4" /></>} />
+);
+export const IconFileCode = (p: IconProps) => <Sheet {...p} mark={<path d="M10 13l-2 2.3 2 2.3M14 13l2 2.3-2 2.3" />} />;
+export const IconFileImage = (p: IconProps) => (
+  <Sheet {...p} mark={<><circle cx="10" cy="13.5" r="1.1" /><path d="M8 18.5l2.6-2.8 1.7 1.7 1.6-1.6L16 18.5z" /></>} />
+);
+export const IconFileZip = (p: IconProps) => (
+  <Sheet {...p} mark={<path d="M12 8.5v1.4M12 11.4v1.4M12 14.3v1.4M11 17.2h2v2.3h-2z" />} />
+);
+export const IconFileKey = (p: IconProps) => (
+  <Sheet {...p} mark={<><circle cx="10" cy="16.5" r="2" /><path d="M11.6 15.2l3.9-3.9M14.2 12.6l1.2 1.2" /></>} />
+);
+
+// ── Nested guest-OS app glyphs ──────────────────────────────────────────────
+
+export const IconDisk = (p: IconProps) => (
+  <Svg {...p}><ellipse cx="12" cy="6" rx="8" ry="3" /><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6" /><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" /></Svg>
+);
+export const IconCompass = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="12" r="9" /><path d="M15.6 8.4l-2 5.2-5.2 2 2-5.2z" /></Svg>
+);
+export const IconList = (p: IconProps) => (
+  <Svg {...p}><path d="M4 6.5h.01M4 12h.01M4 17.5h.01" /><path d="M8.5 6.5H20M8.5 12H20M8.5 17.5H20" /></Svg>
+);
+export const IconChartBar = (p: IconProps) => (
+  <Svg {...p}><path d="M4 20V10M9.3 20V4.5M14.7 20v-8M20 20V7.5" /></Svg>
+);
+export const IconCode = (p: IconProps) => (
+  <Svg {...p}><path d="M8.5 7.5L3.5 12l5 4.5M15.5 7.5l5 4.5-5 4.5M13.5 5l-3 14" /></Svg>
+);
+export const IconPen = (p: IconProps) => (
+  <Svg {...p}><path d="M16.5 3.5l4 4L8 20H4v-4z" /><path d="M14 6l4 4" /></Svg>
+);
+export const IconPolicy = (p: IconProps) => (
+  <Svg {...p}><path d="M6 3.5h9l4 4v13H6z" /><path d="M15 3.5v4h4" /><path d="M9 12h7M9 15.5h7M9 19h4" /></Svg>
+);
+export const IconUser = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="8.5" r="3.8" /><path d="M4.5 20.5c1-4 3.9-6 7.5-6s6.5 2 7.5 6" /></Svg>
+);
+export const IconBuilding = (p: IconProps) => (
+  <Svg {...p}><rect x="4" y="3" width="16" height="18" rx="1.5" /><path d="M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2" /><path d="M10.5 21v-3h3v3" /></Svg>
+);
+export const IconGrid = (p: IconProps) => (
+  <Svg {...p}><rect x="3.5" y="3.5" width="7" height="7" rx="1" /><rect x="13.5" y="3.5" width="7" height="7" rx="1" /><rect x="3.5" y="13.5" width="7" height="7" rx="1" /><rect x="13.5" y="13.5" width="7" height="7" rx="1" /></Svg>
+);
+export const IconRecycle = (p: IconProps) => (
+  <Svg {...p}><path d="M4.5 7h15" /><path d="M9.5 7V5.2A1.2 1.2 0 0110.7 4h2.6a1.2 1.2 0 011.2 1.2V7" /><path d="M6.5 7l1 12.2A1.8 1.8 0 009.3 21h5.4a1.8 1.8 0 001.8-1.8L17.5 7" /><path d="M10.2 11v6M13.8 11v6" /></Svg>
+);
+export const IconEye = (p: IconProps) => (
+  <Svg {...p}><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" /><circle cx="12" cy="12" r="3" /></Svg>
 );
 
 // ── Operating-system marks (remote sessions / gateway) ──────────────────────

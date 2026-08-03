@@ -11,24 +11,25 @@
 
 import { useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
-import type { DesktopItem, EndpointFsItem, WindowsNodeState } from "@/lib/core";
+import type { DesktopItem, EndpointFsItem, HostAppIconId, WindowsNodeState } from "@/lib/core";
 import { DesktopIconGrid, WallpaperLayer, DEFAULT_VISUAL } from "./endpoint-shared";
 import { EndpointBrowser, EndpointEventLog, EndpointTerminal } from "./EndpointTools";
 import { useEndpointWM, renderEpBody, toFsItem, type EpWindow } from "./endpoint-fs";
+import { AppIcon } from "@/components/ui/app-icons";
 
 type ToolId = "taskmgr" | "network" | "cmd" | "browser" | "eventvwr";
 
-const PINNED: { id: ToolId | "thispc"; label: string; icon: string }[] = [
-  { id: "thispc", label: "This PC", icon: "🖥️" },
-  { id: "taskmgr", label: "Task Manager", icon: "📊" },
-  { id: "network", label: "Network", icon: "🖧" },
-  { id: "cmd", label: "Terminal", icon: "⌨️" },
-  { id: "browser", label: "Edge", icon: "🌐" },
-  { id: "eventvwr", label: "Event Viewer", icon: "📑" },
+const PINNED: { id: ToolId | "thispc"; label: string; icon: HostAppIconId }[] = [
+  { id: "thispc", label: "This PC", icon: "disk" },
+  { id: "taskmgr", label: "Task Manager", icon: "chart-bar" },
+  { id: "network", label: "Network", icon: "globe" },
+  { id: "cmd", label: "Terminal", icon: "terminal" },
+  { id: "browser", label: "Edge", icon: "compass" },
+  { id: "eventvwr", label: "Event Viewer", icon: "list" },
 ];
 
-const TOOL_ICON: Record<ToolId, string> = {
-  taskmgr: "📊", network: "🖧", cmd: "⌨️", browser: "🌐", eventvwr: "📑",
+const TOOL_ICON: Record<ToolId, HostAppIconId> = {
+  taskmgr: "chart-bar", network: "globe", cmd: "terminal", browser: "compass", eventvwr: "list",
 };
 
 export default function WindowsEndpointEnv({ nodeId }: { nodeId: string }) {
@@ -52,8 +53,8 @@ export default function WindowsEndpointEnv({ nodeId }: { nodeId: string }) {
   function openDesktopItem(item: DesktopItem) {
     if (item.kind === "app") {
       if (item.app === "edge") launchTool("browser");
-      else if (item.app === "recycle-bin") wm.open({ id: "recycle", title: "Recycle Bin", icon: "🗑️", content: { kind: "folder", items: [] } });
-      else wm.open({ id: `app-${item.app}`, title: item.name, icon: "🧩", content: { kind: "app", appId: `stub:${item.name}` } });
+      else if (item.app === "recycle-bin") wm.open({ id: "recycle", title: "Recycle Bin", icon: "recycle", content: { kind: "folder", items: [] } });
+      else wm.open({ id: `app-${item.app}`, title: item.name, icon: "grid", content: { kind: "app", appId: `stub:${item.name}` } });
       return;
     }
     wm.openItem(toFsItem(item));
@@ -103,7 +104,7 @@ export default function WindowsEndpointEnv({ nodeId }: { nodeId: string }) {
                 title={p.label}
                 className={`relative flex h-8 w-8 items-center justify-center rounded text-base ${isOpen ? "bg-white/15" : "hover:bg-white/10"}`}
               >
-                {p.icon}
+                <AppIcon id={p.icon} size={18} />
                 {isOpen && <span className="absolute bottom-0.5 left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full bg-info" />}
               </button>
             );
@@ -115,9 +116,11 @@ export default function WindowsEndpointEnv({ nodeId }: { nodeId: string }) {
           className={`ml-auto flex items-center gap-2 rounded px-2 py-1 text-[11px] text-gray-200 ${quickOpen ? "bg-white/15" : "hover:bg-white/10"}`}
           title="Quick settings"
         >
-          <span title={netUp(node) ? "Connected" : "No network"}>{netUp(node) ? "📶" : "🚫"}</span>
-          <span>🔊</span>
-          <span>🔋</span>
+          <span title={netUp(node) ? "Connected" : "No network"} className={netUp(node) ? "" : "text-danger"}>
+            <AppIcon id={netUp(node) ? "globe" : "ban"} size={13} />
+          </span>
+          <AppIcon id="activity" size={13} />
+          <AppIcon id="battery" size={13} />
         </button>
         <div className="pl-3 text-right text-[10px] leading-tight text-gray-300">
           <div>{new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
@@ -146,7 +149,7 @@ function renderTool(nodeId: string, appId: string): React.ReactNode {
 function AppStub({ name }: { name: string }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 bg-panel text-center">
-      <div className="text-4xl">🧩</div>
+      <div className="text-gray-600"><AppIcon id="grid" size={36} /></div>
       <div className="text-sm font-semibold text-gray-100">{name}</div>
       <div className="text-[11px] text-gray-500">Launching the {name} client… (full app arrives in a later build)</div>
     </div>
@@ -170,7 +173,7 @@ function WinWindow({
       onMouseDown={onFocus}
     >
       <div className={`flex items-center gap-2 border-b px-3 py-1.5 text-xs ${dark ? "border-edge bg-panelalt" : "border-gray-200 bg-gray-100"}`}>
-        <span>{win.icon}</span>
+        <AppIcon id={win.icon} size={13} />
         <span className={`truncate font-semibold ${dark ? "text-gray-200" : "text-gray-700"}`}>{win.title}</span>
         <button onClick={onClose} className="ml-auto flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-danger hover:text-white">✕</button>
       </div>
@@ -203,7 +206,7 @@ function StartMenu({
       <div className="mb-4 grid grid-cols-6 gap-2">
         {PINNED.map((p) => (
           <button key={p.id} onClick={() => onPinned(p.id)} className="flex flex-col items-center gap-1 rounded-lg p-2 hover:bg-white/10">
-            <span className="text-2xl">{p.icon}</span>
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-500/15 text-sky-300"><AppIcon id={p.icon} size={19} /></span>
             <span className="w-full truncate text-center text-[9px] text-gray-300">{p.label}</span>
           </button>
         ))}
@@ -212,7 +215,7 @@ function StartMenu({
       <div className="grid grid-cols-2 gap-1">
         {recommended.map((it) => (
           <button key={it.id} onClick={() => onOpenFile(it)} className="flex items-center gap-2 rounded-md p-2 text-left hover:bg-white/10">
-            <span className="text-lg">{it.isFolder ? "📁" : "📄"}</span>
+            <span className="text-lg"><AppIcon id={it.isFolder ? "folder" : "file-text"} size={16} /></span>
             <span className="min-w-0">
               <span className="block truncate text-[11px] text-gray-100">{it.name}</span>
               <span className="block text-[9px] text-gray-500">Recently used</span>
@@ -221,7 +224,7 @@ function StartMenu({
         ))}
       </div>
       <div className="mt-3 flex items-center gap-2 border-t border-white/10 pt-3 text-xs text-gray-200">
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-info/30">👤</span>
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-info/30"><AppIcon id="user" size={15} /></span>
         <span className="truncate">{visual.loggedInUser}</span>
         <span className="ml-auto text-gray-400">⏻</span>
       </div>
@@ -244,19 +247,19 @@ function QuickSettings({ nodeId }: { nodeId: string }) {
           onClick={() => nic && setUp(node.nodeId, nic.name, !wifiOn)}
           className={`flex flex-col items-start gap-1 rounded-lg p-2 ${wifiOn ? "bg-info/70 text-black" : "bg-white/10"}`}
         >
-          <span className="text-base">📶</span>
+          <span className="text-base"><AppIcon id="globe" size={14} /></span>
           <span className="text-[10px] font-semibold">Wi-Fi</span>
           <span className="text-[9px] opacity-80">{wifiOn ? "Connected" : "Off"}</span>
         </button>
         <div className="flex flex-col items-start gap-1 rounded-lg bg-white/10 p-2">
-          <span className="text-base">🔋</span>
+          <span className="text-base"><AppIcon id="battery" size={14} /></span>
           <span className="text-[10px] font-semibold">Battery</span>
           <span className="text-[9px] opacity-80">87% · plugged in</span>
         </div>
       </div>
       <div className="rounded-lg bg-white/10 p-2">
         <div className="mb-1 flex items-center gap-2">
-          <span>🔊</span>
+          <span><AppIcon id="activity" size={14} /></span>
           <span className="text-[10px]">Volume</span>
           <span className="ml-auto text-[10px] text-gray-400">{volume}%</span>
         </div>

@@ -17,6 +17,45 @@ import type { EmotionIconId } from "@/lib/dialogue/types";
 import {
   IconAlert,
   IconApple,
+  IconChevronUp,
+  IconActivity,
+  IconBattery,
+  IconBuilding,
+  IconCable,
+  IconChartBar,
+  IconCode,
+  IconCompass,
+  IconDisk,
+  IconEye,
+  IconFileChart,
+  IconFileCode,
+  IconFileImage,
+  IconFileKey,
+  IconFilePdf,
+  IconFileSheet,
+  IconFileSlides,
+  IconFileText,
+  IconFileZip,
+  IconFolder,
+  IconFolderLocked,
+  IconGrid,
+  IconLink,
+  IconList,
+  IconMinus,
+  IconMouse,
+  IconPanel,
+  IconPen,
+  IconPlus,
+  IconPolicy,
+  IconPower,
+  IconRecycle,
+  IconRouter,
+  IconSearch,
+  IconSliders,
+  IconSwitch,
+  IconTrash,
+  IconUser,
+  IconX,
   IconBank,
   IconHealth,
   IconStore,
@@ -165,6 +204,84 @@ export function AppIcon({ id, ...props }: IconProps & { id: HostAppIconId | Emot
       return <IconFacePanicked {...props} />;
     case "face-angry":
       return <IconFaceAngry {...props} />;
+    case "folder":
+      return <IconFolder {...props} />;
+    case "folder-locked":
+      return <IconFolderLocked {...props} />;
+    case "file-text":
+      return <IconFileText {...props} />;
+    case "file-sheet":
+      return <IconFileSheet {...props} />;
+    case "file-chart":
+      return <IconFileChart {...props} />;
+    case "file-pdf":
+      return <IconFilePdf {...props} />;
+    case "file-slides":
+      return <IconFileSlides {...props} />;
+    case "file-code":
+      return <IconFileCode {...props} />;
+    case "file-image":
+      return <IconFileImage {...props} />;
+    case "file-zip":
+      return <IconFileZip {...props} />;
+    case "file-key":
+      return <IconFileKey {...props} />;
+    case "disk":
+      return <IconDisk {...props} />;
+    case "compass":
+      return <IconCompass {...props} />;
+    case "list":
+      return <IconList {...props} />;
+    case "chart-bar":
+      return <IconChartBar {...props} />;
+    case "code":
+      return <IconCode {...props} />;
+    case "pen":
+      return <IconPen {...props} />;
+    case "policy":
+      return <IconPolicy {...props} />;
+    case "user":
+      return <IconUser {...props} />;
+    case "building":
+      return <IconBuilding {...props} />;
+    case "grid":
+      return <IconGrid {...props} />;
+    case "recycle":
+      return <IconRecycle {...props} />;
+    case "eye":
+      return <IconEye {...props} />;
+    case "search":
+      return <IconSearch {...props} />;
+    case "sliders":
+      return <IconSliders {...props} />;
+    case "activity":
+      return <IconActivity {...props} />;
+    case "power":
+      return <IconPower {...props} />;
+    case "trash":
+      return <IconTrash {...props} />;
+    case "switch":
+      return <IconSwitch {...props} />;
+    case "panel":
+      return <IconPanel {...props} />;
+    case "battery":
+      return <IconBattery {...props} />;
+    case "router":
+      return <IconRouter {...props} />;
+    case "cable":
+      return <IconCable {...props} />;
+    case "mouse":
+      return <IconMouse {...props} />;
+    case "link":
+      return <IconLink {...props} />;
+    case "x":
+      return <IconX {...props} />;
+    case "plus":
+      return <IconPlus {...props} />;
+    case "minus":
+      return <IconMinus {...props} />;
+    case "chevron-up":
+      return <IconChevronUp {...props} />;
     default:
       // Unknown key (e.g. a window restored from an older session) — a neutral
       // glyph beats a blank gap or a crash.

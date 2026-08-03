@@ -15,20 +15,22 @@ import type { DesktopItem, EndpointFsItem, MacNodeState } from "@/lib/core";
 import { DesktopIconGrid, WallpaperLayer, DEFAULT_VISUAL } from "./endpoint-shared";
 import { EndpointBrowser, EndpointEventLog, EndpointTerminal } from "./EndpointTools";
 import { useEndpointWM, renderEpBody, toFsItem, type EpWindow } from "./endpoint-fs";
+import type { HostAppIconId } from "@/lib/core";
+import { AppIcon } from "@/components/ui/app-icons";
 
 type DockId = "finder" | "activity" | "settings" | "terminal" | "safari" | "console";
 
-const DOCK: { id: DockId; label: string; icon: string }[] = [
-  { id: "finder", label: "Finder", icon: "🗂️" },
-  { id: "activity", label: "Activity Monitor", icon: "📈" },
-  { id: "settings", label: "System Settings", icon: "⚙️" },
-  { id: "terminal", label: "Terminal", icon: "⌨️" },
-  { id: "safari", label: "Safari", icon: "🧭" },
-  { id: "console", label: "Console", icon: "📋" },
+const DOCK: { id: DockId; label: string; icon: HostAppIconId }[] = [
+  { id: "finder", label: "Finder", icon: "folder" },
+  { id: "activity", label: "Activity Monitor", icon: "activity" },
+  { id: "settings", label: "System Settings", icon: "gear" },
+  { id: "terminal", label: "Terminal", icon: "terminal" },
+  { id: "safari", label: "Safari", icon: "compass" },
+  { id: "console", label: "Console", icon: "list" },
 ];
 
-const TOOL_ICON: Record<Exclude<DockId, "finder">, string> = {
-  activity: "📈", settings: "⚙️", terminal: "⌨️", safari: "🧭", console: "📋",
+const TOOL_ICON: Record<Exclude<DockId, "finder">, HostAppIconId> = {
+  activity: "activity", settings: "gear", terminal: "terminal", safari: "compass", console: "list",
 };
 
 export default function MacOSEndpointEnv({ nodeId }: { nodeId: string }) {
@@ -60,7 +62,7 @@ export default function MacOSEndpointEnv({ nodeId }: { nodeId: string }) {
   function openDesktopItem(item: DesktopItem) {
     if (item.kind === "app") {
       if (item.app === "edge") launchTool("safari");
-      else wm.open({ id: `app-${item.app}`, title: item.name, icon: "🧩", content: { kind: "app", appId: `stub:${item.name}` } });
+      else wm.open({ id: `app-${item.app}`, title: item.name, icon: "grid", content: { kind: "app", appId: `stub:${item.name}` } });
       return;
     }
     wm.openItem(toFsItem(item));
@@ -109,7 +111,7 @@ export default function MacOSEndpointEnv({ nodeId }: { nodeId: string }) {
                 title={d.label}
                 className="flex flex-col items-center transition-transform hover:-translate-y-1.5"
               >
-                <span className="text-[26px] leading-none drop-shadow">{d.icon}</span>
+                <span className="flex h-[26px] w-[26px] items-center justify-center rounded-lg bg-white/80 text-slate-700 shadow ring-1 ring-black/10"><AppIcon id={d.icon} size={17} /></span>
                 <span className={`mt-0.5 h-1 w-1 rounded-full ${isOpen ? "bg-white" : "bg-transparent"}`} />
               </button>
             );
@@ -134,7 +136,7 @@ function renderTool(nodeId: string, appId: string): React.ReactNode {
 function AppStub({ name }: { name: string }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 bg-panel text-center">
-      <div className="text-4xl">🧩</div>
+      <div className="text-4xl"><AppIcon id="grid" size={36} /></div>
       <div className="text-sm font-semibold text-gray-100">{name}</div>
       <div className="text-[11px] text-gray-500">Opening {name}… (full app arrives in a later build)</div>
     </div>
@@ -210,9 +212,9 @@ function MenuBar({
         </div>
       ))}
       <span className="ml-auto flex items-center gap-3 pr-1">
-        <button onClick={(e) => { e.stopPropagation(); onSpotlight(); }} title="Spotlight (⌘Space)" className="hover:opacity-80">🔍</button>
-        <span title={node.wifiEnabled ? "Wi-Fi on" : "Wi-Fi off"}>{node.wifiEnabled ? "📶" : "🚫"}</span>
-        <span>🔋</span>
+        <button onClick={(e) => { e.stopPropagation(); onSpotlight(); }} title="Spotlight (⌘Space)" className="hover:opacity-80"><AppIcon id="search" size={16} /></button>
+        <span title={node.wifiEnabled ? "Wi-Fi on" : "Wi-Fi off"}><AppIcon id={node.wifiEnabled ? "globe" : "ban"} size={14} /></span>
+        <span><AppIcon id="battery" size={14} /></span>
         <span>{new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
       </span>
     </div>
@@ -234,7 +236,7 @@ function Spotlight({ node, onClose, onOpen }: { node: MacNodeState; onClose: () 
     <div className="absolute inset-0 z-50 flex items-start justify-center bg-black/30 pt-16" onClick={onClose}>
       <div className="w-[440px] overflow-hidden rounded-xl border border-white/20 bg-black/70 shadow-2xl backdrop-blur-md" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 py-3">
-          <span className="text-lg">🔍</span>
+          <span className="text-lg"><AppIcon id="search" size={16} /></span>
           <input
             autoFocus
             value={q}
@@ -248,7 +250,7 @@ function Spotlight({ node, onClose, onOpen }: { node: MacNodeState; onClose: () 
           <div className="border-t border-white/10 p-1">
             {results.map((r) => (
               <button key={r.id} onClick={() => onOpen(r)} className="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-xs text-gray-100 hover:bg-info/70">
-                <span>{r.isFolder ? "📁" : "📄"}</span>
+                <span><AppIcon id={r.isFolder ? "folder" : "file-text"} size={16} /></span>
                 <span className="truncate">{r.name}</span>
               </button>
             ))}
@@ -280,7 +282,7 @@ function MacWindow({
           <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
           <span className="h-3 w-3 rounded-full bg-[#28c840]" />
         </span>
-        <span className={`ml-1 truncate text-xs font-semibold ${dark ? "text-gray-200" : "text-gray-700"}`}>{win.icon} {win.title}</span>
+        <span className={`ml-1 inline-flex items-center gap-1.5 truncate text-xs font-semibold ${dark ? "text-gray-200" : "text-gray-700"}`}><AppIcon id={win.icon} size={12} /> {win.title}</span>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
     </div>
@@ -324,7 +326,7 @@ function SystemSettings({ nodeId }: { nodeId: string }) {
   return (
     <div className="h-full space-y-3 overflow-y-auto p-3 text-xs">
       <div className="flex items-center gap-3 rounded-lg border border-edge/60 bg-panelalt px-3 py-2.5">
-        <span className="text-lg">📶</span>
+        <span className="text-lg"><AppIcon id="globe" size={14} /></span>
         <div className="flex-1"><div className="text-gray-100">Wi-Fi</div><div className="text-[10px] text-gray-500">{node.wifiEnabled ? "Connected · corp-secure" : "Turned off"}</div></div>
         <button onClick={() => setWifi(node.nodeId, !node.wifiEnabled)} className={`relative h-6 w-11 rounded-full transition ${node.wifiEnabled ? "bg-emerald-500/70" : "bg-edge"}`} aria-label="Toggle Wi-Fi">
           <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${node.wifiEnabled ? "left-[22px]" : "left-0.5"}`} />

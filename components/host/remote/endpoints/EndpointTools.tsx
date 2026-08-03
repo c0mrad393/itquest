@@ -18,6 +18,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
 import type { TargetNode } from "@/lib/core";
+import { AppIcon } from "@/components/ui/app-icons";
 
 // ── Terminal / Command Prompt ────────────────────────────────────────────────
 
@@ -212,7 +213,7 @@ function BrowserPage({ result }: { result: PageResult }) {
   if (result.status === "offline") {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-gray-500">
-        <div className="text-4xl">📡</div>
+        <div className="text-4xl"><AppIcon id="globe" size={34} /></div>
         <div className="text-sm font-semibold text-gray-700">No internet connection</div>
         <div className="text-xs">Your network adapter is disconnected. Re-enable it in Network Settings.</div>
       </div>

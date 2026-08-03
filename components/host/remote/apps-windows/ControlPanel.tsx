@@ -9,6 +9,7 @@
 
 import { useInfraStore } from "@/lib/infra/store";
 import type { FirewallProfile, WindowsNodeState } from "@/lib/core";
+import { AppIcon } from "@/components/ui/app-icons";
 
 const PROFILES: FirewallProfile[] = ["Domain", "Private", "Public"];
 
@@ -23,7 +24,7 @@ export default function ControlPanel({ nodeId }: { nodeId: string }) {
       <Section title="Network Adapters">
         {node.network.interfaces.map((nic) => (
           <div key={nic.name} className="flex items-center gap-3 rounded border border-edge/60 bg-panelalt px-3 py-2">
-            <span className="text-lg">🖧</span>
+            <span className="text-lg"><AppIcon id="globe" size={17} /></span>
             <div className="flex-1">
               <div className="text-gray-100">{nic.name}</div>
               <div className="font-mono text-[11px] text-gray-500">

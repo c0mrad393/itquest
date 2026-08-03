@@ -17,8 +17,9 @@
 
 import { useRef, useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
-import { fileGlyph, type EndpointFsItem, type DesktopItem, type MacNodeState, type WindowsNodeState } from "@/lib/core";
+import { fileGlyph, type HostAppIconId, type EndpointFsItem, type DesktopItem, type MacNodeState, type WindowsNodeState } from "@/lib/core";
 import { resolveDriveStatus, diskInfo, formatBytesFromGb } from "@/lib/infra/shares";
+import { AppIcon } from "@/components/ui/app-icons";
 
 export type OsVariant = "windows" | "macos";
 
@@ -34,7 +35,7 @@ export type EpWindowContent =
 export interface EpWindow {
   id: string;
   title: string;
-  icon: string;
+  icon: HostAppIconId;
   content: EpWindowContent;
   z: number;
 }
@@ -95,7 +96,7 @@ export function useEndpointWM(variant: OsVariant): EndpointWM {
 
   function reallyOpen(item: EndpointFsItem) {
     if (item.isFolder) {
-      open({ id: `folder-${item.id}`, title: item.name, icon: "📂", content: { kind: "folder", items: item.children ?? [] } });
+      open({ id: `folder-${item.id}`, title: item.name, icon: "folder", content: { kind: "folder", items: item.children ?? [] } });
     } else {
       open({ id: `file-${item.id}`, title: item.name, icon: fileGlyph({ kind: "file", ext: item.ext }), content: { kind: "file", item } });
     }
@@ -107,7 +108,7 @@ export function useEndpointWM(variant: OsVariant): EndpointWM {
       open({
         id: credId,
         title: variant === "windows" ? "Windows Security" : "Authenticate",
-        icon: "🔒",
+        icon: "folder-locked",
         content: {
           kind: "credential",
           item,
@@ -127,7 +128,7 @@ export function useEndpointWM(variant: OsVariant): EndpointWM {
     open({
       id: "system",
       title: variant === "windows" ? "This PC" : "Finder",
-      icon: variant === "windows" ? "🖥️" : "🗂️",
+      icon: variant === "windows" ? "disk" : "folder",
       content: { kind: "system" },
     });
   }
@@ -173,8 +174,8 @@ export function FolderView({ items, openItem }: { items: EndpointFsItem[]; openI
               className="flex flex-col items-center gap-1 rounded-md p-2 text-center hover:bg-white/10"
             >
               <span className="relative text-[26px] leading-none">
-                {it.isFolder ? "📁" : fileGlyph({ kind: "file", ext: it.ext })}
-                {it.isLocked && <span className="absolute -bottom-1 -right-1 text-[12px]">🔒</span>}
+                <AppIcon id={it.isFolder ? "folder" : fileGlyph({ kind: "file", ext: it.ext })} size={18} />
+                {it.isLocked && <span className="absolute -bottom-1 -right-1 text-[12px]"><AppIcon id="lock" size={12} /></span>}
               </span>
               <span className="w-full truncate text-[10px] text-gray-200">{it.name}</span>
             </button>
@@ -196,7 +197,7 @@ export function FileViewer({ item }: { item: EndpointFsItem }) {
   if (isImage) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 bg-[#101418] p-4">
-        <div className="flex h-40 w-64 items-center justify-center rounded-lg bg-gradient-to-br from-slate-600 to-slate-800 text-4xl shadow-inner">🖼️</div>
+        <div className="flex h-40 w-64 items-center justify-center rounded-lg bg-gradient-to-br from-slate-600 to-slate-800 text-4xl shadow-inner"><AppIcon id="file-image" size={34} /></div>
         <div className="text-xs text-gray-400">{item.name}</div>
         <div className="text-[10px] text-gray-600">Image preview · {ext.toUpperCase()}</div>
       </div>
@@ -208,7 +209,7 @@ export function FileViewer({ item }: { item: EndpointFsItem }) {
     return (
       <div className="h-full overflow-auto bg-white text-black">
         <div className="flex items-center gap-2 border-b border-gray-300 bg-[#217346] px-3 py-1.5 text-xs font-semibold text-white">
-          <span>📊</span> {item.name}
+          <span><AppIcon id="file-sheet" size={13} /></span> {item.name}
         </div>
         {rows.length ? (
           <table className="w-full border-collapse text-[11px]">
@@ -234,7 +235,7 @@ export function FileViewer({ item }: { item: EndpointFsItem }) {
     return (
       <div className="flex h-full flex-col bg-white text-black">
         <div className="flex items-center gap-2 border-b border-gray-200 bg-gray-100 px-3 py-1.5 text-xs text-gray-600">
-          <span>📝</span> {item.name} — Text Editor
+          <span><AppIcon id="file-text" size={13} /></span> {item.name} — Text Editor
         </div>
         <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap p-3 font-mono text-[12px] leading-relaxed text-gray-800">
           {item.content ?? "(empty file)"}
@@ -245,7 +246,7 @@ export function FileViewer({ item }: { item: EndpointFsItem }) {
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 bg-panel text-center">
-      <div className="text-3xl">{fileGlyph({ kind: "file", ext })}</div>
+      <div className="text-gray-400"><AppIcon id={fileGlyph({ kind: "file", ext })} size={30} /></div>
       <div className="text-sm text-gray-200">{item.name}</div>
       <div className="text-[11px] text-gray-500">No preview available for .{ext || "bin"} files.</div>
     </div>
@@ -275,7 +276,7 @@ export function CredentialPrompt({
     <div className="flex h-full flex-col items-center justify-center bg-panel/80 p-4">
       <div className="w-[300px] overflow-hidden rounded-lg border border-edge bg-panel shadow-2xl">
         <div className="flex items-center gap-2 bg-panelalt px-3 py-2 text-xs font-semibold text-gray-200">
-          🔒 {variant === "windows" ? "Windows Security" : "Authentication Required"}
+          <AppIcon id="lock" size={12} /> {variant === "windows" ? "Windows Security" : "Authentication Required"}
         </div>
         <div className="space-y-3 p-4 text-xs">
           <div className="text-gray-300">Enter the password to unlock <span className="font-semibold">{item.name}</span>.</div>
@@ -331,16 +332,16 @@ export function SystemBrowser({
   const sidebar =
     variant === "windows"
       ? [
-          { id: "home", label: "This PC", icon: "🖥️" },
-          { id: "desktop", label: "Desktop", icon: "🖥️" },
-          { id: "documents", label: "Documents", icon: "📄" },
-          { id: "downloads", label: "Downloads", icon: "⬇️" },
+          { id: "home", label: "This PC", icon: "disk" as const },
+          { id: "desktop", label: "Desktop", icon: "monitor" as const },
+          { id: "documents", label: "Documents", icon: "folder" as const },
+          { id: "downloads", label: "Downloads", icon: "inbox" as const },
         ]
       : [
-          { id: "home", label: "Macintosh HD", icon: "💽" },
-          { id: "desktop", label: "Desktop", icon: "🖥️" },
-          { id: "documents", label: "Documents", icon: "📄" },
-          { id: "downloads", label: "Downloads", icon: "⬇️" },
+          { id: "home", label: "Macintosh HD", icon: "disk" as const },
+          { id: "desktop", label: "Desktop", icon: "monitor" as const },
+          { id: "documents", label: "Documents", icon: "folder" as const },
+          { id: "downloads", label: "Downloads", icon: "inbox" as const },
         ];
 
   const folderFor: Record<Loc, EndpointFsItem[]> = {
@@ -358,9 +359,9 @@ export function SystemBrowser({
           {variant === "windows" ? "Quick access" : "Favorites"}
         </div>
         {variant === "macos" && (
-          <SideRow icon="📡" label="AirDrop" onClick={() => {}} />
+          <SideRow icon="link" label="AirDrop" onClick={() => {}} />
         )}
-        {variant === "macos" && <SideRow icon="🅰️" label="Applications" onClick={() => {}} />}
+        {variant === "macos" && <SideRow icon="grid" label="Applications" onClick={() => {}} />}
         {sidebar.map((s) => (
           <SideRow key={s.id} icon={s.icon} label={s.label} active={loc === s.id} onClick={() => setLoc(s.id as Loc)} />
         ))}
@@ -375,7 +376,7 @@ export function SystemBrowser({
           return (
             <div key={d.letter} className="flex items-center gap-1.5 rounded px-2 py-1 text-[11px]">
               <span className="relative">
-                🗄️
+                <AppIcon id="server" size={26} />
                 {bad && <span className="absolute -right-1 -top-1 text-[10px] text-danger">✕</span>}
               </span>
               <span className={`min-w-0 flex-1 truncate ${bad ? "text-gray-500 line-through" : "text-gray-200"}`}>
@@ -430,13 +431,13 @@ export function SystemBrowser({
   );
 }
 
-function SideRow({ icon, label, active, onClick }: { icon: string; label: string; active?: boolean; onClick: () => void }) {
+function SideRow({ icon, label, active, onClick }: { icon: HostAppIconId; label: string; active?: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
       className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] ${active ? "bg-info/15 text-gray-100" : "text-gray-300 hover:bg-white/10"}`}
     >
-      <span>{icon}</span>
+      <AppIcon id={icon} size={14} />
       <span className="truncate">{label}</span>
     </button>
   );
@@ -447,7 +448,7 @@ function DiskCard({ variant, disk }: { variant: OsVariant; disk: ReturnType<type
   const barColor = disk.critical ? "bg-danger" : disk.usedPct >= 88 ? "bg-amber-400" : "bg-info";
   return (
     <div className="flex items-center gap-3 rounded-lg border border-edge bg-panelalt/60 p-3">
-      <span className="text-2xl">💽</span>
+      <span className="text-2xl"><AppIcon id="disk" size={20} /></span>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           <span className="text-xs font-semibold text-gray-100">{label}</span>
@@ -483,7 +484,7 @@ function ShareCard({
   return (
     <div className={`flex items-center gap-3 rounded-lg border p-3 ${ok ? "border-edge bg-panelalt/60" : "border-danger/40 bg-danger/5"}`}>
       <span className="relative text-2xl">
-        🗄️
+        <AppIcon id="server" size={26} />
         {!ok && <span className="absolute -right-1 -top-1 text-sm font-bold text-danger">✕</span>}
       </span>
       <div className="min-w-0 flex-1">
