@@ -9,9 +9,10 @@
  */
 
 import { useState } from "react";
-import { HOST_APP_REGISTRY, type HostAppDescriptor, type HostAppId } from "@/lib/core";
+import { visibleApps, type HostAppId } from "@/lib/core";
 import { useHostStore } from "@/lib/host/store";
 import Avatar from "./Avatar";
+import { useGodMode } from "@/lib/host/god-mode";
 import { AppIcon, APP_ICON_SIZE } from "@/components/ui/app-icons";
 
 export default function StartMenu() {
@@ -20,10 +21,11 @@ export default function StartMenu() {
   const openApp = useHostStore((s) => s.openApp);
   const host = useHostStore((s) => s.host);
   const [query, setQuery] = useState("");
+  const godMode = useGodMode();
 
   if (!open) return null;
 
-  const apps = (Object.values(HOST_APP_REGISTRY) as HostAppDescriptor[]).filter((a) =>
+  const apps = visibleApps(godMode).filter((a) =>
     a.title.toLowerCase().includes(query.trim().toLowerCase()),
   );
 

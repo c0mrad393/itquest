@@ -23,6 +23,16 @@ export default function Toolbox() {
 
   return (
     <div className="flex h-full flex-col bg-panel text-sm text-gray-200">
+      {/* This app is registry-gated to God Mode; say so plainly so a QA session
+          never mistakes ticket walkthroughs for something players can see. */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-amber-500/30 bg-amber-500/[0.07] px-4 py-1.5 text-[10px] text-amber-200/80">
+        <AppIcon id="alert" size={12} />
+        <span className="font-semibold text-amber-200">QA build only</span>
+        <span>
+          Per-ticket walkthroughs — hidden from normal players. Use the Company
+          Wiki for in-world documentation.
+        </span>
+      </div>
       <div className="flex items-center gap-2 border-b border-edge bg-panelalt px-4 py-2.5">
         <TabBtn active={tab === "runbooks"} onClick={() => setTab("runbooks")}>
           <AppIcon id="book" size={13} /> Runbooks

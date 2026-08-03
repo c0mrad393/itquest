@@ -10,7 +10,7 @@
 
 import {
   HOST_APP_REGISTRY,
-  TASKBAR_PINNED,
+  taskbarPinned,
   type HostAppId,
 } from "@/lib/core";
 import { useHostStore } from "@/lib/host/store";
@@ -20,11 +20,14 @@ import { useMailStore } from "@/lib/mail/store";
 import { useNotificationStore, unreadCount } from "@/lib/host/notifications-store";
 import { ActionCenter } from "./Notifications";
 import { AppIcon, APP_ICON_SIZE } from "@/components/ui/app-icons";
+import { useGodMode } from "@/lib/host/god-mode";
 import Clock from "./Clock";
 import { useState } from "react";
 
 export default function Taskbar() {
   const [actionCenter, setActionCenter] = useState(false);
+  const godMode = useGodMode();
+  const pinned = taskbarPinned(godMode);
   const unread = useNotificationStore((s) => unreadCount(s.items));
   const windows = useHostStore((s) => s.windows);
   const startMenuOpen = useHostStore((s) => s.startMenuOpen);
@@ -76,7 +79,7 @@ export default function Taskbar() {
           <WindowsLogo />
         </button>
 
-        {TASKBAR_PINNED.map((appId) => {
+        {pinned.map((appId) => {
           const meta = HOST_APP_REGISTRY[appId];
           const instances = appInstances.filter(
             (w) => w.kind === "app" && w.appId === appId,

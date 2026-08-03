@@ -16,6 +16,8 @@
  *   TriageOS.godMode(true)   // then reload
  */
 
+import { useEffect, useState } from "react";
+
 const KEY = "triageos-god-mode";
 
 export const GOD_MODE_USERNAME = "QA Tester";
@@ -46,6 +48,20 @@ export function setGodMode(on: boolean): boolean {
     return false;
   }
   return changed;
+}
+
+/**
+ * React-safe read of the flag.
+ *
+ * `isGodMode()` touches localStorage, which does not exist during SSR — reading
+ * it straight in render would make the server and client markup disagree. This
+ * always returns false on the first paint and settles after mount, so the shell
+ * hydrates cleanly and debug-only apps simply appear a tick later.
+ */
+export function useGodMode(): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => setOn(isGodMode()), []);
+  return on;
 }
 
 /** Expose a tiny console handle for testers. */

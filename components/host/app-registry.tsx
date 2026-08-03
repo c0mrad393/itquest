@@ -21,6 +21,7 @@ import Toolbox from "./apps/Toolbox";
 import Leaderboard from "./apps/Leaderboard";
 import SettingsApp from "./apps/SettingsApp";
 import ProfileApp from "./apps/ProfileApp";
+import Wiki from "./apps/Wiki";
 
 export function renderHostApp(appId: HostAppId): React.ReactNode {
   switch (appId) {
@@ -40,6 +41,8 @@ export function renderHostApp(appId: HostAppId): React.ReactNode {
       return <CoreMail />;
     case "netops":
       return <NetOpsConsole />;
+    case "wiki":
+      return <Wiki />;
     case "toolbox":
       return <Toolbox />;
     case "leaderboard":

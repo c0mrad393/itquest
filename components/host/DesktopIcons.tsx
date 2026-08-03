@@ -13,8 +13,9 @@
  */
 
 import { useEffect, useState } from "react";
-import { HOST_APP_REGISTRY, type HostAppDescriptor, type HostAppId } from "@/lib/core";
+import { visibleApps, type HostAppId } from "@/lib/core";
 import { useHostStore } from "@/lib/host/store";
+import { useGodMode } from "@/lib/host/god-mode";
 import { AppIcon, APP_ICON_SIZE } from "@/components/ui/app-icons";
 
 const CELL_H = 92; // px per grid row
@@ -23,6 +24,7 @@ const PAD = 16;
 
 export default function DesktopIcons() {
   const openApp = useHostStore((s) => s.openApp);
+  const godMode = useGodMode();
   const [selected, setSelected] = useState<HostAppId | null>(null);
   const [rows, setRows] = useState(6);
 
@@ -35,9 +37,7 @@ export default function DesktopIcons() {
     return () => window.removeEventListener("resize", calc);
   }, []);
 
-  const desktopApps = (Object.values(HOST_APP_REGISTRY) as HostAppDescriptor[]).filter(
-    (a) => a.showOnDesktop,
-  );
+  const desktopApps = visibleApps(godMode).filter((a) => a.showOnDesktop);
 
   return (
     <div

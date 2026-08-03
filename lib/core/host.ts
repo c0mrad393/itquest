@@ -19,7 +19,8 @@ export type HostAppId =
   | "assetmanager" // Hardware inventory / store room
   | "racklab" // Server rack & network infrastructure simulator
   | "netops" // Network topology console (link optimization)
-  | "toolbox" // Tech Toolbox & Documentation Center
+  | "wiki" // Company Wiki / intranet documentation portal
+  | "toolbox" // Per-ticket runbooks — QA/debug only, see `godModeOnly`
   | "leaderboard" // Global ranking
   | "settings" // Host settings
   | "profile"; // Account & profile management (identity layer)
@@ -134,6 +135,12 @@ export interface HostAppDescriptor {
   pinnedToTaskbar: boolean;
   showOnDesktop: boolean;
   badgeSource?: HostAppBadgeSource;
+  /**
+   * Debug build only: hidden from the desktop, Start menu and taskbar unless
+   * the QA "God Mode" profile is active. Used for tools that would spoil normal
+   * play (per-ticket walkthroughs) but are needed to test scenarios.
+   */
+  godModeOnly?: boolean;
 }
 
 export type HostAppRegistry = Record<HostAppId, HostAppDescriptor>;
@@ -242,17 +249,30 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     pinnedToTaskbar: true,
     showOnDesktop: true,
   },
+  wiki: {
+    id: "wiki",
+    title: "Company Wiki",
+    iconId: "book",
+    category: "work",
+    description: "Internal IT documentation: standards, topology, conventions and SOPs.",
+    defaultSize: { w: 1020, h: 660 },
+    minSize: { w: 720, h: 460 },
+    singleton: true,
+    pinnedToTaskbar: true,
+    showOnDesktop: true,
+  },
   toolbox: {
     id: "toolbox",
-    title: "Tech Toolbox",
+    title: "Tech Toolbox (debug)",
     iconId: "toolbox",
-    category: "work",
-    description: "Searchable runbooks, network diagrams, and command references.",
+    category: "system",
+    description: "Per-ticket walkthroughs and the live CLI registry. QA builds only.",
     defaultSize: { w: 900, h: 620 },
     minSize: { w: 600, h: 420 },
     singleton: true,
     pinnedToTaskbar: true,
     showOnDesktop: true,
+    godModeOnly: true,
   },
   leaderboard: {
     id: "leaderboard",
@@ -292,12 +312,23 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
   },
 };
 
+/**
+ * Apps the operator may see. `godMode` unlocks the debug-only tools; everything
+ * else is always visible. Every surface that lists apps (desktop, Start menu,
+ * taskbar) must go through this so a debug tool cannot leak into normal play.
+ */
+export function visibleApps(godMode: boolean): HostAppDescriptor[] {
+  return (Object.values(HOST_APP_REGISTRY) as HostAppDescriptor[]).filter(
+    (a) => !a.godModeOnly || godMode,
+  );
+}
+
 /** Ordered list of app ids pinned to the taskbar (left → right). */
-export const TASKBAR_PINNED: HostAppId[] = (
-  Object.values(HOST_APP_REGISTRY) as HostAppDescriptor[]
-)
-  .filter((a) => a.pinnedToTaskbar)
-  .map((a) => a.id);
+export function taskbarPinned(godMode: boolean): HostAppId[] {
+  return visibleApps(godMode)
+    .filter((a) => a.pinnedToTaskbar)
+    .map((a) => a.id);
+}
 
 // ── Host operator & shell state ────────────────────────────────────────────
 
