@@ -19,7 +19,8 @@ import type {
   TargetNode,
   WindowsService,
 } from "@/lib/core";
-import { availableOf, canMount, pingCheck, sizeSpec, ADMIN_PORTS, PUBLIC_CIDR, CLOUD_AUDIT_CAP } from "@/lib/core";
+import { availableOf, canMount, pingCheck, sizeSpec, shippingOption, ADMIN_PORTS, PUBLIC_CIDR, CLOUD_AUDIT_CAP } from "@/lib/core";
+import type { ShippingMethod } from "@/lib/core";
 import type { AetherVNode, AuditEvent, ShieldRule, VNodeSize, VNodeStatus } from "@/lib/core";
 import type { CommandResult, NodeId } from "@/lib/core";
 import { generateWorld } from "@/lib/org/generator";
@@ -164,8 +165,24 @@ interface InfraStore {
   returnAllocation: (allocationId: string) => void;
   /** Move units between available and the repair bench. */
   setAssetRepair: (itemId: string, qty: number) => void;
-  /** Procurement delivery: add units to the shelf. */
-  purchaseAsset: (itemId: string, qty: number) => void;
+  /**
+   * Place a Procurement order. Express lands on the shelf immediately;
+   * standard goes to `inTransit` and is released by `advanceDeliveries`.
+   */
+  placeOrder: (spec: {
+    itemId: string;
+    qty: number;
+    method: ShippingMethod;
+    paid: number;
+  }) => void;
+  /**
+   * Tick every open order down by one ticket resolution and deliver those
+   * that reach zero. Called by the reconciler — deliveries are paced by work
+   * done, not by wall-clock, so idling never conjures parts.
+   */
+  advanceDeliveries: () => string[];
+  /** Return a pulled-out part to the ledger as dead stock. */
+  markFaulty: (skuId: string, qty?: number) => void;
   /**
    * Consume a part permanently (fitted into a machine). Returns false when
    * the shelf is empty — the Hardware Lab refuses to fit what it has not got,
@@ -836,13 +853,15 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       const inv = s.infra.inventory;
       const item = inv.items.find((i) => i.id === itemId);
       if (!item || qty <= 0 || availableOf(item) < qty) return s;
-      const items = inv.items.map((i) => (i.id === itemId ? { ...i, deployed: i.deployed + qty } : i));
+      const items = inv.items.map((i) =>
+        i.id === itemId ? { ...i, spare: i.spare - qty, deployed: i.deployed + qty } : i,
+      );
       const alloc = {
         id: `al-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         itemId, itemName: item.name, qty, assignedTo,
         ticketId: ticket?.id, ticketCode: ticket?.code, at: Date.now(),
       };
-      return { infra: { ...s.infra, inventory: { items, allocations: [alloc, ...inv.allocations] } } };
+      return { infra: { ...s.infra, inventory: { ...inv, items, allocations: [alloc, ...inv.allocations] } } };
     }),
 
   returnAllocation: (allocationId) =>
@@ -851,26 +870,40 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       const alloc = inv.allocations.find((a) => a.id === allocationId);
       if (!alloc) return s;
       const items = inv.items.map((i) =>
-        i.id === alloc.itemId ? { ...i, deployed: Math.max(0, i.deployed - alloc.qty) } : i,
+        i.id === alloc.itemId
+          ? { ...i, deployed: Math.max(0, i.deployed - alloc.qty), spare: i.spare + alloc.qty }
+          : i,
       );
       return {
         infra: {
           ...s.infra,
-          inventory: { items, allocations: inv.allocations.filter((a) => a.id !== allocationId) },
+          inventory: {
+            ...inv,
+            items,
+            allocations: inv.allocations.filter((a) => a.id !== allocationId),
+          },
         },
       };
     }),
 
   setAssetRepair: (itemId, qty) =>
     set((s) => {
+      // Move units between the shelf and the faulty pile. `qty` is the delta:
+      // positive condemns spares, negative returns repaired units to stock.
       const inv = s.infra.inventory;
       const item = inv.items.find((i) => i.id === itemId);
       if (!item) return s;
-      const next = Math.max(0, Math.min(qty, item.total - item.deployed));
+      const delta = qty > 0 ? Math.min(qty, item.spare) : Math.max(qty, -item.faulty);
+      if (delta === 0) return s;
       return {
         infra: {
           ...s.infra,
-          inventory: { ...inv, items: inv.items.map((i) => (i.id === itemId ? { ...i, inRepair: next } : i)) },
+          inventory: {
+            ...inv,
+            items: inv.items.map((i) =>
+              i.id === itemId ? { ...i, spare: i.spare - delta, faulty: i.faulty + delta } : i,
+            ),
+          },
         },
       };
     }),
@@ -1024,14 +1057,87 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       },
     })),
 
-  purchaseAsset: (itemId, qty) =>
+  placeOrder: ({ itemId, qty, method, paid }) =>
+    set((st) => {
+      const inv = st.infra.inventory;
+      const item = inv.items.find((i) => i.id === itemId);
+      if (!item) return st;
+      const wait = shippingOption(method).ticketsToWait;
+
+      // Express is not an order at all — it is a counter sale.
+      if (wait === 0) {
+        return {
+          infra: {
+            ...st.infra,
+            inventory: {
+              ...inv,
+              items: inv.items.map((i) => (i.id === itemId ? { ...i, spare: i.spare + qty } : i)),
+            },
+          },
+        };
+      }
+
+      return {
+        infra: {
+          ...st.infra,
+          inventory: {
+            ...inv,
+            items: inv.items.map((i) =>
+              i.id === itemId ? { ...i, inTransit: i.inTransit + qty } : i,
+            ),
+            orders: [
+              {
+                id: `po-${Date.now()}-${Math.floor(Math.random() * 999)}`,
+                itemId,
+                itemName: item.name,
+                qty,
+                method,
+                paid,
+                placedAt: Date.now(),
+                ticketsRemaining: wait,
+              },
+              ...inv.orders,
+            ],
+          },
+        },
+      };
+    }),
+
+  advanceDeliveries: () => {
+    const inv = get().infra.inventory;
+    if (inv.orders.length === 0) return [];
+
+    const ticked = inv.orders.map((o) => ({ ...o, ticketsRemaining: o.ticketsRemaining - 1 }));
+    const arrived = ticked.filter((o) => o.ticketsRemaining <= 0);
+    if (arrived.length === 0) {
+      set((st) => ({ infra: { ...st.infra, inventory: { ...st.infra.inventory, orders: ticked } } }));
+      return [];
+    }
+
+    set((st) => ({
+      infra: {
+        ...st.infra,
+        inventory: {
+          ...st.infra.inventory,
+          items: st.infra.inventory.items.map((i) => {
+            const qty = arrived.filter((o) => o.itemId === i.id).reduce((t, o) => t + o.qty, 0);
+            return qty ? { ...i, inTransit: Math.max(0, i.inTransit - qty), spare: i.spare + qty } : i;
+          }),
+          orders: ticked.filter((o) => o.ticketsRemaining > 0),
+        },
+      },
+    }));
+    return arrived.map((o) => `${o.qty}× ${o.itemName}`);
+  },
+
+  markFaulty: (skuId, qty = 1) =>
     set((st) => ({
       infra: {
         ...st.infra,
         inventory: {
           ...st.infra.inventory,
           items: st.infra.inventory.items.map((i) =>
-            i.id === itemId ? { ...i, total: i.total + qty } : i,
+            i.id === skuId ? { ...i, faulty: i.faulty + qty } : i,
           ),
         },
       },
@@ -1049,7 +1155,7 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
         inventory: {
           ...st.infra.inventory,
           items: st.infra.inventory.items.map((i) =>
-            i.id === skuId ? { ...i, deployed: i.deployed + qty } : i,
+            i.id === skuId ? { ...i, spare: i.spare - qty, deployed: i.deployed + qty } : i,
           ),
         },
       },

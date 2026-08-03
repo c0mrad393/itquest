@@ -84,6 +84,18 @@ export default function TicketReconciler() {
           ticket.id,
           `${parts.join(" · ")} · +${score.xp} XP · +${budget.toLocaleString()} Cr`,
         );
+
+        // Standard freight is paced by work done, not by the clock: closing an
+        // incident moves every open order one step closer.
+        const arrived = useInfraStore.getState().advanceDeliveries();
+        if (arrived.length > 0) {
+          useNotificationStore.getState().push({
+            kind: "info",
+            title: "Delivery received",
+            body: arrived.join(", "),
+            badge: "Store room",
+          });
+        }
       }
     }
 
