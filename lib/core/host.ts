@@ -20,6 +20,7 @@ export type HostAppId =
   | "racklab" // Server rack & network infrastructure simulator
   | "netops" // Network topology console (link optimization)
   | "monitor" // Infrastructure metrics dashboard (observability)
+  | "aethercloud" // AetherCloud Engine — hybrid cloud console
   | "wiki" // Company Wiki / intranet documentation portal
   | "toolbox" // Per-ticket runbooks — QA/debug only, see `godModeOnly`
   | "leaderboard" // Global ranking
@@ -117,7 +118,10 @@ export type HostAppIconId =
   | "x"
   | "plus"
   | "minus"
-  | "chevron-up";
+  | "chevron-up"
+  | "cloud"
+  | "tunnel"
+  | "credit";
 
 /** Which live counter, if any, drives an app's taskbar/Start badge. */
 export type HostAppBadgeSource = "unread-tickets" | "unread-mail" | "unread-coremail" | "sla-alerts";
@@ -198,6 +202,18 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     description: "Live network topology: link metrics, re-routing, and software firewalls.",
     defaultSize: { w: 960, h: 640 },
     minSize: { w: 680, h: 460 },
+    singleton: true,
+    pinnedToTaskbar: true,
+    showOnDesktop: true,
+  },
+  aethercloud: {
+    id: "aethercloud",
+    title: "AetherCloud",
+    iconId: "cloud",
+    category: "work",
+    description: "Hybrid cloud console: virtual networks, vNodes, storage, VPN and audit.",
+    defaultSize: { w: 1080, h: 700 },
+    minSize: { w: 760, h: 500 },
     singleton: true,
     pinnedToTaskbar: true,
     showOnDesktop: true,

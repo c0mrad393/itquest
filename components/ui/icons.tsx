@@ -298,6 +298,19 @@ export const IconEye = (p: IconProps) => (
   <Svg {...p}><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" /><circle cx="12" cy="12" r="3" /></Svg>
 );
 
+// ── Cloud (AetherCloud Engine) ──────────────────────────────────────────────
+
+/** Cloud outline with an architecture node inside — compute in the cloud. */
+export const IconCloudNodes = (p: IconProps) => (
+  <Svg {...p}><path d="M7.2 19.5a4.2 4.2 0 01-.5-8.37 5.4 5.4 0 0110.42-1.4A3.9 3.9 0 0117.6 19.5z" /><rect x="9.6" y="12.4" width="4.8" height="4.2" rx="1" /><path d="M12 10.6v1.8M9.6 14.5H7.9M16.1 14.5h-1.7" /></Svg>
+);
+export const IconTunnel = (p: IconProps) => (
+  <Svg {...p}><path d="M3 19V12a9 9 0 0118 0v7" /><path d="M8 19v-7a4 4 0 018 0v7" /><path d="M2 19h20" /></Svg>
+);
+export const IconCredit = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="12" r="9" /><path d="M15 8.7a3.6 3.6 0 100 6.6" /><path d="M8.6 10.7h4.2M8.6 13.3h4.2" /></Svg>
+);
+
 // ── Operating-system marks (remote sessions / gateway) ──────────────────────
 
 export const IconLinux = (p: IconProps) => (

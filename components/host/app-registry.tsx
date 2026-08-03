@@ -23,6 +23,7 @@ import SettingsApp from "./apps/SettingsApp";
 import ProfileApp from "./apps/ProfileApp";
 import Wiki from "./apps/Wiki";
 import Monitor from "./apps/Monitor";
+import AetherConsole from "./apps/AetherConsole";
 
 export function renderHostApp(appId: HostAppId): React.ReactNode {
   switch (appId) {
@@ -42,6 +43,8 @@ export function renderHostApp(appId: HostAppId): React.ReactNode {
       return <CoreMail />;
     case "netops":
       return <NetOpsConsole />;
+    case "aethercloud":
+      return <AetherConsole />;
     case "monitor":
       return <Monitor />;
     case "wiki":

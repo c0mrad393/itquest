@@ -17,6 +17,9 @@ import type { EmotionIconId } from "@/lib/dialogue/types";
 import {
   IconAlert,
   IconApple,
+  IconCloudNodes,
+  IconCredit,
+  IconTunnel,
   IconChevronUp,
   IconActivity,
   IconBattery,
@@ -282,6 +285,12 @@ export function AppIcon({ id, ...props }: IconProps & { id: HostAppIconId | Emot
       return <IconMinus {...props} />;
     case "chevron-up":
       return <IconChevronUp {...props} />;
+    case "cloud":
+      return <IconCloudNodes {...props} />;
+    case "tunnel":
+      return <IconTunnel {...props} />;
+    case "credit":
+      return <IconCredit {...props} />;
     default:
       // Unknown key (e.g. a window restored from an older session) — a neutral
       // glyph beats a blank gap or a crash.
