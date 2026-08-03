@@ -33,6 +33,11 @@ export interface AssetItem {
   uSize?: number;
   /** Set when this asset can be mounted in the rack simulator. */
   deviceKind?: RackDeviceKind;
+  /**
+   * Unit price in IT Budget credits. Present on everything the Procurement
+   * app can restock; absent means the item is not purchasable.
+   */
+  price?: number;
 }
 
 export interface AssetAllocation {

@@ -164,6 +164,14 @@ interface InfraStore {
   returnAllocation: (allocationId: string) => void;
   /** Move units between available and the repair bench. */
   setAssetRepair: (itemId: string, qty: number) => void;
+  /** Procurement delivery: add units to the shelf. */
+  purchaseAsset: (itemId: string, qty: number) => void;
+  /**
+   * Consume a part permanently (fitted into a machine). Returns false when
+   * the shelf is empty — the Hardware Lab refuses to fit what it has not got,
+   * which is what makes procurement a real constraint.
+   */
+  consumePart: (skuId: string, qty?: number) => boolean;
 
   // ── Rack simulator ──
   /** Mount an inventory asset into the rack at `uStart` (consumes 1 unit). */
@@ -1015,6 +1023,39 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
         },
       },
     })),
+
+  purchaseAsset: (itemId, qty) =>
+    set((st) => ({
+      infra: {
+        ...st.infra,
+        inventory: {
+          ...st.infra.inventory,
+          items: st.infra.inventory.items.map((i) =>
+            i.id === itemId ? { ...i, total: i.total + qty } : i,
+          ),
+        },
+      },
+    })),
+
+  consumePart: (skuId, qty = 1) => {
+    const item = get().infra.inventory.items.find((i) => i.id === skuId);
+    if (!item || availableOf(item) < qty) return false;
+    // Fitted parts leave the shelf for good: count them as deployed rather
+    // than shrinking `total`, so the asset register still reflects what the
+    // company owns and where it went.
+    set((st) => ({
+      infra: {
+        ...st.infra,
+        inventory: {
+          ...st.infra.inventory,
+          items: st.infra.inventory.items.map((i) =>
+            i.id === skuId ? { ...i, deployed: i.deployed + qty } : i,
+          ),
+        },
+      },
+    }));
+    return true;
+  },
 
   rackUpdateServer: (deviceId, patch) =>
     set((s) => ({

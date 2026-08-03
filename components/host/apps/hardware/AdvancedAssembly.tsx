@@ -14,6 +14,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { AssemblySpec, StockItem } from "@/lib/hardware/types";
 import { STOCK_INVENTORY, componentLabel } from "@/lib/hardware/types";
+import { useInfraStore } from "@/lib/infra/store";
+import { useHostStore } from "@/lib/host/store";
+import { availableOf } from "@/lib/core";
+import { playCue } from "@/lib/audio/engine";
 import { AppIcon } from "@/components/ui/app-icons";
 
 type Phase = "prep" | "swap" | "cabling" | "fasten" | "close" | "ready";
@@ -45,6 +49,14 @@ export default function AdvancedAssembly({
   const [baffleOn, setBaffleOn] = useState(!spec.baffle);
 
   const stock = STOCK_INVENTORY[spec.defective] ?? [];
+  const inventory = useInfraStore((st) => st.infra.inventory);
+  const consumePart = useInfraStore((st) => st.consumePart);
+  const openApp = useHostStore((st) => st.openApp);
+  const [outOfStock, setOutOfStock] = useState<string | null>(null);
+  const stockOf = (skuId: string) => {
+    const item = inventory.items.find((i) => i.id === skuId);
+    return item ? availableOf(item) : 0;
+  };
   const prepDone = batteryOff && trayOut && baffleOff;
   const swapDone = extracted && installed >= spec.count;
   const cablingDone = cablesDone >= spec.cabling.length;
@@ -53,13 +65,23 @@ export default function AdvancedAssembly({
 
   function pickStock(item: StockItem) {
     if (!extracted || installed >= spec.count) return;
-    if (item.label === spec.replacementLabel) {
-      setInstalled((n) => n + 1);
-      setWrong(null);
-    } else {
+    if (item.label !== spec.replacementLabel) {
       setWrong(item.id);
+      playCue("error");
       setTimeout(() => setWrong(null), 600);
+      return;
     }
+    // Right part — but only if the store room actually has one. consumePart
+    // is the authority: it takes the unit off the shelf and refuses when the
+    // shelf is empty, so a bare store room genuinely blocks the repair.
+    if (!consumePart(item.skuId)) {
+      setOutOfStock(item.skuId);
+      playCue("error");
+      setTimeout(() => setOutOfStock(null), 2400);
+      return;
+    }
+    setInstalled((n) => n + 1);
+    setWrong(null);
   }
 
   function proceed() {
@@ -160,15 +182,31 @@ export default function AdvancedAssembly({
         <div className="rounded-xl border border-edge bg-panelalt/40 p-3">
           <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Stock Inventory</div>
           <div className="space-y-2">
-            {stock.map((item) => (
-              <button key={item.id} onClick={() => pickStock(item)} disabled={phase !== "swap" || !extracted || installed >= spec.count}
-                className={`flex w-full items-center gap-2 rounded-lg border p-2 text-left transition disabled:opacity-40 ${wrong === item.id ? "border-danger bg-danger/10" : "border-edge hover:border-info/50 hover:bg-info/5"}`}>
-                <AppIcon id="package" size={17} />
-                <span className="min-w-0"><span className="block truncate text-[11px] text-gray-100">{item.label}</span><span className="block truncate text-[9px] text-gray-500">{item.spec}</span></span>
-              </button>
-            ))}
+            {stock.map((item) => {
+              const have = stockOf(item.skuId);
+              return (
+                <button key={item.id} onClick={() => pickStock(item)} disabled={phase !== "swap" || !extracted || installed >= spec.count || have === 0}
+                  title={have === 0 ? "Out of stock — order more in Procurement" : `${have} on the shelf`}
+                  className={`flex w-full items-center gap-2 rounded-lg border p-2 text-left transition disabled:opacity-40 ${wrong === item.id ? "border-danger bg-danger/10" : have === 0 ? "border-edge/50" : "border-edge hover:border-info/50 hover:bg-info/5"}`}>
+                  <AppIcon id="package" size={17} />
+                  <span className="min-w-0 flex-1"><span className="block truncate text-[11px] text-gray-100">{item.label}</span><span className="block truncate text-[9px] text-gray-500">{item.spec}</span></span>
+                  <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] font-semibold ${have === 0 ? "bg-danger/20 text-danger" : "bg-white/5 text-gray-400"}`}>
+                    {have === 0 ? "none" : `${have} left`}
+                  </span>
+                </button>
+              );
+            })}
           </div>
           <div className="mt-2 text-[9px] text-gray-600">Required: {spec.count > 1 ? `${spec.count}× ` : ""}{spec.replacementLabel}</div>
+          {outOfStock && (
+            <div className="mt-2 flex items-center gap-1.5 rounded-md border border-danger/40 bg-danger/10 px-2 py-1.5 text-[10px] text-danger">
+              <AppIcon id="alert" size={11} />
+              <span className="min-w-0 flex-1">Store room is out of this part.</span>
+              <button onClick={() => openApp("procurement")} className="shrink-0 rounded border border-danger/40 px-1.5 py-0.5 font-semibold hover:bg-danger/15">
+                Order
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="rounded-xl border border-edge bg-panelalt/40 p-3 text-[11px]">

@@ -19,6 +19,13 @@ export interface StockItem {
   kind: ComponentKind;
   label: string;
   spec: string;
+  /**
+   * The store-room SKU this part draws from. The Hardware Lab checks
+   * availability against `infra.inventory` before it will let the part be
+   * fitted, and consumes a unit when it is — which is what makes procurement
+   * a real constraint rather than a shop window.
+   */
+  skuId: string;
 }
 
 /** Component-swap + physical-teardown requirements for the Assembly stage. */
@@ -86,23 +93,23 @@ export const componentLabel = (k: ComponentKind) => COMPONENT_META[k];
 
 export const STOCK_INVENTORY: Record<ComponentKind, StockItem[]> = {
   ram: [
-    { id: "ram-8", kind: "ram", label: "8GB DDR4", spec: "PC4-25600" },
-    { id: "ram-16", kind: "ram", label: "16GB DDR4", spec: "PC4-25600" },
-    { id: "ram-32", kind: "ram", label: "32GB DDR5", spec: "PC5-44800 · ECC" },
+    { id: "ram-8", kind: "ram", label: "8GB DDR4", spec: "PC4-25600", skuId: "sku-ram-8" },
+    { id: "ram-16", kind: "ram", label: "16GB DDR4", spec: "PC4-25600", skuId: "sku-ram-16" },
+    { id: "ram-32", kind: "ram", label: "32GB DDR5", spec: "PC5-44800 · ECC", skuId: "sku-ram-32" },
   ],
   hdd: [
-    { id: "hdd-1", kind: "hdd", label: "1TB 7.2K SATA", spec: "Consumer" },
-    { id: "hdd-2", kind: "hdd", label: "2TB Enterprise SAS", spec: "Hot-swap · 12Gb/s" },
-    { id: "hdd-nvme", kind: "hdd", label: "1TB NVMe SSD", spec: "M.2 · not hot-swap" },
+    { id: "hdd-1", kind: "hdd", label: "1TB 7.2K SATA", spec: "Consumer", skuId: "sku-hdd-1" },
+    { id: "hdd-2", kind: "hdd", label: "2TB Enterprise SAS", spec: "Hot-swap · 12Gb/s", skuId: "sku-hdd-2" },
+    { id: "hdd-nvme", kind: "hdd", label: "1TB NVMe SSD", spec: "M.2 · not hot-swap", skuId: "sku-hdd-nvme" },
   ],
   ssd: [
-    { id: "ssd-500", kind: "ssd", label: "500GB SATA SSD", spec: "Consumer" },
-    { id: "ssd-1", kind: "ssd", label: "1TB NVMe SSD", spec: "M.2 Gen4" },
-    { id: "ssd-2", kind: "ssd", label: "2TB Enterprise NVMe", spec: "U.2 · mixed-use" },
+    { id: "ssd-500", kind: "ssd", label: "500GB SATA SSD", spec: "Consumer", skuId: "sku-ssd-500" },
+    { id: "ssd-1", kind: "ssd", label: "1TB NVMe SSD", spec: "M.2 Gen4", skuId: "sku-ssd-1" },
+    { id: "ssd-2", kind: "ssd", label: "2TB Enterprise NVMe", spec: "U.2 · mixed-use", skuId: "sku-ssd-2" },
   ],
-  psu: [{ id: "psu-1", kind: "psu", label: "750W Platinum", spec: "Redundant" }],
-  gpu: [{ id: "gpu-1", kind: "gpu", label: "Pro GPU 16GB", spec: "Workstation" }],
-  nic: [{ id: "nic-1", kind: "nic", label: "10GbE NIC", spec: "Dual-port" }],
+  psu: [{ id: "psu-1", kind: "psu", label: "750W Platinum", spec: "Redundant", skuId: "sku-psu-750" }],
+  gpu: [{ id: "gpu-1", kind: "gpu", label: "Pro GPU 16GB", spec: "Workstation", skuId: "sku-gpu-pro" }],
+  nic: [{ id: "nic-1", kind: "nic", label: "10GbE NIC", spec: "Dual-port", skuId: "sku-nic-10g" }],
 };
 
 // ── Job derivation ───────────────────────────────────────────────────────────
