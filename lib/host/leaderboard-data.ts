@@ -17,11 +17,11 @@ export interface LeaderboardEntry {
 }
 
 export const RIVALS: LeaderboardEntry[] = [
-  { name: "D. Okafor", role: "Tier-3 SRE", avatar: "🧑🏿‍💻", xp: 12480, resolved: 61, breaches: 2, csat: 91 },
-  { name: "M. Ivanova", role: "SecOps Analyst", avatar: "👩🏻‍💻", xp: 9310, resolved: 44, breaches: 4, csat: 88 },
-  { name: "K. Tanaka", role: "Tier-2 Sysadmin", avatar: "👨🏻‍💼", xp: 7420, resolved: 39, breaches: 6, csat: 84 },
-  { name: "S. Weber", role: "NetOps Engineer", avatar: "🧔🏼", xp: 5150, resolved: 28, breaches: 3, csat: 86 },
-  { name: "A. Haddad", role: "Helpdesk Lead", avatar: "👩🏽", xp: 3890, resolved: 33, breaches: 9, csat: 79 },
+  { name: "D. Okafor", role: "Tier-3 SRE", avatar: "emerald", xp: 12480, resolved: 61, breaches: 2, csat: 91 },
+  { name: "M. Ivanova", role: "SecOps Analyst", avatar: "rose", xp: 9310, resolved: 44, breaches: 4, csat: 88 },
+  { name: "K. Tanaka", role: "Tier-2 Sysadmin", avatar: "sky", xp: 7420, resolved: 39, breaches: 6, csat: 84 },
+  { name: "S. Weber", role: "NetOps Engineer", avatar: "amber", xp: 5150, resolved: 28, breaches: 3, csat: 86 },
+  { name: "A. Haddad", role: "Helpdesk Lead", avatar: "violet", xp: 3890, resolved: 33, breaches: 9, csat: 79 },
 ];
 
 /** 1-based global rank for a given XP total against the seeded field. */

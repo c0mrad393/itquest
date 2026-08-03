@@ -17,14 +17,14 @@ export function createHostWorkstation(): HostWorkstationState {
       ? {
           displayName: GOD_MODE_USERNAME,
           role: "QA / Test Engineer",
-          avatar: "\u{1F9EA}",
+          avatar: "amber",
           level: levelForXp(GOD_MODE_XP),
           xp: GOD_MODE_XP,
         }
       : {
           displayName: "O. Kharebashvili",
           role: "Tier-2 Systems Engineer",
-          avatar: "\u{1F9D1}\u200D\u{1F4BB}",
+          avatar: "indigo",
           level: 4,
           xp: 6420,
         },

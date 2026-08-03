@@ -30,7 +30,7 @@ const GUEST_DEFAULTS: UserProfile = {
   id: "guest",
   email: null,
   username: "Guest Operator",
-  avatar: "🧑‍💻",
+  avatar: "indigo",
   provider: "guest",
   xp: 6420,
   level: 4,
@@ -97,7 +97,7 @@ function toProfile(user: User, row: Partial<UserProfile> | null): UserProfile {
       (meta.full_name as string) ??
       user.email?.split("@")[0] ??
       "Operator",
-    avatar: (row?.avatar as string) ?? (meta.avatar_url as string) ?? "🧑‍💻",
+    avatar: (row?.avatar as string) ?? (meta.avatar_url as string) ?? "indigo",
     provider,
     xp: row?.xp ?? 6420,
     level: row?.level ?? 4,

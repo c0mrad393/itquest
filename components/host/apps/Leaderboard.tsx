@@ -91,7 +91,7 @@ export default function Leaderboard() {
               {i + 1}
             </span>
             <span className="flex min-w-0 items-center gap-2">
-              <Avatar value={r.avatar} className="h-7 w-7 text-lg" />
+              <Avatar value={r.avatar} name={r.name} className="h-7 w-7" />
               <span className="min-w-0">
                 <span className="block truncate text-gray-100">
                   {r.name}

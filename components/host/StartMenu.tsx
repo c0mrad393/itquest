@@ -73,7 +73,7 @@ export default function StartMenu() {
 
         {/* Footer: profile + power */}
         <div className="mt-4 flex items-center gap-3 border-t border-edge pt-3">
-          <Avatar value={host.user.avatar} className="h-9 w-9 text-lg" />
+          <Avatar value={host.user.avatar} name={host.user.displayName} className="h-9 w-9" />
           <div className="leading-tight">
             <div className="text-sm text-gray-100">{host.user.displayName}</div>
             <div className="text-[11px] text-gray-500">

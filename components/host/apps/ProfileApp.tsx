@@ -17,7 +17,7 @@ import { useTicketStore } from "@/lib/host/tickets-store";
 import { useSlaStore } from "@/lib/sla/store";
 import { levelForXp, xpForLevel } from "@/lib/scenario/scoring";
 import { rankForXp } from "@/lib/host/leaderboard-data";
-import { AVATAR_PRESETS, isImageAvatar } from "@/lib/core";
+import { AVATAR_PALETTES, isImageAvatar } from "@/lib/core";
 import Avatar from "../Avatar";
 import { AppIcon } from "@/components/ui/app-icons";
 
@@ -89,7 +89,7 @@ export default function ProfileApp() {
     <div className="h-full space-y-4 overflow-y-auto term-scroll bg-panel p-5 text-sm text-gray-200">
       {/* Identity header */}
       <div className="flex items-center gap-4 rounded-xl border border-edge bg-panelalt p-4">
-        <Avatar value={profile.avatar} className="h-16 w-16 text-4xl" />
+        <Avatar value={profile.avatar} name={profile.username} className="h-16 w-16" />
         <div className="min-w-0 flex-1">
           <div className="truncate text-lg font-bold text-gray-50">{profile.username}</div>
           <div className="truncate text-[11px] text-gray-500">{profile.email ?? "no email (guest)"}</div>
@@ -160,21 +160,26 @@ export default function ProfileApp() {
           </div>
         </label>
 
-        <div className="mb-1 text-[10px] uppercase tracking-wider text-gray-500">Avatar</div>
+        <div className="mb-1 text-[10px] uppercase tracking-wider text-gray-500">Avatar colour</div>
         <div className="flex flex-wrap items-center gap-1.5">
-          {AVATAR_PRESETS.map((a) => (
+          {AVATAR_PALETTES.map((pal) => (
             <button
-              key={a}
-              onClick={() => void pickAvatar(a)}
-              className={`flex h-9 w-9 items-center justify-center rounded-lg border text-lg transition ${
-                profile.avatar === a
-                  ? "border-info bg-info/20"
-                  : "border-edge bg-panel hover:border-gray-500"
+              key={pal.id}
+              onClick={() => void pickAvatar(pal.id)}
+              title={pal.label}
+              aria-label={pal.label}
+              className={`rounded-full p-0.5 transition ${
+                profile.avatar === pal.id
+                  ? "ring-2 ring-info ring-offset-2 ring-offset-panelalt"
+                  : "ring-1 ring-edge hover:ring-gray-500"
               }`}
             >
-              {a}
+              <Avatar value={pal.id} name={profile.username} className="h-8 w-8" />
             </button>
           ))}
+        </div>
+        <div className="mt-1.5 text-[10px] text-gray-600">
+          Your monogram is drawn from your username — rename above and it follows.
         </div>
         <div className="mt-2 flex gap-2">
           <input

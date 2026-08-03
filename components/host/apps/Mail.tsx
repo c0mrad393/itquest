@@ -18,6 +18,8 @@ import { EMOTION_META, type Conversation } from "@/lib/dialogue/types";
 import { useNow } from "@/lib/sla/store";
 import { slaSnapshot } from "@/lib/host/ticket-ui";
 import { AppIcon } from "@/components/ui/app-icons";
+import { useHostStore } from "@/lib/host/store";
+import Avatar from "../Avatar";
 
 export default function Mail() {
   const conversations = useDialogueStore((s) => s.conversations);
@@ -57,8 +59,8 @@ export default function Mail() {
                 selectedId === conv.ticketId ? "bg-info/10" : "hover:bg-panelalt"
               }`}
             >
-              <div className="relative text-2xl leading-none">
-                {persona?.avatar ?? "👤"}
+              <div className="relative">
+                <Avatar value={persona?.avatar ?? "slate"} name={persona?.name ?? "Requester"} className="h-8 w-8" />
                 {conv.unread > 0 && (
                   <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-danger" />
                 )}
@@ -94,6 +96,7 @@ export default function Mail() {
 }
 
 function Thread({ conv }: { conv: Conversation }) {
+  const operator = useHostStore((s) => s.host.user);
   const choose = useDialogueStore((s) => s.choose);
   const tickets = useTicketStore((s) => s.tickets);
   const now = useNow();
@@ -124,8 +127,8 @@ function Thread({ conv }: { conv: Conversation }) {
         </div>
         <div className="ml-auto flex items-center gap-2">
           {ticket && sla && ticket.status !== "resolved" && (
-            <span className={`text-[11px] ${sla.breached ? "text-danger" : "text-gray-400"}`}>
-              ⏱ {sla.label}
+            <span className={`inline-flex items-center gap-1 text-[11px] ${sla.breached ? "text-danger" : "text-gray-400"}`}>
+              <AppIcon id="clock" size={11} /> {sla.label}
             </span>
           )}
           <span className={`flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${emo.color}`}>
@@ -141,7 +144,14 @@ function Thread({ conv }: { conv: Conversation }) {
       {/* Messages */}
       <div className="term-scroll flex-1 space-y-3 overflow-y-auto p-4">
         {conv.messages.map((m) => (
-          <MessageBubble key={m.id} from={m.from} text={m.text} avatar={persona?.avatar ?? "👤"} />
+          <MessageBubble
+            key={m.id}
+            from={m.from}
+            text={m.text}
+            avatar={persona?.avatar ?? "slate"}
+            name={persona?.name ?? "Requester"}
+            operator={operator}
+          />
         ))}
       </div>
 
@@ -179,7 +189,19 @@ function Thread({ conv }: { conv: Conversation }) {
   );
 }
 
-function MessageBubble({ from, text, avatar }: { from: string; text: string; avatar: string }) {
+function MessageBubble({
+  from,
+  text,
+  avatar,
+  name,
+  operator,
+}: {
+  from: string;
+  text: string;
+  avatar: string;
+  name: string;
+  operator: { displayName: string; avatar: string };
+}) {
   if (from === "system") {
     return (
       <div className="mx-auto max-w-[85%] rounded-lg border border-info/25 bg-info/10 px-3 py-1.5 text-center text-[11px] text-info">
@@ -190,7 +212,11 @@ function MessageBubble({ from, text, avatar }: { from: string; text: string; ava
   const mine = from === "you";
   return (
     <div className={`flex items-end gap-2 ${mine ? "flex-row-reverse" : ""}`}>
-      <span className="text-lg">{mine ? "🧑‍💻" : avatar}</span>
+      <Avatar
+        value={mine ? operator.avatar : avatar}
+        name={mine ? operator.displayName : name}
+        className="h-6 w-6"
+      />
       <div
         className={`max-w-[75%] rounded-2xl px-3 py-2 text-[13px] leading-snug ${
           mine ? "rounded-br-sm bg-info/20 text-gray-100" : "rounded-bl-sm bg-panelalt text-gray-200"
