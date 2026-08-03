@@ -17,7 +17,7 @@ import { useDialogueStore } from "@/lib/dialogue/store";
 import { useSlaStore } from "@/lib/sla/store";
 import { useNotificationStore } from "@/lib/host/notifications-store";
 import { TICKET_TEMPLATES } from "@/lib/tickets/matrix";
-import { computeScore } from "@/lib/scenario/scoring";
+import { budgetReward, computeScore } from "@/lib/scenario/scoring";
 import { burnRate } from "@/lib/core";
 
 export default function TicketReconciler() {
@@ -51,12 +51,14 @@ export default function TicketReconciler() {
         const burn = burnRate(infra.cloud);
         const score = computeScore(ticket, conv?.csat ?? 70, breached, burn);
 
+        const budget = budgetReward(ticket, breached);
         useHostStore.getState().awardXp(score.xp);
+        useHostStore.getState().awardBudget(budget);
         useNotificationStore.getState().push({
           kind: "success",
           title: `${ticket.code} resolved`,
           body: ticket.title,
-          badge: `+${score.xp} XP`,
+          badge: `+${score.xp} XP · +${budget.toLocaleString()} Cr`,
         });
 
         // Spell out where the reward went, so the hint price is visible after
@@ -78,7 +80,10 @@ export default function TicketReconciler() {
             )}%`,
           );
         }
-        dialogue.note(ticket.id, `${parts.join(" · ")} · +${score.xp} XP`);
+        dialogue.note(
+          ticket.id,
+          `${parts.join(" · ")} · +${score.xp} XP · +${budget.toLocaleString()} Cr`,
+        );
       }
     }
 

@@ -56,7 +56,10 @@ export default function SettingsApp() {
             <div className="mt-2">
               <div className="flex items-center justify-between text-[10px] text-gray-500">
                 <span>
-                  Level {level} · {user.xp.toLocaleString()} XP
+                  Level {level} · {user.xp.toLocaleString()} XP ·{" "}
+                  <span className="font-mono text-emerald-300">
+                    {user.budget.toLocaleString()} Cr
+                  </span>
                 </span>
                 <span>
                   next: {nextLevelXp.toLocaleString()} XP

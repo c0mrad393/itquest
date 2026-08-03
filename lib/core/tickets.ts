@@ -157,6 +157,11 @@ export interface Ticket {
    */
   hintsRevealed: number;
   /**
+   * Closed by paying an external contractor rather than by fixing it. Carries
+   * no XP — the work was bought, not done.
+   */
+  outsourced?: boolean;
+  /**
    * Hard Mode: the operator has committed to solving without guidance, so the
    * hint panel is hidden entirely and full XP is guaranteed. Reversible until
    * the first hint is spent — after that `hintsRevealed` already stands.

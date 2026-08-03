@@ -28,7 +28,7 @@ import type { Conversation } from "@/lib/dialogue/types";
 import type { EmailBeat } from "@/lib/tickets/matrix";
 
 const BASE_KEY = "triageos-save";
-const VERSION = 15;
+const VERSION = 16;
 
 /**
  * Save-slot scope (per-account saves). Set by the auth layer BEFORE the
@@ -61,6 +61,8 @@ export interface PersistedState {
   wallpaper: string;
   /** Personalization — UI sound cues on/off. */
   soundEnabled: boolean;
+  /** Purchased software licences (operator-owned, survives a world reset). */
+  licenses: string[];
 }
 
 /** Snapshot every persistent store. */
@@ -79,6 +81,7 @@ export function capture(): PersistedState {
     user: useHostStore.getState().host.user,
     wallpaper: useHostStore.getState().host.wallpaper,
     soundEnabled: useHostStore.getState().host.soundEnabled,
+    licenses: useHostStore.getState().host.licenses,
   };
 }
 
@@ -116,6 +119,7 @@ export function applySave(s: PersistedState): void {
       user: s.user,
       wallpaper: s.wallpaper ?? st.host.wallpaper,
       soundEnabled: s.soundEnabled ?? st.host.soundEnabled,
+      licenses: s.licenses ?? st.host.licenses,
     },
   }));
   // The audio engine caches the flag so playCue() stays a plain call — push the

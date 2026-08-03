@@ -20,6 +20,7 @@ export function createHostWorkstation(): HostWorkstationState {
           avatar: "amber",
           level: levelForXp(GOD_MODE_XP),
           xp: GOD_MODE_XP,
+          budget: 999_999,
         }
       : {
           displayName: "O. Kharebashvili",
@@ -27,9 +28,12 @@ export function createHostWorkstation(): HostWorkstationState {
           avatar: "indigo",
           level: 4,
           xp: 6420,
+          // Enough for a couple of parts orders, nowhere near a switch.
+          budget: 2500,
         },
     wallpaper: "bloom",
     soundEnabled: true,
+    licenses: [],
     clock24h: true,
     tray: { networkConnected: true, volume: 65, notifications: 3 },
   };

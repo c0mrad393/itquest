@@ -21,6 +21,7 @@ export type HostAppId =
   | "netops" // Network topology console (link optimization)
   | "monitor" // Infrastructure metrics dashboard (observability)
   | "aethercloud" // AetherCloud Engine — hybrid cloud console
+  | "procurement" // Vendor storefront — spends IT Budget
   | "wiki" // Company Wiki / intranet documentation portal
   | "toolbox" // Per-ticket runbooks — QA/debug only, see `godModeOnly`
   | "leaderboard" // Global ranking
@@ -121,7 +122,8 @@ export type HostAppIconId =
   | "chevron-up"
   | "cloud"
   | "tunnel"
-  | "credit";
+  | "credit"
+  | "cart";
 
 /** Which live counter, if any, drives an app's taskbar/Start badge. */
 export type HostAppBadgeSource = "unread-tickets" | "unread-mail" | "unread-coremail" | "sla-alerts";
@@ -202,6 +204,18 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     description: "Live network topology: link metrics, re-routing, and software firewalls.",
     defaultSize: { w: 960, h: 640 },
     minSize: { w: 680, h: 460 },
+    singleton: true,
+    pinnedToTaskbar: true,
+    showOnDesktop: true,
+  },
+  procurement: {
+    id: "procurement",
+    title: "Procurement",
+    iconId: "cart",
+    category: "work",
+    description: "Vendor storefront: restock hardware, buy licences, hire contractors.",
+    defaultSize: { w: 1000, h: 680 },
+    minSize: { w: 720, h: 480 },
     singleton: true,
     pinnedToTaskbar: true,
     showOnDesktop: true,
@@ -364,9 +378,15 @@ export function taskbarPinned(godMode: boolean): HostAppId[] {
 export interface HostUser {
   displayName: string;
   role: string; // "Tier-2 Systems Engineer"
-  avatar: string; // emoji/asset key
+  avatar: string; // palette id or https image URL
   level: number;
   xp: number;
+  /**
+   * IT Budget, in credits. The desk's spending power: earned by resolving
+   * tickets, spent in Procurement on parts, licences and contractors.
+   * Distinct from XP — XP measures skill, budget measures resources.
+   */
+  budget: number;
 }
 
 export interface SystemTrayState {
@@ -380,6 +400,8 @@ export interface HostWorkstationState {
   wallpaper: string; // asset key / gradient id
   /** Personalization: master switch for the synthesised UI sound cues. */
   soundEnabled: boolean;
+  /** Software licences purchased in Procurement (see lib/economy/licenses.ts). */
+  licenses: string[];
   clock24h: boolean;
   tray: SystemTrayState;
 }

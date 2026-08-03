@@ -79,7 +79,10 @@ export default function StartMenu() {
           <div className="leading-tight">
             <div className="text-sm text-gray-100">{host.user.displayName}</div>
             <div className="text-[11px] text-gray-500">
-              {host.user.role} · Lvl {host.user.level}
+              {host.user.role} · Lvl {host.user.level} ·{" "}
+              <span className="font-mono text-emerald-300/90">
+                {host.user.budget.toLocaleString()} Cr
+              </span>
             </div>
           </div>
           <button

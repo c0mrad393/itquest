@@ -46,6 +46,12 @@ interface TicketStore {
   revealHint: (id: string) => void;
   /** Commit to (or leave) Hard Mode. Blocked once a hint has been spent. */
   setHardMode: (id: string, on: boolean) => void;
+  /**
+   * Close a ticket without meeting its win-condition — the external contractor
+   * path. Flagged so the reconciler and the operator both know it was bought,
+   * not solved: no XP is awarded for these.
+   */
+  outsource: (id: string) => void;
 }
 
 /** Build the initial queue for the current world + inject its faults. */
@@ -96,6 +102,20 @@ export const useTicketStore = create<TicketStore>((set) => ({
       tickets: s.tickets.map((t) =>
         t.id === id
           ? { ...t, status: "resolved", clock: { ...t.clock, resolvedAt: t.clock.resolvedAt ?? Date.now() } }
+          : t,
+      ),
+    })),
+
+  outsource: (id) =>
+    set((s) => ({
+      tickets: s.tickets.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              status: "resolved",
+              outsourced: true,
+              clock: { ...t.clock, resolvedAt: t.clock.resolvedAt ?? Date.now() },
+            }
           : t,
       ),
     })),

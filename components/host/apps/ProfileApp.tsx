@@ -112,6 +112,7 @@ export default function ProfileApp() {
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Stat label="Level" value={String(level)} accent="text-info" />
           <Stat label="Total XP" value={xp.toLocaleString()} accent="text-gray-100" />
+          <Stat label="IT Budget" value={`${hostUser.budget.toLocaleString()} Cr`} accent="text-emerald-300" />
           <Stat
             label="SLA success"
             value={slaRate === null ? "—" : `${slaRate}%`}

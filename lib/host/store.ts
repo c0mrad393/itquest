@@ -55,6 +55,18 @@ interface HostStore {
   setWallpaper: (id: string) => void;
   /** Personalization: master switch for UI sound cues (persisted). */
   setSoundEnabled: (on: boolean) => void;
+
+  // ── Economy ──
+  /** Credit the operator's IT Budget (ticket resolution). */
+  awardBudget: (amount: number) => void;
+  /**
+   * Debit the budget for a purchase. Returns false and changes nothing when
+   * the operator cannot afford it — callers must respect the result rather
+   * than assuming the spend succeeded.
+   */
+  spendBudget: (amount: number) => boolean;
+  /** Record a purchased software licence (idempotent). */
+  grantLicense: (id: string) => void;
 }
 
 function centeredRect(w: number, h: number, offset: number): WindowRect {
@@ -234,6 +246,23 @@ export const useHostStore = create<HostStore>((set, get) => ({
   },
 
   setWallpaper: (id) => set((s) => ({ host: { ...s.host, wallpaper: id } })),
+
+  awardBudget: (amount) =>
+    set((s) => ({ host: { ...s.host, user: { ...s.host.user, budget: s.host.user.budget + amount } } })),
+
+  spendBudget: (amount) => {
+    if (get().host.user.budget < amount) return false;
+    set((s) => ({ host: { ...s.host, user: { ...s.host.user, budget: s.host.user.budget - amount } } }));
+    return true;
+  },
+
+  grantLicense: (id) =>
+    set((s) => ({
+      host: {
+        ...s.host,
+        licenses: s.host.licenses.includes(id) ? s.host.licenses : [...s.host.licenses, id],
+      },
+    })),
 
   setSoundEnabled: (on) => {
     // The engine holds its own flag so `playCue` stays a plain function call

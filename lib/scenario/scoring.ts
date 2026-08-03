@@ -90,6 +90,38 @@ export function computeScore(
   };
 }
 
+// ── IT Budget ───────────────────────────────────────────────────────────────
+
+/**
+ * Budget paid out per difficulty tier. Steeper than the XP curve on purpose:
+ * an Expert incident should fund a switch, a Tier-1 should barely fund a
+ * memory module. That gradient is what makes taking hard work worthwhile once
+ * the store room is empty.
+ */
+export const BUDGET_BY_TIER: Record<string, number> = {
+  Tier_1_Easy: 180,
+  Tier_2_Medium: 520,
+  Tier_3_Hard: 1400,
+  Tier_4_Expert: 3000,
+};
+
+/** Finance withholds half the recharge on work delivered outside SLA. */
+export const BUDGET_BREACH_FACTOR = 0.5;
+
+/**
+ * Budget awarded for resolving a ticket.
+ *
+ * Deliberately NOT reduced by hints or cloud overspend — those are skill and
+ * engineering judgement, and they are already priced into XP. Budget answers a
+ * different question ("did the business get what it paid for?"), so the only
+ * thing that moves it is the SLA. Keeping the two currencies on separate
+ * penalty tracks stops one mistake from cascading into both.
+ */
+export function budgetReward(ticket: Ticket, breached: boolean): number {
+  const base = BUDGET_BY_TIER[ticket.difficulty] ?? BUDGET_BY_TIER.Tier_1_Easy;
+  return Math.round(base * (breached ? BUDGET_BREACH_FACTOR : 1));
+}
+
 /** XP required to reach a given level (simple escalating curve). */
 export function xpForLevel(level: number): number {
   return Math.round(500 * level * (level + 1) * 0.5);
