@@ -56,7 +56,7 @@ export function buildTicket(
     personaId: template.personaId,
     sla: { responseSeconds: template.responseSeconds, resolutionSeconds: template.slaDuration },
     clock: { startedAt: null, respondedAt: null, resolvedAt: null, responseBreached: false, resolutionBreached: false },
-    createdAt: Date.now() - 1000 * 60 * (template.difficulty === "Tier_3_Hard" ? 4 : 12),
+    createdAt: Date.now() - 1000 * 60 * (template.difficulty === "Tier_3_Hard" || template.difficulty === "Tier_4_Expert" ? 4 : 12),
     tags: template.tags,
     xpReward: template.xpReward,
     hints: template.hints,
@@ -102,6 +102,8 @@ export function generateTicketQueue(infra: InfrastructureState): GeneratedQueue 
         ...byTier("Tier_1_Easy"),
         ...shuffle(rng, byTier("Tier_2_Medium")).slice(0, 2),
         ...shuffle(rng, byTier("Tier_3_Hard")).slice(0, 2),
+        // Expert tickets are rare in normal play: one at most.
+        ...shuffle(rng, byTier("Tier_4_Expert")).slice(0, 1),
       ];
 
   const tickets: Ticket[] = [];

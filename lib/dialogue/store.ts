@@ -42,6 +42,7 @@ const DIFFICULTY_METER_SHIFT: Record<string, number> = {
   Tier_1_Easy: 4,
   Tier_2_Medium: -6,
   Tier_3_Hard: -18,
+  Tier_4_Expert: -26,
 };
 
 function buildConversations(): Record<string, Conversation> {

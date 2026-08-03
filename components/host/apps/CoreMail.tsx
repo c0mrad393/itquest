@@ -185,7 +185,7 @@ function IncidentRow({
           {newest.from}
         </span>
         <span className="rounded bg-rose-500/15 px-1 py-0.5 text-[9px] font-semibold text-rose-300">
-          {row.ticket.difficulty === "Tier_3_Hard" ? "T3" : row.ticket.difficulty === "Tier_2_Medium" ? "T2" : "T1"}
+          {row.ticket.difficulty === "Tier_4_Expert" ? "T4" : row.ticket.difficulty === "Tier_3_Hard" ? "T3" : row.ticket.difficulty === "Tier_2_Medium" ? "T2" : "T1"}
         </span>
         <span className="ml-auto shrink-0 text-[10px] text-gray-500">{relativeTime(row.ts)}</span>
       </div>

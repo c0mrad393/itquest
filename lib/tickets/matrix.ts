@@ -26,7 +26,7 @@ import type {
   TicketTrack,
   WindowsNodeState,
 } from "@/lib/core";
-import { isPowered, uplinkOf } from "@/lib/core";
+import { isPowered, uplinkOf, hybridRoute, exposedAdminRules } from "@/lib/core";
 import { findFaultWeb, findFirstWorkstation, findPrimaryDC } from "@/lib/org/generator";
 import { int, pick, type Rng } from "@/lib/org/rng";
 
@@ -674,6 +674,248 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
   },
 
   // ── Rack & network infrastructure lab ──────────────────────────────────────
+
+  // ── Hybrid cloud (AetherCloud Engine) ─────────────────────────────────────
+
+  "cloud-hybrid-vpn": {
+    id: "cloud-hybrid-vpn",
+    category: "Network & Routing",
+    difficulty: "Tier_3_Hard",
+    track: "netops",
+    severity: "high",
+    priority: "P2",
+    slaDuration: 40 * 60,
+    responseSeconds: 8 * 60,
+    xpReward: 620,
+    personaId: "persona-marcus-calm",
+    tags: ["cloud", "vpn", "ipsec", "hybrid", "aether"],
+    origin: "mail",
+    summary: "The site-to-site tunnel to the Aether Virtual Network is down.",
+    hints: [
+      "AetherCloud → Network tab → the tunnel panel shows the current state",
+      "The on-prem side terminates on a gateway/router node — pick it as the local gateway",
+      "Advertise the on-prem network that needs to reach the cloud, in CIDR form",
+      "Bind the tunnel to the AVN that holds the backup vNode, then use Route test to prove it",
+    ],
+    playable: true,
+    makeContext: (infra) => {
+      const backup = infra.cloud.vnodes.find((v) => v.purpose === "backup");
+      const avn = infra.cloud.avns[0];
+      if (!backup || !avn) return null;
+      const core = infra.subnets[0]?.cidr;
+      if (!core) return null;
+      return { affectedVlan: core, serviceName: backup.name, targetHostname: avn.name };
+    },
+    title: (ctx) => `Backup replication failing — no route to ${ctx.targetHostname}`,
+    description: (ctx, org) =>
+      `User request:\nNightly replication to the cloud has not run for two days. The backup target ` +
+      `**${ctx.serviceName}** lives in the Aether Virtual Network **${ctx.targetHostname}** and is ` +
+      `unreachable from the datacentre.\n\nWhat we found:\n` +
+      `• The IPsec **site-to-site tunnel is down** in the AetherCloud console\n` +
+      `• Nothing on ${ctx.affectedVlan} can reach the ${ctx.targetHostname} address space\n` +
+      `• ${org.name} policy requires replication traffic to stay on the private tunnel\n\n` +
+      `Objective:\n• Re-establish the tunnel between our **gateway router** and **${ctx.targetHostname}**\n` +
+      `• Advertise **${ctx.affectedVlan}** as the local network\n` +
+      `• Confirm a route exists to the backup node`,
+    requester: (_ctx, org) => ({
+      name: "Marcus Feld",
+      role: "Network Engineer",
+      email: `marcus.feld@${mailDomain(org)}`,
+      department: "IT",
+    }),
+    emailThread: (ctx, org) => [
+      {
+        from: "Backup Operations",
+        fromEmail: `backups@${mailDomain(org)}`,
+        subject: "Replication job failed (2 nights running)",
+        body: `The offsite job cannot reach ${ctx.serviceName}. Error is "no route to host". Nothing changed on our side.`,
+        ageMin: 90,
+      },
+      {
+        from: "Marcus Feld",
+        fromEmail: `marcus.feld@${mailDomain(org)}`,
+        subject: "Re: Replication job failed — tunnel is down",
+        body: `Confirmed: the site-to-site tunnel into ${ctx.targetHostname} is showing DOWN in AetherCloud. Raising this so someone can rebuild it — we are outside our recovery window.`,
+        ageMin: 40,
+      },
+    ],
+    win: (infra, ctx) => {
+      const backup = infra.cloud.vnodes.find((v) => v.name === ctx.serviceName);
+      if (!backup) return false;
+      // Graded through the SAME routing function the console's Route test uses,
+      // so passing the test in the UI is exactly what resolves the ticket.
+      const src = String(ctx.affectedVlan).split("/")[0].replace(/0$/, "10");
+      return hybridRoute(infra.cloud, src, backup.privateIp).ok;
+    },
+  },
+
+  "cloud-autoscale-failover": {
+    id: "cloud-autoscale-failover",
+    category: "System & Web Services",
+    difficulty: "Tier_3_Hard",
+    track: "sysadmin",
+    severity: "high",
+    priority: "P2",
+    slaDuration: 40 * 60,
+    responseSeconds: 8 * 60,
+    xpReward: 640,
+    personaId: "persona-priya-stressed",
+    tags: ["cloud", "load-balancer", "failover", "capacity", "aether"],
+    origin: "mail",
+    summary: "The on-prem web tier needs cloud burst capacity behind a router.",
+    hints: [
+      "AetherCloud → Compute: you need at least one running web vNode to send traffic to",
+      "Right-size it — a High-Spec node for one web tier will cost you XP at resolution",
+      "Traffic tab → create an Aether Traffic Router and add the vNode as a target",
+      "Set the physical web server as the router's origin, with a CPU threshold to fail over at",
+    ],
+    playable: true,
+    makeContext: (infra) => {
+      const web = findFaultWeb(infra) ?? Object.values(infra.nodes).find((n) => n.role === "web-server");
+      const avn = infra.cloud.avns[0];
+      if (!web || !avn) return null;
+      return { targetNodeId: web.nodeId, targetHostname: web.hostname, serviceName: avn.name };
+    },
+    title: (ctx) => `${ctx.targetHostname} saturating at peak — add cloud burst capacity`,
+    description: (ctx) =>
+      `User request:\nThe storefront slows to a crawl every afternoon. **${ctx.targetHostname}** is ` +
+      `pinned at high CPU during peak and we have no headroom left in the rack.\n\n` +
+      `What we found:\n• A single physical web server carries the whole tier\n` +
+      `• There is spare capacity available in **${ctx.serviceName}**\n\n` +
+      `Objective:\n• Stand up a **web vNode** in the cloud, sized sensibly\n` +
+      `• Put an **Aether Traffic Router** in front of it\n` +
+      `• Point the router at **${ctx.targetHostname}** as its origin so traffic shifts on high CPU\n\n` +
+      `Finance will review the credit spend, so do not over-provision.`,
+    requester: (_ctx, org) => ({
+      name: "Priya Raman",
+      role: "Head of Digital",
+      email: `priya.raman@${mailDomain(org)}`,
+      department: "Operations",
+    }),
+    emailThread: (ctx, org) => [
+      {
+        from: "Priya Raman",
+        fromEmail: `priya.raman@${mailDomain(org)}`,
+        subject: "Storefront is unusable at 3pm every day",
+        body: `We are losing baskets every afternoon. Whatever is serving the site cannot cope with peak. Can we not use the cloud capacity we already pay for?`,
+        ageMin: 55,
+      },
+      {
+        from: "Capacity Planning",
+        fromEmail: `capacity@${mailDomain(org)}`,
+        subject: `Re: Storefront — ${ctx.targetHostname} at ceiling`,
+        body: `Confirmed, ${ctx.targetHostname} tops out during peak and there is no room to scale it in the rack. Cloud burst behind a traffic router is the intended pattern here.`,
+        ageMin: 25,
+      },
+    ],
+    win: (infra, ctx) =>
+      infra.cloud.routers.some((r) => {
+        if (!r.enabled || r.originNodeId !== ctx.targetNodeId) return false;
+        // The router must actually have somewhere live to send traffic.
+        return r.targets.some((t) => {
+          const v = infra.cloud.vnodes.find((x) => x.id === t);
+          return !!v && v.status === "running";
+        });
+      }),
+  },
+
+  "cloud-security-audit": {
+    id: "cloud-security-audit",
+    category: "Security & Incident",
+    difficulty: "Tier_4_Expert",
+    track: "secops",
+    severity: "critical",
+    priority: "P1",
+    slaDuration: 30 * 60,
+    responseSeconds: 5 * 60,
+    xpReward: 900,
+    personaId: "persona-soc-urgent",
+    tags: ["cloud", "security", "audit", "shield", "exposure", "aether"],
+    origin: "mail",
+    summary: "An audit-log entry shows an admin port opened to the public internet.",
+    hints: [
+      "AetherCloud → AetherTrace: filter to critical events and read what was changed",
+      "The offending entry names the Shield rule id and the port it opened",
+      "Shield tab → find that rule; an admin port must never be sourced from 0.0.0.0/0",
+      "Either delete the rule or restrict its source to the corporate range",
+    ],
+    playable: true,
+    makeContext: (infra) => {
+      const avn = infra.cloud.avns[0];
+      if (!avn) return null;
+      return { serviceName: avn.name, affectedVlan: avn.cidr };
+    },
+    title: () => `Public exposure of internal cloud ports — immediate containment`,
+    description: (ctx) =>
+      `Alert:\nAn external scan flagged **administrative ports reachable from the internet** inside ` +
+      `**${ctx.serviceName}** (${ctx.affectedVlan}).\n\nWhat we found:\n` +
+      `• A change was made to an **Aether Shield Rule** during the last change window\n` +
+      `• The rule allows an admin port from **0.0.0.0/0** — the entire public internet\n` +
+      `• **AetherTrace** recorded who made the change and which rule id it touched\n\n` +
+      `Objective:\n• Use the audit log to identify the offending rule\n` +
+      `• Remove it, or restrict its source to the corporate range\n` +
+      `• Leave legitimate web traffic (80/443) alone`,
+    requester: (_ctx, org) => ({
+      name: "SOC On-Call",
+      role: "Security Operations",
+      email: `soc@${mailDomain(org)}`,
+      department: "Security",
+    }),
+    emailThread: (ctx, org) => [
+      {
+        from: "External Attack Surface Monitoring",
+        fromEmail: "alerts@surfacewatch.io",
+        subject: `[CRITICAL] Administrative port exposed — ${ctx.serviceName}`,
+        body: `Our scanner reached an administrative service on your ${ctx.serviceName} address space from an unauthenticated source. Exposure began during your last change window.`,
+        ageMin: 22,
+      },
+      {
+        from: "SOC On-Call",
+        fromEmail: `soc@${mailDomain(org)}`,
+        subject: `Re: [CRITICAL] Administrative port exposed`,
+        body: `Treat as P1. The change is in AetherTrace — someone widened a Shield rule to 0.0.0.0/0. Close the exposure first, attribute afterwards. Do not break 80/443.`,
+        ageMin: 9,
+      },
+    ],
+    injectFault: (draft) => {
+      const avn = draft.cloud.avns[0];
+      if (!avn) return;
+      // The misconfiguration AND the audit trail that explains it — the ticket
+      // is solved by reading the log, so the log has to carry the evidence.
+      draft.cloud.shieldRules = [
+        ...draft.cloud.shieldRules,
+        {
+          id: "sr-8812",
+          avnId: avn.id,
+          description: "TEMP - vendor debugging access",
+          protocol: "tcp",
+          port: 22,
+          source: "0.0.0.0/0",
+          action: "allow",
+        },
+      ];
+      draft.cloud.audit = [
+        {
+          id: "aud-exposure",
+          at: Date.now() - 1000 * 60 * 47,
+          actor: "j.doe",
+          action: "Opened TCP port 22 from 0.0.0.0/0 on Shield rule sr-8812",
+          target: "sr-8812",
+          severity: "critical",
+        },
+        {
+          id: "aud-exposure-ctx",
+          at: Date.now() - 1000 * 60 * 48,
+          actor: "j.doe",
+          action: "Started change window CW-4471 (vendor support session)",
+          target: "cw-4471",
+          severity: "info",
+        },
+        ...draft.cloud.audit,
+      ];
+    },
+    win: (infra) => exposedAdminRules(infra.cloud).length === 0,
+  },
 
   "net-rack-vlan": {
     id: "net-rack-vlan",

@@ -21,7 +21,12 @@ export type TicketCategory =
   | "Security & Incident";
 
 /** Difficulty tier — drives SLA duration, XP, and starting persona emotion. */
-export type TicketDifficulty = "Tier_1_Easy" | "Tier_2_Medium" | "Tier_3_Hard";
+export type TicketDifficulty =
+  | "Tier_1_Easy"
+  | "Tier_2_Medium"
+  | "Tier_3_Hard"
+  /** Expert: multi-system incidents, typically spanning on-prem and cloud. */
+  | "Tier_4_Expert";
 
 /** How a ticket enters the world. Tier 2/3 start mail-only in CoreMail. */
 export type TicketOrigin = "dashboard" | "mail";

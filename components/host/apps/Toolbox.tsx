@@ -80,6 +80,7 @@ const DIFF_LABEL: Record<string, string> = {
   Tier_1_Easy: "Tier 1",
   Tier_2_Medium: "Tier 2",
   Tier_3_Hard: "Tier 3",
+  Tier_4_Expert: "Tier 4",
 };
 
 function Runbooks({ query }: { query: string }) {

@@ -37,6 +37,7 @@ const DIFFICULTY_BADGE: Record<string, { label: string; color: string }> = {
   Tier_1_Easy: { label: "T1", color: "bg-emerald-500/15 text-emerald-300" },
   Tier_2_Medium: { label: "T2", color: "bg-amber-500/15 text-amber-300" },
   Tier_3_Hard: { label: "T3", color: "bg-red-500/15 text-red-300" },
+  Tier_4_Expert: { label: "T4", color: "bg-fuchsia-500/20 text-fuchsia-300" },
 };
 
 export default function TicketCenter() {

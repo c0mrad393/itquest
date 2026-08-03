@@ -13,8 +13,28 @@ export interface ScoreResult {
   slaFactor: number;
   csatFactor: number;
   hintFactor: number;
+  budgetFactor: number;
   breached: boolean;
   onTime: boolean;
+}
+
+/** Credits/hour of cloud spend the desk is expected to work inside. */
+export const BUDGET_ALLOWANCE = 6;
+/** Share of reward lost per credit/hour over the allowance. */
+export const BUDGET_PENALTY_PER_CREDIT = 0.02;
+export const BUDGET_PENALTY_FLOOR = 0.75;
+
+/**
+ * FinOps multiplier — "Budget Inefficiency".
+ *
+ * Solving a ticket by throwing High-Spec vNodes at it works, but it costs. The
+ * penalty is proportional to the overspend rather than binary, so a Standard
+ * node that was genuinely needed barely registers while a wall of oversized
+ * nodes is felt. Floored so a wasteful fix still beats no fix.
+ */
+export function budgetFactor(burnPerHour: number): number {
+  const over = Math.max(0, burnPerHour - BUDGET_ALLOWANCE);
+  return Math.max(BUDGET_PENALTY_FLOOR, 1 - over * BUDGET_PENALTY_PER_CREDIT);
 }
 
 /** Each revealed hint costs this share of the ticket's base reward. */
@@ -37,11 +57,17 @@ export function hintFactor(revealed: number): number {
  * in-SLA finish at the conversation's current CSAT, which is the same maths
  * `computeScore` will run at resolution.
  */
-export function projectedXp(ticket: Ticket, csat = 70): number {
-  return computeScore(ticket, csat, false).xp;
+export function projectedXp(ticket: Ticket, csat = 70, burnPerHour = 0): number {
+  return computeScore(ticket, csat, false, burnPerHour).xp;
 }
 
-export function computeScore(ticket: Ticket, csat: number, breached: boolean): ScoreResult {
+export function computeScore(
+  ticket: Ticket,
+  csat: number,
+  breached: boolean,
+  /** Live cloud burn rate in credits/hour, when the world has a cloud tenant. */
+  burnPerHour = 0,
+): ScoreResult {
   const onTime = !breached;
   // SLA multiplier: bonus for in-SLA, penalty for a breach.
   const slaFactor = breached ? 0.5 : 1.15;
@@ -49,8 +75,19 @@ export function computeScore(ticket: Ticket, csat: number, breached: boolean): S
   const csatFactor = 0.5 + (Math.max(0, Math.min(100, csat)) / 100) * 0.7;
   // Hint multiplier: the player traded reward for guidance.
   const hints = hintFactor(ticket.hintsRevealed ?? 0);
-  const xp = Math.round(ticket.xpReward * slaFactor * csatFactor * hints);
-  return { xp, csat: Math.round(csat), slaFactor, csatFactor, hintFactor: hints, breached, onTime };
+  // FinOps multiplier: over-provisioned cloud spend erodes the reward.
+  const budget = budgetFactor(burnPerHour);
+  const xp = Math.round(ticket.xpReward * slaFactor * csatFactor * hints * budget);
+  return {
+    xp,
+    csat: Math.round(csat),
+    slaFactor,
+    csatFactor,
+    hintFactor: hints,
+    budgetFactor: budget,
+    breached,
+    onTime,
+  };
 }
 
 /** XP required to reach a given level (simple escalating curve). */

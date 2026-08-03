@@ -18,6 +18,7 @@ import { useSlaStore } from "@/lib/sla/store";
 import { useNotificationStore } from "@/lib/host/notifications-store";
 import { TICKET_TEMPLATES } from "@/lib/tickets/matrix";
 import { computeScore } from "@/lib/scenario/scoring";
+import { burnRate } from "@/lib/core";
 
 export default function TicketReconciler() {
   useEffect(() => {
@@ -47,7 +48,8 @@ export default function TicketReconciler() {
 
         const conv = useDialogueStore.getState().conversations[ticket.id];
         const breached = useSlaStore.getState().breached[ticket.id] === true;
-        const score = computeScore(ticket, conv?.csat ?? 70, breached);
+        const burn = burnRate(infra.cloud);
+        const score = computeScore(ticket, conv?.csat ?? 70, breached, burn);
 
         useHostStore.getState().awardXp(score.xp);
         useNotificationStore.getState().push({
@@ -64,6 +66,11 @@ export default function TicketReconciler() {
           `CSAT ${score.csat}%`,
         ];
         if (ticket.hardMode) parts.push("Hard Mode");
+        if (score.budgetFactor < 1) {
+          parts.push(
+            `Budget inefficiency −${Math.round((1 - score.budgetFactor) * 100)}% (${burn} cr/h)`,
+          );
+        }
         if (ticket.hintsRevealed > 0) {
           parts.push(
             `${ticket.hintsRevealed} hint${ticket.hintsRevealed === 1 ? "" : "s"} −${Math.round(
