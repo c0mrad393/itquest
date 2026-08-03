@@ -23,6 +23,7 @@ export * from "./mac";
 export * from "./endpoint";
 export * from "./inventory";
 export * from "./rack";
+export * from "./cloud";
 export * from "./infrastructure";
 export * from "./tickets";
 export * from "./host";

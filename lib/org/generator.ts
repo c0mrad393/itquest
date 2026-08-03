@@ -47,6 +47,7 @@ import {
 import { chance, int, mulberry32, pick, sample, shuffle, type Rng } from "./rng";
 import { COMPANY_PARTS, DEPARTMENTS, FIRST_NAMES, LAST_NAMES } from "./namegen";
 import { createInventory, createRack } from "@/lib/inventory/seed";
+import { createCloudState } from "@/lib/cloud/seed";
 
 const now = Date.now();
 const DAY = 86_400_000;
@@ -1005,8 +1006,14 @@ export function generateWorld(seed: number): InfrastructureState {
     },
     inventory: createInventory(),
     rack: createRack(),
+    cloud: createCloudState(org.name, slugOf(org), rng),
     loadedAt: now,
   };
+}
+
+/** Short tenant slug for the cloud console header. */
+function slugOf(org: { name: string }): string {
+  return org.name.split(" ")[0].toLowerCase();
 }
 
 // ── Role-addressed lookups (scenario binding) ───────────────────────────────

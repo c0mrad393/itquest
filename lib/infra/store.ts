@@ -19,7 +19,8 @@ import type {
   TargetNode,
   WindowsService,
 } from "@/lib/core";
-import { availableOf, canMount, pingCheck } from "@/lib/core";
+import { availableOf, canMount, pingCheck, sizeSpec, ADMIN_PORTS, PUBLIC_CIDR, CLOUD_AUDIT_CAP } from "@/lib/core";
+import type { AetherVNode, AuditEvent, ShieldRule, VNodeSize, VNodeStatus } from "@/lib/core";
 import type { CommandResult, NodeId } from "@/lib/core";
 import { generateWorld } from "@/lib/org/generator";
 import { freshSeed } from "@/lib/org/rng";
@@ -114,6 +115,48 @@ interface InfraStore {
   /** Complete the fixed bulk onboarding import. */
   completeOnboarding: () => void;
 
+  // ── AetherCloud Engine (hybrid cloud) ──
+  /** Launch a vNode into an AVN. Costs credits per hour while running. */
+  cloudLaunchVNode: (spec: {
+    name: string;
+    avnId: string;
+    size: VNodeSize;
+    purpose: AetherVNode["purpose"];
+    actor: string;
+  }) => void;
+  /** Start / stop a vNode (a stopped node bills nothing). */
+  cloudSetVNodeStatus: (vnodeId: string, status: VNodeStatus, actor: string) => void;
+  /** Terminate a vNode and detach it from any traffic router. */
+  cloudTerminateVNode: (vnodeId: string, actor: string) => void;
+  /** Add an ingress Shield rule. */
+  cloudAddShieldRule: (rule: Omit<ShieldRule, "id">, actor: string) => void;
+  /** Delete a Shield rule (how the security-audit ticket is resolved). */
+  cloudDeleteShieldRule: (ruleId: string, actor: string) => void;
+  /** Narrow a rule's source CIDR — the safe alternative to deleting it. */
+  cloudRestrictShieldRule: (ruleId: string, source: string, actor: string) => void;
+  /** Create an Aether Traffic Router in front of one or more vNodes. */
+  cloudCreateRouter: (spec: {
+    name: string;
+    avnId: string;
+    targets: string[];
+    originNodeId: NodeId | null;
+    cpuThreshold: number;
+    actor: string;
+  }) => void;
+  cloudSetRouterEnabled: (routerId: string, enabled: boolean, actor: string) => void;
+  cloudDeleteRouter: (routerId: string, actor: string) => void;
+  /** Bring the IPsec site-to-site tunnel up (validated) or tear it down. */
+  cloudConfigureVpn: (spec: {
+    localGatewayNodeId: NodeId;
+    localCidr: string;
+    remoteAvnId: string;
+    psk: string;
+    actor: string;
+  }) => void;
+  cloudDisconnectVpn: (actor: string) => void;
+  /** Toggle public read on a DataBucket. */
+  cloudSetBucketPublic: (bucketId: string, publicAccess: boolean, actor: string) => void;
+
   // ── Inventory (AssetManager) ──
   /** Book stock out of the store room against a ticket / person / rack. */
   allocateAsset: (itemId: string, qty: number, assignedTo: string, ticket?: { id: string; code: string }) => void;
@@ -149,6 +192,24 @@ function patchSecurity(
   patch: Partial<InfrastructureState["security"]>,
 ): { infra: InfrastructureState } {
   return { infra: { ...s.infra, security: { ...s.infra.security, ...patch } } };
+}
+
+/** Shallow-merge a patch into the cloud tenant. */
+function withCloud(
+  s: { infra: InfrastructureState },
+  patch: Partial<InfrastructureState["cloud"]>,
+): { infra: InfrastructureState } {
+  return { infra: { ...s.infra, cloud: { ...s.infra.cloud, ...patch } } };
+}
+
+/** Prepend an AetherTrace entry, newest first, capped. */
+let auditSeq = 0;
+function auditPush(
+  cloud: InfrastructureState["cloud"],
+  e: Omit<AuditEvent, "id" | "at">,
+): AuditEvent[] {
+  const entry: AuditEvent = { ...e, id: `aud-${Date.now()}-${++auditSeq}`, at: Date.now() };
+  return [entry, ...cloud.audit].slice(0, CLOUD_AUDIT_CAP);
 }
 
 function dedupe(arr: string[], v: string): string[] {
@@ -514,6 +575,251 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
     }),
 
   completeOnboarding: () => set((s) => patchSecurity(s, { onboardingComplete: true })),
+
+  // ── AetherCloud Engine ────────────────────────────────────────────────────
+  // Every mutation writes an AetherTrace entry. That is not decoration: the
+  // security-audit ticket is solved by READING this log, so the log has to be
+  // produced by the same code path that makes the change.
+
+  cloudLaunchVNode: ({ name, avnId, size, purpose, actor }) =>
+    set((s) => {
+      const cloud = s.infra.cloud;
+      const avn = cloud.avns.find((a) => a.id === avnId);
+      if (!avn) return s;
+      const n = cloud.vnodes.length + 1;
+      const base = avn.cidr.split("/")[0].split(".").slice(0, 3).join(".");
+      const vnode: AetherVNode = {
+        id: `vnode-${String(n).padStart(2, "0")}`,
+        name,
+        avnId,
+        size,
+        status: "running",
+        privateIp: `${base}.${30 + n}`,
+        purpose,
+        createdAt: Date.now(),
+      };
+      return withCloud(s, {
+        vnodes: [...cloud.vnodes, vnode],
+        audit: auditPush(cloud, {
+          actor,
+          action: `Launched vNode ${name} (${sizeSpec(size).label}) in ${avn.name}`,
+          target: vnode.id,
+          severity: size === "high-spec" ? "warning" : "info",
+        }),
+      });
+    }),
+
+  cloudSetVNodeStatus: (vnodeId, status, actor) =>
+    set((s) => {
+      const cloud = s.infra.cloud;
+      const v = cloud.vnodes.find((x) => x.id === vnodeId);
+      if (!v) return s;
+      return withCloud(s, {
+        vnodes: cloud.vnodes.map((x) => (x.id === vnodeId ? { ...x, status } : x)),
+        audit: auditPush(cloud, {
+          actor,
+          action: `${status === "running" ? "Started" : "Stopped"} vNode ${v.name}`,
+          target: vnodeId,
+          severity: "info",
+        }),
+      });
+    }),
+
+  cloudTerminateVNode: (vnodeId, actor) =>
+    set((s) => {
+      const cloud = s.infra.cloud;
+      const v = cloud.vnodes.find((x) => x.id === vnodeId);
+      if (!v) return s;
+      return withCloud(s, {
+        vnodes: cloud.vnodes.filter((x) => x.id !== vnodeId),
+        // Detach from routers too, or an ATR keeps pointing at a dead target.
+        routers: cloud.routers.map((r) => ({ ...r, targets: r.targets.filter((t) => t !== vnodeId) })),
+        audit: auditPush(cloud, {
+          actor,
+          action: `Terminated vNode ${v.name}`,
+          target: vnodeId,
+          severity: "warning",
+        }),
+      });
+    }),
+
+  cloudAddShieldRule: (rule, actor) =>
+    set((s) => {
+      const cloud = s.infra.cloud;
+      const id = `sr-${Math.floor(1000 + Math.random() * 8999)}`;
+      const exposes = rule.action === "allow" && rule.source === PUBLIC_CIDR && ADMIN_PORTS.includes(rule.port);
+      return withCloud(s, {
+        shieldRules: [...cloud.shieldRules, { ...rule, id }],
+        audit: auditPush(cloud, {
+          actor,
+          action: `Opened ${rule.protocol.toUpperCase()} port ${rule.port} from ${rule.source} on Shield rule ${id}`,
+          target: id,
+          severity: exposes ? "critical" : "info",
+        }),
+      });
+    }),
+
+  cloudDeleteShieldRule: (ruleId, actor) =>
+    set((s) => {
+      const cloud = s.infra.cloud;
+      const rule = cloud.shieldRules.find((r) => r.id === ruleId);
+      if (!rule) return s;
+      return withCloud(s, {
+        shieldRules: cloud.shieldRules.filter((r) => r.id !== ruleId),
+        audit: auditPush(cloud, {
+          actor,
+          action: `Removed Shield rule ${ruleId} (${rule.protocol.toUpperCase()} ${rule.port} from ${rule.source})`,
+          target: ruleId,
+          severity: "info",
+        }),
+      });
+    }),
+
+  cloudRestrictShieldRule: (ruleId, source, actor) =>
+    set((s) => {
+      const cloud = s.infra.cloud;
+      const rule = cloud.shieldRules.find((r) => r.id === ruleId);
+      if (!rule) return s;
+      return withCloud(s, {
+        shieldRules: cloud.shieldRules.map((r) => (r.id === ruleId ? { ...r, source } : r)),
+        audit: auditPush(cloud, {
+          actor,
+          action: `Restricted Shield rule ${ruleId} source ${rule.source} to ${source}`,
+          target: ruleId,
+          severity: "info",
+        }),
+      });
+    }),
+
+  cloudCreateRouter: ({ name, avnId, targets, originNodeId, cpuThreshold, actor }) =>
+    set((s) => {
+      const cloud = s.infra.cloud;
+      const id = `atr-${String(cloud.routers.length + 1).padStart(2, "0")}`;
+      const origin = originNodeId ? s.infra.nodes[originNodeId]?.hostname : null;
+      return withCloud(s, {
+        routers: [
+          ...cloud.routers,
+          { id, name, avnId, targets, originNodeId, cpuThreshold, enabled: true },
+        ],
+        audit: auditPush(cloud, {
+          actor,
+          action:
+            `Created Aether Traffic Router ${name} → ${targets.length} target(s)` +
+            (origin ? `, failing over for ${origin} above ${cpuThreshold}% CPU` : ""),
+          target: id,
+          severity: "info",
+        }),
+      });
+    }),
+
+  cloudSetRouterEnabled: (routerId, enabled, actor) =>
+    set((s) => {
+      const cloud = s.infra.cloud;
+      const r = cloud.routers.find((x) => x.id === routerId);
+      if (!r) return s;
+      return withCloud(s, {
+        routers: cloud.routers.map((x) => (x.id === routerId ? { ...x, enabled } : x)),
+        audit: auditPush(cloud, {
+          actor,
+          action: `${enabled ? "Enabled" : "Disabled"} Traffic Router ${r.name}`,
+          target: routerId,
+          severity: enabled ? "info" : "warning",
+        }),
+      });
+    }),
+
+  cloudDeleteRouter: (routerId, actor) =>
+    set((s) => {
+      const cloud = s.infra.cloud;
+      const r = cloud.routers.find((x) => x.id === routerId);
+      if (!r) return s;
+      return withCloud(s, {
+        routers: cloud.routers.filter((x) => x.id !== routerId),
+        audit: auditPush(cloud, {
+          actor,
+          action: `Deleted Traffic Router ${r.name}`,
+          target: routerId,
+          severity: "warning",
+        }),
+      });
+    }),
+
+  cloudConfigureVpn: ({ localGatewayNodeId, localCidr, remoteAvnId, psk, actor }) =>
+    set((s) => {
+      const cloud = s.infra.cloud;
+      const gw = s.infra.nodes[localGatewayNodeId];
+      const avn = cloud.avns.find((a) => a.id === remoteAvnId);
+
+      // Validate like a real appliance would: a tunnel with a bad peer or a
+      // weak PSK comes up as an ERROR, not silently half-working.
+      const problem =
+        !gw ? "Local gateway not found."
+        : !avn ? "Remote Aether Virtual Network not found."
+        : psk.trim().length < 8 ? "Pre-shared key must be at least 8 characters."
+        : !/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(localCidr.trim())
+          ? "Local network must be a valid CIDR (e.g. 10.60.1.0/24)."
+        : null;
+
+      if (problem) {
+        return withCloud(s, {
+          vpn: { ...cloud.vpn, status: "error", lastError: problem, connectedAt: null },
+          audit: auditPush(cloud, {
+            actor,
+            action: `Site-to-site tunnel failed to establish — ${problem}`,
+            target: "vpn-gw",
+            severity: "warning",
+          }),
+        });
+      }
+
+      return withCloud(s, {
+        vpn: {
+          status: "connected",
+          localGatewayNodeId,
+          localCidr: localCidr.trim(),
+          remoteAvnId,
+          psk,
+          lastError: null,
+          connectedAt: Date.now(),
+        },
+        audit: auditPush(cloud, {
+          actor,
+          action: `IPsec tunnel established: ${gw!.hostname} (${localCidr.trim()}) ↔ ${avn!.name} (${avn!.cidr})`,
+          target: "vpn-gw",
+          severity: "info",
+        }),
+      });
+    }),
+
+  cloudDisconnectVpn: (actor) =>
+    set((s) => {
+      const cloud = s.infra.cloud;
+      return withCloud(s, {
+        vpn: { ...cloud.vpn, status: "down", connectedAt: null, lastError: null },
+        audit: auditPush(cloud, {
+          actor,
+          action: "Site-to-site tunnel torn down",
+          target: "vpn-gw",
+          severity: "warning",
+        }),
+      });
+    }),
+
+  cloudSetBucketPublic: (bucketId, publicAccess, actor) =>
+    set((s) => {
+      const cloud = s.infra.cloud;
+      const b = cloud.buckets.find((x) => x.id === bucketId);
+      if (!b) return s;
+      return withCloud(s, {
+        buckets: cloud.buckets.map((x) => (x.id === bucketId ? { ...x, publicAccess } : x)),
+        audit: auditPush(cloud, {
+          actor,
+          action: `${publicAccess ? "Enabled" : "Disabled"} public read on DataBucket ${b.name}`,
+          target: bucketId,
+          severity: publicAccess ? "critical" : "info",
+        }),
+      });
+    }),
 
   // ── Inventory ──────────────────────────────────────────────────────────────
 

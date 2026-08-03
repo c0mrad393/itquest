@@ -14,6 +14,7 @@ import type { ConnectionProtocol, NodeId } from "./nodes";
 import type { OrganizationProfile } from "./organization";
 import type { InventoryState } from "./inventory";
 import type { RackState } from "./rack";
+import type { CloudState } from "./cloud";
 
 /** Discriminated union of every node kind. Narrow on `.os`. */
 export type TargetNode = LinuxNodeState | WindowsNodeState | MacNodeState;
@@ -104,6 +105,8 @@ export interface InfrastructureState {
   inventory: InventoryState;
   /** Server rack: mounted devices, cabling and logical config. */
   rack: RackState;
+  /** AetherCloud tenant: virtual networks, vNodes, storage, VPN and audit. */
+  cloud: CloudState;
 
   loadedAt: number;
 }

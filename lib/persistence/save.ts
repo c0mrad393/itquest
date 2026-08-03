@@ -28,7 +28,7 @@ import type { Conversation } from "@/lib/dialogue/types";
 import type { EmailBeat } from "@/lib/tickets/matrix";
 
 const BASE_KEY = "triageos-save";
-const VERSION = 14;
+const VERSION = 15;
 
 /**
  * Save-slot scope (per-account saves). Set by the auth layer BEFORE the
