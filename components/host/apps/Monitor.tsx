@@ -22,6 +22,8 @@ import { useMonitorStore, telemetryFor, type NodeTelemetry, type Sample } from "
 import { AppIcon } from "@/components/ui/app-icons";
 import type { HostAppIconId } from "@/lib/core";
 import { AppHeader, CountPill, Segmented } from "./AppChrome";
+import { useHostStore } from "@/lib/host/store";
+import { hasLicense } from "@/lib/economy/licenses";
 
 type Metric = "cpu" | "mem" | "net";
 
@@ -56,6 +58,12 @@ export default function Monitor() {
   const series = useMonitorStore((s) => s.series);
   const [metric, setMetric] = useState<Metric>("cpu");
   const [selected, setSelected] = useState<string | null>(null);
+  // Advanced Diagnostics (Procurement → Licences) unlocks correlation: the
+  // ranked anomaly list and the per-host drill-down. Without it you still get
+  // the cards, you just have to read them yourself.
+  const licenses = useHostStore((s) => s.host.licenses);
+  const openApp = useHostStore((s) => s.openApp);
+  const pro = hasLicense(licenses, "diagnostics-pro");
 
   const nodes = useMemo(() => telemetryFor(infra, series), [infra, series]);
 
@@ -68,7 +76,7 @@ export default function Monitor() {
   };
   const peakNet = nodes.reduce((m, n) => (n.samples.length ? Math.max(m, last(n.samples).net) : m), 0);
 
-  const focused = nodes.find((n) => n.nodeId === selected) ?? null;
+  const focused = pro ? (nodes.find((n) => n.nodeId === selected) ?? null) : null;
 
   return (
     <div className="flex h-full flex-col bg-panel text-sm text-gray-200">
@@ -96,7 +104,7 @@ export default function Monitor() {
         </div>
 
         {/* Active anomalies — the triage list */}
-        {alerting.length > 0 && (
+        {pro && alerting.length > 0 && (
           <div className="mb-4 overflow-hidden rounded-xl border border-amber-500/30 bg-amber-500/[0.05]">
             <div className="flex items-center gap-2 border-b border-amber-500/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-amber-200/80">
               <AppIcon id="alert" size={12} />
@@ -148,6 +156,28 @@ export default function Monitor() {
           </div>
         )}
 
+        {!pro && (
+          <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-edge bg-panelalt/40 px-3.5 py-2.5">
+            <span className="text-gray-600">
+              <AppIcon id="lock" size={14} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] font-medium text-gray-300">
+                Anomaly correlation and per-host drill-down are locked
+              </div>
+              <div className="text-[10px] text-gray-600">
+                Advanced Diagnostics licence required — available in Procurement.
+              </div>
+            </div>
+            <button
+              onClick={() => openApp("procurement")}
+              className="shrink-0 rounded-md border border-info/40 px-2.5 py-1 text-[10px] font-semibold text-info hover:bg-info/10"
+            >
+              View licence
+            </button>
+          </div>
+        )}
+
         {/* Node grid */}
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
           {nodes.map((n) => (
@@ -156,7 +186,7 @@ export default function Monitor() {
               node={n}
               metric={metric}
               active={selected === n.nodeId}
-              onClick={() => setSelected(selected === n.nodeId ? null : n.nodeId)}
+              onClick={() => pro && setSelected(selected === n.nodeId ? null : n.nodeId)}
             />
           ))}
         </div>

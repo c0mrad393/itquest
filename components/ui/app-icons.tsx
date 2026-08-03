@@ -18,6 +18,7 @@ import {
   IconAlert,
   IconApple,
   IconCloudNodes,
+  IconCart,
   IconCredit,
   IconTunnel,
   IconChevronUp,
@@ -291,6 +292,8 @@ export function AppIcon({ id, ...props }: IconProps & { id: HostAppIconId | Emot
       return <IconTunnel {...props} />;
     case "credit":
       return <IconCredit {...props} />;
+    case "cart":
+      return <IconCart {...props} />;
     default:
       // Unknown key (e.g. a window restored from an older session) — a neutral
       // glyph beats a blank gap or a crash.

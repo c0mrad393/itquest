@@ -307,6 +307,9 @@ export const IconCloudNodes = (p: IconProps) => (
 export const IconTunnel = (p: IconProps) => (
   <Svg {...p}><path d="M3 19V12a9 9 0 0118 0v7" /><path d="M8 19v-7a4 4 0 018 0v7" /><path d="M2 19h20" /></Svg>
 );
+export const IconCart = (p: IconProps) => (
+  <Svg {...p}><path d="M2.5 3.5h2.2l2.3 11.2a1.6 1.6 0 001.6 1.3h8.6a1.6 1.6 0 001.6-1.25l1.5-6.6H6" /><circle cx="9.5" cy="20" r="1.4" /><circle cx="17.5" cy="20" r="1.4" /></Svg>
+);
 export const IconCredit = (p: IconProps) => (
   <Svg {...p}><circle cx="12" cy="12" r="9" /><path d="M15 8.7a3.6 3.6 0 100 6.6" /><path d="M8.6 10.7h4.2M8.6 13.3h4.2" /></Svg>
 );

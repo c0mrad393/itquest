@@ -36,6 +36,7 @@ import { BUDGET_ALLOWANCE } from "@/lib/scenario/scoring";
 import { AppIcon } from "@/components/ui/app-icons";
 import { AppHeader, CountPill, Segmented } from "./AppChrome";
 import { playCue } from "@/lib/audio/engine";
+import { hasLicense } from "@/lib/economy/licenses";
 
 type Tab = "overview" | "compute" | "network" | "traffic" | "trace";
 
@@ -128,6 +129,9 @@ function TunnelPill({ status }: { status: string }) {
 
 function Overview({ burn, operator }: { burn: number; operator: string }) {
   const cloud = useInfraStore((s) => s.infra.cloud);
+  const licenses = useHostStore((s) => s.host.licenses);
+  const openApp = useHostStore((s) => s.openApp);
+  const finops = hasLicense(licenses, "finops-analytics");
   const running = cloud.vnodes.filter((v) => v.status === "running");
   const storageGb = cloud.buckets.reduce((t, b) => t + b.sizeGb, 0);
   const exposed = exposedAdminRules(cloud);
@@ -168,6 +172,27 @@ function Overview({ burn, operator }: { burn: number; operator: string }) {
         </Panel>
       )}
 
+      {!finops ? (
+        <Panel title="Cost breakdown">
+          <div className="flex items-center gap-2.5">
+            <span className="text-gray-600">
+              <AppIcon id="lock" size={14} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] text-gray-300">Per-resource attribution is locked</div>
+              <div className="text-[10px] text-gray-600">
+                FinOps Analytics licence required — the header still shows your total burn.
+              </div>
+            </div>
+            <button
+              onClick={() => openApp("procurement")}
+              className="shrink-0 rounded-md border border-info/40 px-2.5 py-1 text-[10px] font-semibold text-info hover:bg-info/10"
+            >
+              View licence
+            </button>
+          </div>
+        </Panel>
+      ) : (
       <Panel title="Cost breakdown">
         <table className="w-full text-left text-[11.5px]">
           <thead>
@@ -208,6 +233,7 @@ function Overview({ burn, operator }: { burn: number; operator: string }) {
           budget inefficiency and reduces the XP awarded on ticket resolution.
         </div>
       </Panel>
+      )}
 
       <div className="text-[10px] text-gray-600">Signed in as {operator}</div>
     </div>
