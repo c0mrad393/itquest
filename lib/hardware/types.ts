@@ -8,31 +8,30 @@
  *   imaging  → manual partitioning → TCP/IP → domain join
  */
 
+import type { AssetCategory, HardwareRequirement } from "@/lib/core";
+
 export type ComponentKind = "ram" | "hdd" | "ssd" | "psu" | "gpu" | "nic";
 export type DeviceArchetype = "desktop" | "laptop" | "server";
 export type WorkshopStage = "assembly" | "bios" | "imaging";
 export type ImagingPhase = "partition" | "network" | "domain";
 export type PartitionKind = "EFI" | "MSR" | "WINDOWS" | "LINUX";
 
-export interface StockItem {
-  id: string;
-  kind: ComponentKind;
-  label: string;
-  spec: string;
-  /**
-   * The store-room SKU this part draws from. The Hardware Lab checks
-   * availability against `infra.inventory` before it will let the part be
-   * fitted, and consumes a unit when it is — which is what makes procurement
-   * a real constraint rather than a shop window.
-   */
-  skuId: string;
-}
+
 
 /** Component-swap + physical-teardown requirements for the Assembly stage. */
 export interface AssemblySpec {
   archetype: DeviceArchetype;
   defective: ComponentKind;
+  /** Human label for the part needed, shown on the work order. */
   replacementLabel: string;
+  /**
+   * Machine-readable spec the fitted part must satisfy. The bench checks the
+   * chosen SKU's traits against this, so ordering DDR4 for a DDR5 board is a
+   * real, expensive mistake rather than a naming difference.
+   */
+  requirement: HardwareRequirement;
+  /** SKU the extracted faulty unit is booked back against. */
+  defectiveSkuId?: string;
   /** How many replacement units to seat (2 = RAID pair). */
   count: number;
   /** Laptop: battery must be disconnected before, reconnected after. */
@@ -91,25 +90,18 @@ const COMPONENT_META: Record<ComponentKind, string> = {
 };
 export const componentLabel = (k: ComponentKind) => COMPONENT_META[k];
 
-export const STOCK_INVENTORY: Record<ComponentKind, StockItem[]> = {
-  ram: [
-    { id: "ram-8", kind: "ram", label: "8GB DDR4", spec: "PC4-25600", skuId: "sku-ram-8" },
-    { id: "ram-16", kind: "ram", label: "16GB DDR4", spec: "PC4-25600", skuId: "sku-ram-16" },
-    { id: "ram-32", kind: "ram", label: "32GB DDR5", spec: "PC5-44800 · ECC", skuId: "sku-ram-32" },
-  ],
-  hdd: [
-    { id: "hdd-1", kind: "hdd", label: "1TB 7.2K SATA", spec: "Consumer", skuId: "sku-hdd-1" },
-    { id: "hdd-2", kind: "hdd", label: "2TB Enterprise SAS", spec: "Hot-swap · 12Gb/s", skuId: "sku-hdd-2" },
-    { id: "hdd-nvme", kind: "hdd", label: "1TB NVMe SSD", spec: "M.2 · not hot-swap", skuId: "sku-hdd-nvme" },
-  ],
-  ssd: [
-    { id: "ssd-500", kind: "ssd", label: "500GB SATA SSD", spec: "Consumer", skuId: "sku-ssd-500" },
-    { id: "ssd-1", kind: "ssd", label: "1TB NVMe SSD", spec: "M.2 Gen4", skuId: "sku-ssd-1" },
-    { id: "ssd-2", kind: "ssd", label: "2TB Enterprise NVMe", spec: "U.2 · mixed-use", skuId: "sku-ssd-2" },
-  ],
-  psu: [{ id: "psu-1", kind: "psu", label: "750W Platinum", spec: "Redundant", skuId: "sku-psu-750" }],
-  gpu: [{ id: "gpu-1", kind: "gpu", label: "Pro GPU 16GB", spec: "Workstation", skuId: "sku-gpu-pro" }],
-  nic: [{ id: "nic-1", kind: "nic", label: "10GbE NIC", spec: "Dual-port", skuId: "sku-nic-10g" }],
+/**
+ * Which part of the asset catalogue a component kind draws from. The bench
+ * lists real store-room SKUs for that class rather than a hardcoded parts
+ * list, so brands, specs and stock levels are all one source of truth.
+ */
+export const COMPONENT_CATEGORY: Record<ComponentKind, AssetCategory> = {
+  ram: "memory",
+  hdd: "storage",
+  ssd: "storage",
+  psu: "component",
+  gpu: "component",
+  nic: "component",
 };
 
 // ── Job derivation ───────────────────────────────────────────────────────────
@@ -131,7 +123,7 @@ export function jobForTicket(t: Ctx): HardwareJob | null {
       return {
         ...base,
         stages: ["assembly", "bios", "imaging"],
-        assembly: { archetype: "desktop", defective: "ram", replacementLabel: "32GB DDR5", count: 1, battery: false, baffle: false, screws: 3, cabling: [] },
+        assembly: { archetype: "desktop", defective: "ram", replacementLabel: "32GB DDR5", requirement: { memoryType: "DDR5", ecc: true, minCapacityGb: 32 }, defectiveSkuId: "sku-ram-8", count: 1, battery: false, baffle: false, screws: 3, cabling: [] },
         bios: { requireSecureBoot: true, requireBootOrder: "Disk" },
         imaging: { os: "windows", phases: ["partition", "network", "domain"], requiredPartitions: ["EFI", "MSR", "WINDOWS"], mode: "install" },
       };
@@ -139,13 +131,13 @@ export function jobForTicket(t: Ctx): HardwareJob | null {
       return {
         ...base,
         stages: ["assembly"],
-        assembly: { archetype: "server", defective: "hdd", replacementLabel: "2TB Enterprise SAS", count: 1, battery: false, baffle: true, screws: 2, cabling: [{ from: "SAS-B", to: "Backplane-2" }] },
+        assembly: { archetype: "server", defective: "hdd", replacementLabel: "2TB Enterprise SAS", requirement: { busInterface: "SAS", minCapacityGb: 2048, hotSwap: true }, defectiveSkuId: "sku-sas-2", count: 1, battery: false, baffle: true, screws: 2, cabling: [{ from: "SAS-B", to: "Backplane-2" }] },
       };
     case "hw-v2-raid-rebuild":
       return {
         ...base,
         stages: ["assembly", "bios", "imaging"],
-        assembly: { archetype: "desktop", defective: "hdd", replacementLabel: "2TB Enterprise SAS", count: 2, battery: false, baffle: false, screws: 4, cabling: [{ from: "SATA-PWR", to: "PSU-Rail" }, { from: "SATA-DATA", to: "Board-SATA0" }] },
+        assembly: { archetype: "desktop", defective: "hdd", replacementLabel: "2TB Enterprise SAS", requirement: { busInterface: "SAS", minCapacityGb: 2048, hotSwap: true }, defectiveSkuId: "sku-sas-2", count: 2, battery: false, baffle: false, screws: 4, cabling: [{ from: "SATA-PWR", to: "PSU-Rail" }, { from: "SATA-DATA", to: "Board-SATA0" }] },
         bios: { requireSataMode: "RAID", requireRaid: "RAID1", requireSecureBoot: true },
         imaging: { os: "windows", phases: ["partition", "network", "domain"], requiredPartitions: ["EFI", "MSR", "WINDOWS"], mode: "install" },
       };
@@ -159,7 +151,7 @@ export function jobForTicket(t: Ctx): HardwareJob | null {
       return {
         ...base,
         stages: ["assembly", "bios", "imaging"],
-        assembly: { archetype: "laptop", defective: "ssd", replacementLabel: "1TB NVMe SSD", count: 1, battery: true, baffle: false, screws: 6, cabling: [] },
+        assembly: { archetype: "laptop", defective: "ssd", replacementLabel: "1TB NVMe SSD", requirement: { busInterface: "NVMe", formFactor: "M.2 2280", minCapacityGb: 1024 }, defectiveSkuId: "sku-ssd-500", count: 1, battery: true, baffle: false, screws: 6, cabling: [] },
         bios: { requireSecureBoot: true, requireBootOrder: "Disk" },
         imaging: { os: "windows", phases: ["partition", "domain"], requiredPartitions: ["EFI", "MSR", "WINDOWS"], mode: "install" },
       };
@@ -167,7 +159,7 @@ export function jobForTicket(t: Ctx): HardwareJob | null {
       return {
         ...base,
         stages: ["assembly", "bios", "imaging"],
-        assembly: { archetype: "server", defective: "ssd", replacementLabel: "2TB Enterprise NVMe", count: 2, battery: false, baffle: true, screws: 4, cabling: [{ from: "NVMe-A", to: "Backplane-1" }, { from: "NVMe-B", to: "Backplane-2" }] },
+        assembly: { archetype: "server", defective: "ssd", replacementLabel: "2TB Enterprise NVMe", requirement: { busInterface: "NVMe", formFactor: "U.2", minCapacityGb: 2048, hotSwap: true }, defectiveSkuId: "sku-nvme-1", count: 2, battery: false, baffle: true, screws: 4, cabling: [{ from: "NVMe-A", to: "Backplane-1" }, { from: "NVMe-B", to: "Backplane-2" }] },
         bios: { requireSataMode: "RAID", requireRaid: "RAID1" },
         imaging: { os: "linux", phases: ["partition", "network"], requiredPartitions: ["EFI", "LINUX"], mode: "install" },
       };
@@ -181,7 +173,7 @@ export function jobForTicket(t: Ctx): HardwareJob | null {
       return {
         ...base,
         stages: ["assembly", "bios", "imaging"],
-        assembly: { archetype: "desktop", defective: "ram", replacementLabel: "32GB DDR5", count: 1, battery: false, baffle: false, screws: 4, cabling: [{ from: "24pin-ATX", to: "Board-PWR" }, { from: "CPU-8pin", to: "Board-CPU" }] },
+        assembly: { archetype: "desktop", defective: "ram", replacementLabel: "32GB DDR5", requirement: { memoryType: "DDR5", ecc: true, minCapacityGb: 32 }, defectiveSkuId: "sku-ram-8", count: 1, battery: false, baffle: false, screws: 4, cabling: [{ from: "24pin-ATX", to: "Board-PWR" }, { from: "CPU-8pin", to: "Board-CPU" }] },
         bios: { requireBootOrder: "Disk" },
         imaging: { os: "windows", phases: ["partition", "network", "domain"], requiredPartitions: ["EFI", "MSR", "WINDOWS"], mode: "install" },
       };

@@ -12,11 +12,12 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { AssemblySpec, StockItem } from "@/lib/hardware/types";
-import { STOCK_INVENTORY, componentLabel } from "@/lib/hardware/types";
+import type { AssemblySpec } from "@/lib/hardware/types";
+import { COMPONENT_CATEGORY, componentLabel } from "@/lib/hardware/types";
 import { useInfraStore } from "@/lib/infra/store";
 import { useHostStore } from "@/lib/host/store";
-import { availableOf } from "@/lib/core";
+import { availableOf, incompatibilityReason, specLine } from "@/lib/core";
+import type { AssetItem } from "@/lib/core";
 import { playCue } from "@/lib/audio/engine";
 import { AppIcon } from "@/components/ui/app-icons";
 
@@ -48,40 +49,59 @@ export default function AdvancedAssembly({
   const [batteryOn, setBatteryOn] = useState(!spec.battery);
   const [baffleOn, setBaffleOn] = useState(!spec.baffle);
 
-  const stock = STOCK_INVENTORY[spec.defective] ?? [];
   const inventory = useInfraStore((st) => st.infra.inventory);
   const consumePart = useInfraStore((st) => st.consumePart);
+  const markFaulty = useInfraStore((st) => st.markFaulty);
   const openApp = useHostStore((st) => st.openApp);
   const [outOfStock, setOutOfStock] = useState<string | null>(null);
-  const stockOf = (skuId: string) => {
-    const item = inventory.items.find((i) => i.id === skuId);
-    return item ? availableOf(item) : 0;
-  };
+  const [reject, setReject] = useState<string | null>(null);
+
+  // Real catalogue lines for this component class — brands, specs, live stock.
+  const stock = inventory.items.filter((i) => i.category === COMPONENT_CATEGORY[spec.defective]);
+
   const prepDone = batteryOff && trayOut && baffleOff;
   const swapDone = extracted && installed >= spec.count;
   const cablingDone = cablesDone >= spec.cabling.length;
   const fastenDone = screwsDone >= spec.screws;
   const closeDone = batteryOn && baffleOn;
 
-  function pickStock(item: StockItem) {
+  /**
+   * Pull the dead part. It does not vanish — it is booked back into the asset
+   * register as Faulty, because the company still owns it and still has to
+   * account for it.
+   */
+  function extractDefective() {
+    if (extracted) return;
+    setExtracted(true);
+    if (spec.defectiveSkuId) markFaulty(spec.defectiveSkuId, spec.count);
+  }
+
+  function pickStock(item: AssetItem) {
     if (!extracted || installed >= spec.count) return;
-    if (item.label !== spec.replacementLabel) {
+
+    // Compatibility first: the traits must satisfy the job's requirement.
+    // This is where buying DDR4 for a DDR5 board is felt — the part is on the
+    // shelf, it cost budget, and it still will not go in.
+    const why = incompatibilityReason(item.traits, spec.requirement);
+    if (why) {
       setWrong(item.id);
+      setReject(why);
       playCue("error");
-      setTimeout(() => setWrong(null), 600);
+      setTimeout(() => setWrong(null), 900);
       return;
     }
-    // Right part — but only if the store room actually has one. consumePart
-    // is the authority: it takes the unit off the shelf and refuses when the
-    // shelf is empty, so a bare store room genuinely blocks the repair.
-    if (!consumePart(item.skuId)) {
-      setOutOfStock(item.skuId);
+
+    // Then availability. consumePart is the authority: it takes the unit off
+    // the shelf and refuses when the shelf is empty.
+    if (!consumePart(item.id)) {
+      setOutOfStock(item.id);
       playCue("error");
       setTimeout(() => setOutOfStock(null), 2400);
       return;
     }
     setInstalled((n) => n + 1);
     setWrong(null);
+    setReject(null);
   }
 
   function proceed() {
@@ -130,7 +150,7 @@ export default function AdvancedAssembly({
               {Array.from({ length: Math.max(2, spec.count + 1) }).map((_, i) => {
                 if (i === 0) {
                   return (
-                    <Slot key="def" state={installed > 0 && spec.count === 1 ? "filled" : extracted ? "empty" : "defective"} onExtract={() => setExtracted(true)} label={installed > 0 && spec.count === 1 ? spec.replacementLabel : `${componentLabel(spec.defective)} · FAULT`} />
+                    <Slot key="def" state={installed > 0 && spec.count === 1 ? "filled" : extracted ? "empty" : "defective"} onExtract={extractDefective} label={installed > 0 && spec.count === 1 ? spec.replacementLabel : `${componentLabel(spec.defective)} · FAULT`} />
                   );
                 }
                 if (i <= installed && spec.count > 1) return <Slot key={i} state="filled" onExtract={() => {}} label={spec.replacementLabel} />;
@@ -183,13 +203,22 @@ export default function AdvancedAssembly({
           <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Stock Inventory</div>
           <div className="space-y-2">
             {stock.map((item) => {
-              const have = stockOf(item.skuId);
+              const have = availableOf(item);
+              const fits = !incompatibilityReason(item.traits, spec.requirement);
               return (
                 <button key={item.id} onClick={() => pickStock(item)} disabled={phase !== "swap" || !extracted || installed >= spec.count || have === 0}
                   title={have === 0 ? "Out of stock — order more in Procurement" : `${have} on the shelf`}
                   className={`flex w-full items-center gap-2 rounded-lg border p-2 text-left transition disabled:opacity-40 ${wrong === item.id ? "border-danger bg-danger/10" : have === 0 ? "border-edge/50" : "border-edge hover:border-info/50 hover:bg-info/5"}`}>
                   <AppIcon id="package" size={17} />
-                  <span className="min-w-0 flex-1"><span className="block truncate text-[11px] text-gray-100">{item.label}</span><span className="block truncate text-[9px] text-gray-500">{item.spec}</span></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[11px] text-gray-100">{item.name}</span>
+                    <span className="block truncate font-mono text-[9px] text-gray-500">{specLine(item)}</span>
+                  </span>
+                  {have > 0 && !fits && (
+                    <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-amber-300" title="Specification mismatch">
+                      spec
+                    </span>
+                  )}
                   <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] font-semibold ${have === 0 ? "bg-danger/20 text-danger" : "bg-white/5 text-gray-400"}`}>
                     {have === 0 ? "none" : `${have} left`}
                   </span>
@@ -198,6 +227,12 @@ export default function AdvancedAssembly({
             })}
           </div>
           <div className="mt-2 text-[9px] text-gray-600">Required: {spec.count > 1 ? `${spec.count}× ` : ""}{spec.replacementLabel}</div>
+          {reject && (
+            <div className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[10px] leading-relaxed text-amber-200">
+              <span className="mt-px shrink-0"><AppIcon id="alert" size={11} /></span>
+              <span className="min-w-0">{reject}</span>
+            </div>
+          )}
           {outOfStock && (
             <div className="mt-2 flex items-center gap-1.5 rounded-md border border-danger/40 bg-danger/10 px-2 py-1.5 text-[10px] text-danger">
               <AppIcon id="alert" size={11} />
