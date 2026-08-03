@@ -50,6 +50,8 @@ interface HostStore {
 
   /** Award XP to the operator and recompute their level. */
   awardXp: (amount: number) => void;
+  /** Personalization: set the desktop wallpaper (persisted with the save). */
+  setWallpaper: (id: string) => void;
 }
 
 function centeredRect(w: number, h: number, offset: number): WindowRect {
@@ -221,4 +223,6 @@ export const useHostStore = create<HostStore>((set, get) => ({
     const { xp, level } = get().host.user;
     reportProgress(xp, level);
   },
+
+  setWallpaper: (id) => set((s) => ({ host: { ...s.host, wallpaper: id } })),
 }));

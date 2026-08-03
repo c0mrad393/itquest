@@ -20,15 +20,22 @@ import NetworkEngine from "./NetworkEngine";
 import PersistenceManager from "./PersistenceManager";
 import HardwareDispatchEngine from "./HardwareDispatchEngine";
 import { ToastHost } from "./Notifications";
+import { wallpaperById } from "@/lib/host/wallpapers";
 
 export default function HostDesktop() {
   const windows = useHostStore((s) => s.windows);
+  const paper = wallpaperById(useHostStore((s) => s.host.wallpaper));
 
   return (
     <div className="relative h-screen w-screen overflow-hidden select-none font-sans">
-      {/* Wallpaper — Windows 11 "bloom" style gradient */}
-      <div className="absolute inset-0" style={{ background: WALLPAPER }} />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(76,194,255,0.18),transparent_60%)]" />
+      {/* Wallpaper — chosen in Settings → Personalization, persisted with the save. */}
+      <div
+        className="absolute inset-0"
+        style={{ background: paper.css, backgroundSize: paper.size }}
+      />
+      {paper.overlay !== false && (
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(76,194,255,0.18),transparent_60%)]" />
+      )}
 
       {/* Brand watermark */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -68,6 +75,3 @@ export default function HostDesktop() {
     </div>
   );
 }
-
-const WALLPAPER =
-  "linear-gradient(135deg, #0a1730 0%, #0d2145 38%, #123a63 70%, #0a2a4d 100%)";

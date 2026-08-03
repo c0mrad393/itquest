@@ -14,10 +14,20 @@ import { useInfraStore } from "@/lib/infra/store";
 import { resetSimulation, saveNow, savedAt } from "@/lib/persistence/save";
 import { levelForXp, xpForLevel } from "@/lib/scenario/scoring";
 import Avatar from "../Avatar";
+import { AppIcon } from "@/components/ui/app-icons";
+import { HOST_WALLPAPERS, type WallpaperFamily } from "@/lib/host/wallpapers";
+
+const FAMILY_LABEL: Record<WallpaperFamily, string> = {
+  gradient: "Gradients",
+  solid: "Solid colours",
+  pattern: "Patterns",
+};
 
 export default function SettingsApp() {
   const user = useHostStore((s) => s.host.user);
   const infra = useInfraStore((s) => s.infra);
+  const wallpaper = useHostStore((s) => s.host.wallpaper);
+  const setWallpaper = useHostStore((s) => s.setWallpaper);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [lastSaved, setLastSaved] = useState<number | null>(() =>
     typeof window === "undefined" ? null : savedAt(),
@@ -37,7 +47,7 @@ export default function SettingsApp() {
       {/* Profile */}
       <Section title="Operator profile">
         <div className="flex items-center gap-4">
-          <Avatar value={user.avatar} className="h-14 w-14 text-3xl" />
+          <Avatar value={user.avatar} name={user.displayName} className="h-14 w-14" />
           <div className="flex-1">
             <div className="text-base font-semibold text-gray-100">{user.displayName}</div>
             <div className="text-[11px] text-gray-500">{user.role}</div>
@@ -56,6 +66,49 @@ export default function SettingsApp() {
             </div>
           </div>
         </div>
+      </Section>
+
+      {/* Personalization */}
+      <Section title="Personalization">
+        <div className="mb-3 text-[11px] leading-relaxed text-gray-500">
+          Desktop background. Applies immediately and is saved with your session.
+        </div>
+        {(["gradient", "solid", "pattern"] as const).map((family) => (
+          <div key={family} className="mb-3 last:mb-0">
+            <div className="mb-1.5 text-[10px] uppercase tracking-wider text-gray-600">
+              {FAMILY_LABEL[family]}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {HOST_WALLPAPERS.filter((w) => w.family === family).map((w) => (
+                <button
+                  key={w.id}
+                  onClick={() => setWallpaper(w.id)}
+                  title={w.label}
+                  aria-label={w.label}
+                  aria-pressed={wallpaper === w.id}
+                  className={`group relative h-14 w-24 overflow-hidden rounded-lg transition ${
+                    wallpaper === w.id
+                      ? "ring-2 ring-info ring-offset-2 ring-offset-panelalt"
+                      : "ring-1 ring-edge hover:ring-gray-500"
+                  }`}
+                >
+                  <span
+                    className="absolute inset-0"
+                    style={{ background: w.css, backgroundSize: w.size }}
+                  />
+                  <span className="absolute inset-x-0 bottom-0 bg-black/55 px-1.5 py-0.5 text-left text-[9px] font-medium text-gray-200">
+                    {w.label}
+                  </span>
+                  {wallpaper === w.id && (
+                    <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-info text-black">
+                      <AppIcon id="check" size={10} strokeWidth={3} />
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
       </Section>
 
       {/* Session */}
