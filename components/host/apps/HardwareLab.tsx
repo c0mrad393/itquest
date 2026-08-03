@@ -20,6 +20,7 @@ import BiosSim from "./hardware/BiosSim";
 import ImagingSuite, { type NetExpectation } from "./hardware/ImagingSuite";
 import type { Ticket } from "@/lib/core";
 import { AppIcon } from "@/components/ui/app-icons";
+import { AppHeader, CountPill, Segmented } from "./AppChrome";
 
 const DISPATCH_SECONDS = 14;
 
@@ -50,15 +51,17 @@ export default function HardwareLab() {
 
   return (
     <div className="flex h-full flex-col bg-panel text-gray-200">
-      <div className="flex items-center gap-3 border-b border-edge bg-panelalt px-4 py-2.5">
-        <AppIcon id="wrench" size={18} />
-        <span className="text-sm font-semibold">Hardware Lab &amp; Deployment</span>
-        <div className="ml-4 flex rounded-lg border border-edge p-0.5 text-xs">
-          <TabBtn active={view === "tickets"} onClick={() => setView("tickets")}>Active Deployment Tickets</TabBtn>
-          <TabBtn active={view === "workshop"} onClick={() => setView("workshop")}>Interactive Workshop</TabBtn>
-        </div>
-        <span className="ml-auto rounded-full bg-info/15 px-2 py-0.5 text-[10px] font-semibold text-info">{hardware.length} open</span>
-      </div>
+      <AppHeader iconId="wrench" title="Hardware Lab" subtitle="Provisioning &amp; field dispatch">
+        <Segmented
+          value={view}
+          onChange={setView}
+          options={[
+            { value: "tickets" as const, label: "Deployment tickets" },
+            { value: "workshop" as const, label: "Workshop" },
+          ]}
+        />
+        <CountPill value={hardware.length} label="open" />
+      </AppHeader>
 
       {view === "tickets" ? (
         <div className="flex min-h-0 flex-1">

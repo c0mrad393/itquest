@@ -38,6 +38,14 @@ interface TicketStore {
   resolve: (id: string) => void;
   /** Promote a mail-only ticket onto the ITSM dashboard (from CoreMail). */
   surfaceTicket: (id: string) => void;
+
+  /**
+   * Spend one hint step on a ticket. Irreversible — the count feeds the XP
+   * penalty at resolution, so revealing is a real cost, not a UI toggle.
+   */
+  revealHint: (id: string) => void;
+  /** Commit to (or leave) Hard Mode. Blocked once a hint has been spent. */
+  setHardMode: (id: string, on: boolean) => void;
 }
 
 /** Build the initial queue for the current world + inject its faults. */
@@ -89,6 +97,24 @@ export const useTicketStore = create<TicketStore>((set) => ({
         t.id === id
           ? { ...t, status: "resolved", clock: { ...t.clock, resolvedAt: t.clock.resolvedAt ?? Date.now() } }
           : t,
+      ),
+    })),
+
+  revealHint: (id) =>
+    set((s) => ({
+      tickets: s.tickets.map((t) => {
+        if (t.id !== id) return t;
+        const total = t.hints?.length ?? 0;
+        if (t.hardMode || t.hintsRevealed >= total) return t;
+        return { ...t, hintsRevealed: t.hintsRevealed + 1 };
+      }),
+    })),
+
+  setHardMode: (id, on) =>
+    set((s) => ({
+      tickets: s.tickets.map((t) =>
+        // Committing after spending hints would erase a penalty already earned.
+        t.id === id && !(on && t.hintsRevealed > 0) ? { ...t, hardMode: on } : t,
       ),
     })),
 

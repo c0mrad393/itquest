@@ -56,10 +56,22 @@ export default function TicketReconciler() {
           body: ticket.title,
           badge: `+${score.xp} XP`,
         });
-        dialogue.note(
-          ticket.id,
-          `Resolved ${breached ? "(SLA breached)" : "within SLA"} · CSAT ${score.csat}% · +${score.xp} XP`,
-        );
+
+        // Spell out where the reward went, so the hint price is visible after
+        // the fact and not just at the moment of spending it.
+        const parts = [
+          `Resolved ${breached ? "(SLA breached)" : "within SLA"}`,
+          `CSAT ${score.csat}%`,
+        ];
+        if (ticket.hardMode) parts.push("Hard Mode");
+        if (ticket.hintsRevealed > 0) {
+          parts.push(
+            `${ticket.hintsRevealed} hint${ticket.hintsRevealed === 1 ? "" : "s"} −${Math.round(
+              (1 - score.hintFactor) * 100,
+            )}%`,
+          );
+        }
+        dialogue.note(ticket.id, `${parts.join(" · ")} · +${score.xp} XP`);
       }
     }
 

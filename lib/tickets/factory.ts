@@ -60,6 +60,8 @@ export function buildTicket(
     tags: template.tags,
     xpReward: template.xpReward,
     hints: template.hints,
+    hintsRevealed: 0,
+    hardMode: false,
     escalationCount: 0,
   };
 

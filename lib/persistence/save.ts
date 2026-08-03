@@ -27,7 +27,7 @@ import type { Conversation } from "@/lib/dialogue/types";
 import type { EmailBeat } from "@/lib/tickets/matrix";
 
 const BASE_KEY = "triageos-save";
-const VERSION = 12;
+const VERSION = 13;
 
 /**
  * Save-slot scope (per-account saves). Set by the auth layer BEFORE the
@@ -56,6 +56,8 @@ export interface PersistedState {
   mail: MailMessage[];
   mailThreads: Record<string, EmailBeat[]>;
   user: HostUser;
+  /** Personalization — desktop wallpaper id (see lib/host/wallpapers.ts). */
+  wallpaper: string;
 }
 
 /** Snapshot every persistent store. */
@@ -72,6 +74,7 @@ export function capture(): PersistedState {
     mail: useMailStore.getState().messages,
     mailThreads: useTicketStore.getState().mailThreads,
     user: useHostStore.getState().host.user,
+    wallpaper: useHostStore.getState().host.wallpaper,
   };
 }
 
@@ -103,7 +106,9 @@ export function applySave(s: PersistedState): void {
   useDialogueStore.setState({ conversations: s.conversations, seq: s.dialogueSeq });
   useSlaStore.setState({ warned: s.slaWarned, breached: s.slaBreached });
   if (s.mail) useMailStore.setState({ messages: s.mail });
-  useHostStore.setState((st) => ({ host: { ...st.host, user: s.user } }));
+  useHostStore.setState((st) => ({
+    host: { ...st.host, user: s.user, wallpaper: s.wallpaper ?? st.host.wallpaper },
+  }));
 }
 
 export function savedAt(): number | null {

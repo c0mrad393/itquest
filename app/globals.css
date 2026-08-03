@@ -100,3 +100,12 @@ body {
 .caret {
   animation: blink 1s steps(1) infinite;
 }
+
+/* Horizontal chip rails: scrollable but without a visible bar stealing height. */
+.scroll-thin {
+  scrollbar-width: none;
+}
+.scroll-thin::-webkit-scrollbar {
+  height: 0;
+  display: none;
+}

@@ -22,6 +22,7 @@ import { relativeTime } from "@/lib/host/ticket-ui";
 import type { Ticket } from "@/lib/core";
 import type { EmailBeat } from "@/lib/tickets/matrix";
 import { AppIcon } from "@/components/ui/app-icons";
+import { AppHeader, CountPill } from "./AppChrome";
 import type { HostAppIconId } from "@/lib/core";
 
 const FOLDERS: { id: MailFolder; label: string; iconId: HostAppIconId }[] = [
@@ -100,12 +101,14 @@ export default function CoreMail() {
   }
 
   return (
-    <div className="flex h-full bg-panel text-sm text-gray-200">
+    <div className="flex h-full flex-col bg-panel text-sm text-gray-200">
+      <AppHeader iconId="mail" title="CoreMail" subtitle="Corporate mailbox">
+        {unread > 0 && <CountPill value={unread} label="unread" tone="warn" />}
+      </AppHeader>
+
+      <div className="flex min-h-0 flex-1">
       {/* Folder rail */}
-      <div className="w-40 shrink-0 border-r border-edge bg-panelalt">
-        <div className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-          CoreMail
-        </div>
+      <div className="w-40 shrink-0 border-r border-edge bg-panelalt pt-2">
         {FOLDERS.map((f) => (
           <button
             key={f.id}
@@ -150,6 +153,7 @@ export default function CoreMail() {
         ) : (
           <Empty />
         )}
+      </div>
       </div>
     </div>
   );

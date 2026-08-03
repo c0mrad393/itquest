@@ -143,7 +143,19 @@ export interface Ticket {
 
   /** Base XP awarded on clean, in-SLA resolution (modified by performance). */
   xpReward: number;
-  /** Step-by-step resolution guidance, rendered as the ticket checklist. */
+  /** Step-by-step resolution guidance, revealed one step at a time. */
   hints?: string[];
+  /**
+   * How many hint steps the operator has spent on this ticket. Each one costs
+   * a share of `xpReward` at resolution (see lib/scenario/scoring.ts) — the
+   * count lives on the ticket so the penalty survives a reload.
+   */
+  hintsRevealed: number;
+  /**
+   * Hard Mode: the operator has committed to solving without guidance, so the
+   * hint panel is hidden entirely and full XP is guaranteed. Reversible until
+   * the first hint is spent — after that `hintsRevealed` already stands.
+   */
+  hardMode: boolean;
   escalationCount: number;
 }

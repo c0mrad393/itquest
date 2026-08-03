@@ -23,6 +23,7 @@ import {
 } from "@/lib/host/ticket-ui";
 import TicketBrief from "./TicketBrief";
 import { AppIcon } from "@/components/ui/app-icons";
+import { AppHeader, Chip, CountPill, FilterBar, SearchField, Segmented } from "./AppChrome";
 
 const SEVERITIES: (TicketSeverity | "all")[] = ["all", "low", "medium", "high", "critical"];
 const CATEGORIES: (TicketCategory | "all")[] = [
@@ -50,50 +51,42 @@ export default function TicketCenter() {
 
   return (
     <div className="flex h-full flex-col bg-panel text-sm text-gray-200">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-edge bg-panelalt px-3 py-2">
-        <span className="text-xs font-semibold text-gray-300">Queue</span>
-        <span className="rounded-full bg-info/15 px-2 py-0.5 text-[10px] font-semibold text-info">
-          {openCount} open
-        </span>
-        <input
+      <AppHeader iconId="ticket" title="Ticket Center" subtitle="Incident queue">
+        <CountPill value={openCount} label="open" />
+        <SearchField
           value={filters.query}
-          onChange={(e) => setFilter("query", e.target.value)}
+          onChange={(v) => setFilter("query", v)}
           placeholder="Search code, title, requester…"
-          className="ml-auto w-56 rounded border border-edge bg-panel px-2 py-1 text-xs outline-none placeholder:text-gray-600 focus:border-info"
         />
-        <label className="flex items-center gap-1 text-[11px] text-gray-400">
+        <label className="flex cursor-pointer items-center gap-1.5 text-[10px] text-gray-400">
           <input
             type="checkbox"
             checked={filters.showClosed}
             onChange={(e) => setFilter("showClosed", e.target.checked)}
+            className="accent-info"
           />
-          Show resolved
+          Resolved
         </label>
-      </div>
+      </AppHeader>
 
-      {/* Filter chips */}
-      <div className="flex flex-wrap items-center gap-1 border-b border-edge px-3 py-2">
-        {CATEGORIES.map((c) => (
-          <FilterChip
-            key={c}
-            active={filters.category === c}
-            onClick={() => setFilter("category", c)}
-          >
-            {c === "all" ? "All categories" : c}
-          </FilterChip>
-        ))}
-        <span className="mx-1 h-4 w-px bg-edge" />
-        {SEVERITIES.map((s) => (
-          <FilterChip
-            key={s}
-            active={filters.severity === s}
-            onClick={() => setFilter("severity", s)}
-          >
-            {s === "all" ? "All severities" : SEVERITY_META[s].label}
-          </FilterChip>
-        ))}
-      </div>
+      {/* Categories scroll; severity is a segmented control so the bar stays one row. */}
+      <FilterBar>
+        <div className="scroll-thin flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          {CATEGORIES.map((c) => (
+            <Chip key={c} active={filters.category === c} onClick={() => setFilter("category", c)}>
+              {c === "all" ? "All" : c}
+            </Chip>
+          ))}
+        </div>
+        <Segmented
+          value={filters.severity}
+          onChange={(v) => setFilter("severity", v)}
+          options={SEVERITIES.map((s) => ({
+            value: s,
+            label: s === "all" ? "Any" : SEVERITY_META[s].label,
+          }))}
+        />
+      </FilterBar>
 
       {/* Split: list + detail */}
       <div className="flex min-h-0 flex-1">
@@ -116,29 +109,6 @@ export default function TicketCenter() {
         </div>
       </div>
     </div>
-  );
-}
-
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-full border px-2.5 py-0.5 text-[11px] transition ${
-        active
-          ? "border-info/50 bg-info/15 text-info"
-          : "border-edge text-gray-400 hover:text-gray-200"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 
