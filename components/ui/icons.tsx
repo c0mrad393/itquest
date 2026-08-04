@@ -298,6 +298,13 @@ export const IconEye = (p: IconProps) => (
   <Svg {...p}><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" /><circle cx="12" cy="12" r="3" /></Svg>
 );
 
+export const IconExpand = (p: IconProps) => (
+  <Svg {...p}><path d="M8.5 3.5H3.5v5M15.5 3.5h5v5M15.5 20.5h5v-5M8.5 20.5h-5v-5" /></Svg>
+);
+export const IconCollapse = (p: IconProps) => (
+  <Svg {...p}><path d="M3.5 8.5h5v-5M20.5 8.5h-5v-5M20.5 15.5h-5v5M3.5 15.5h5v5" /></Svg>
+);
+
 // ── Cloud (AetherCloud Engine) ──────────────────────────────────────────────
 
 /** Cloud outline with an architecture node inside — compute in the cloud. */

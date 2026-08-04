@@ -64,15 +64,105 @@ export function useGodMode(): boolean {
   return on;
 }
 
-/** Expose a tiny console handle for testers. */
+/**
+ * Developer elevation — `sudo elevate debug` in the browser console.
+ *
+ * v0.3.0 put progression behind gameplay, which makes late-game systems
+ * unreachable for testing without grinding. This unlocks everything IN THE
+ * LIVE SESSION (no reload): max level, budget, every licence, every app, and
+ * the full ticket library.
+ *
+ * Deliberately console-only and undocumented in the UI: a player who finds it
+ * has gone looking, and there is no button to press by accident.
+ */
 export function installGodModeConsoleApi(): void {
   if (typeof window === "undefined") return;
-  (window as unknown as { TriageOS?: Record<string, unknown> }).TriageOS = {
-    ...((window as unknown as { TriageOS?: Record<string, unknown> }).TriageOS ?? {}),
+  const w = window as unknown as { TriageOS?: Record<string, unknown>; sudo?: unknown };
+
+  w.TriageOS = {
+    ...(w.TriageOS ?? {}),
     godMode: (on = true) => {
       setGodMode(on);
       return `God Mode ${on ? "enabled" : "disabled"} — reload to apply.`;
     },
     isGodMode,
+    elevate: () => elevateNow(),
   };
+
+  /**
+   * `sudo elevate debug` — a bare identifier so it reads like a shell command.
+   * Chained getters make each word evaluate without parentheses; the final one
+   * performs the elevation and returns the banner the console prints.
+   */
+  Object.defineProperty(w, "sudo", {
+    configurable: true,
+    get() {
+      return {
+        get elevate() {
+          return {
+            get debug() {
+              return elevateNow();
+            },
+            toString: () => "usage: sudo elevate debug",
+          };
+        },
+        toString: () => "usage: sudo elevate debug",
+      };
+    },
+  });
+}
+
+/** Apply full elevation to the running session. */
+function elevateNow(): string {
+  setGodMode(true);
+  // Imported lazily: this module is pulled in by the host seed, and a static
+  // import of the stores here would create a cycle at module-init time.
+  void (async () => {
+    const [{ useHostStore }, { useTicketStore }, { useInfraStore }, { LICENSES }, { levelForXp }] =
+      await Promise.all([
+        import("@/lib/host/store"),
+        import("@/lib/host/tickets-store"),
+        import("@/lib/infra/store"),
+        import("@/lib/economy/licenses"),
+        import("@/lib/scenario/scoring"),
+      ]);
+
+    useHostStore.setState((st) => ({
+      host: {
+        ...st.host,
+        licenses: LICENSES.map((l) => l.id),
+        user: {
+          ...st.host.user,
+          xp: GOD_MODE_XP,
+          level: levelForXp(GOD_MODE_XP),
+          budget: 999_999,
+          skills: {
+            hardware: 9000,
+            networking: 9000,
+            systems: 9000,
+            security: 9000,
+            identity: 9000,
+            cloud: 9000,
+          },
+        },
+      },
+    }));
+
+    // Open every tier so the late-game content is reachable immediately.
+    useTicketStore
+      .getState()
+      .spawnForTiers(
+        ["Tier_2_Medium", "Tier_3_Hard", "Tier_4_Expert"],
+        useInfraStore.getState().infra,
+      );
+  })();
+
+  return [
+    "[TriageOS] elevation granted",
+    "  level      max",
+    "  budget     999,999 Cr",
+    "  licences   all",
+    "  apps       all unlocked",
+    "  tickets    every tier spawned",
+  ].join("\n");
 }

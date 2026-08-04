@@ -17,6 +17,8 @@ import type { EmotionIconId } from "@/lib/dialogue/types";
 import {
   IconAlert,
   IconApple,
+  IconExpand,
+  IconCollapse,
   IconCloudNodes,
   IconCart,
   IconCredit,
@@ -286,6 +288,10 @@ export function AppIcon({ id, ...props }: IconProps & { id: HostAppIconId | Emot
       return <IconMinus {...props} />;
     case "chevron-up":
       return <IconChevronUp {...props} />;
+    case "expand":
+      return <IconExpand {...props} />;
+    case "collapse":
+      return <IconCollapse {...props} />;
     case "cloud":
       return <IconCloudNodes {...props} />;
     case "tunnel":

@@ -22,10 +22,15 @@ import HardwareDispatchEngine from "./HardwareDispatchEngine";
 import TelemetryEngine from "./TelemetryEngine";
 import { ToastHost } from "./Notifications";
 import { wallpaperById } from "@/lib/host/wallpapers";
+import { installGodModeConsoleApi } from "@/lib/host/god-mode";
+import { useEffect } from "react";
 
 export default function HostDesktop() {
   const windows = useHostStore((s) => s.windows);
   const paper = wallpaperById(useHostStore((s) => s.host.wallpaper));
+
+  // Developer console handles (`sudo elevate debug`). Installed once on mount.
+  useEffect(() => installGodModeConsoleApi(), []);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden select-none font-sans">
