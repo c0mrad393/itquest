@@ -87,6 +87,16 @@ export function installGodModeConsoleApi(): void {
     },
     isGodMode,
     elevate: () => elevateNow(),
+    /**
+     * Suspend the v0.3.1 datacentre physics for testing. With unlimited power
+     * the PDU never trips; with unlimited cooling the rack sits at ambient
+     * whatever is mounted. Both persist in the save, so a QA world stays a QA
+     * world across a reload.
+     */
+    power: (unlimited = true) => setRackOverride({ unlimitedPower: unlimited }),
+    cooling: (unlimited = true) => setRackOverride({ unlimitedCooling: unlimited }),
+    physics: (on = true) =>
+      setRackOverride({ unlimitedPower: !on, unlimitedCooling: !on }),
   };
 
   /**
@@ -110,6 +120,22 @@ export function installGodModeConsoleApi(): void {
       };
     },
   });
+}
+
+/**
+ * Toggle the rack physics overrides. Lazy import for the same reason as
+ * `elevateNow` — the host seed pulls this module in, so a static store import
+ * would be a module-init cycle.
+ */
+function setRackOverride(patch: { unlimitedPower?: boolean; unlimitedCooling?: boolean }): string {
+  void (async () => {
+    const { useInfraStore } = await import("@/lib/infra/store");
+    useInfraStore.getState().rackSetOverrides(patch);
+  })();
+  const bits = Object.entries(patch).map(
+    ([k, v]) => `  ${k === "unlimitedPower" ? "power  " : "cooling"}    ${v ? "unlimited" : "physical"}`,
+  );
+  return ["[TriageOS] rack physics", ...bits].join("\n");
 }
 
 /** Apply full elevation to the running session. */
@@ -164,5 +190,9 @@ function elevateNow(): string {
     "  licences   all",
     "  apps       all unlocked",
     "  tickets    every tier spawned",
+    "",
+    "  TriageOS.power(true)    unlimited PDU capacity",
+    "  TriageOS.cooling(true)  rack pinned to ambient",
+    "  TriageOS.physics(true)  restore both to physical",
   ].join("\n");
 }
