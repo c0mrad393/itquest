@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:physics": "tsc lib/core/rack.ts --outDir .test-build --module esnext --target es2020 --moduleResolution bundler --skipLibCheck && node -e \"require('fs').writeFileSync('.test-build/package.json','{\\\"type\\\":\\\"module\\\"}')\" && node tests/rack-physics.mjs",
+    "test": "npm run typecheck && npm run test:physics"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",

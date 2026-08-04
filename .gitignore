@@ -16,3 +16,9 @@ next-env.d.ts
 # OS / editor noise
 .DS_Store
 *.log
+
+# Transpiled modules for the dependency-free physics spec
+.test-build/
+
+# Editor/agent launch config
+.claude/
