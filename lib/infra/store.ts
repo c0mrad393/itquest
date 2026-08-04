@@ -20,6 +20,8 @@ import type {
   WindowsService,
 } from "@/lib/core";
 import { availableOf, canMount, pingCheck, sizeSpec, shippingOption, ADMIN_PORTS, PUBLIC_CIDR, CLOUD_AUDIT_CAP } from "@/lib/core";
+import { connectedLoadWatts, deviceWatts, isPowered, pduSpec, rackThermal } from "@/lib/core";
+import type { InventoryState, RackState } from "@/lib/core";
 import type { ShippingMethod } from "@/lib/core";
 import type { AetherVNode, AuditEvent, ShieldRule, VNodeSize, VNodeStatus } from "@/lib/core";
 import type { CommandResult, NodeId } from "@/lib/core";
@@ -204,12 +206,81 @@ interface InfraStore {
   rackUpdateServer: (deviceId: string, patch: Partial<ServerConfig>) => void;
   /** Run the ping tool and record the result. */
   rackRunPing: (fromId: string, toId: string) => NetworkTestResult;
+  /**
+   * Re-close the PDU breaker. Refuses while the cabled load still exceeds the
+   * ceiling — you have to shed load first, exactly like the real thing.
+   */
+  rackResetBreaker: () => boolean;
+  /** Swap the rack's PDU (consumes/returns nothing — it is the rack feed). */
+  rackSetPdu: (pduId: string) => void;
+  /** Fit or remove a liquid cooling loop on one device (consumes a kit). */
+  rackSetLiquidCooling: (deviceId: string, on: boolean) => void;
+  /** QA only: suspend the power/thermal physics from `sudo elevate debug`. */
+  rackSetOverrides: (patch: { unlimitedPower?: boolean; unlimitedCooling?: boolean }) => void;
   /** Field dispatch complete: mark hardware replaced + bring the node online/healthy. */
   completeHardwareReplacement: (nodeId: NodeId) => void;
   /** Replace the whole infrastructure (used by factory fault injection). */
   setInfra: (infra: InfrastructureState) => void;
 
   reset: () => void;
+}
+
+// ── Datacentre physics settlement (v0.3.1) ──────────────────────────────────
+//
+// Every rack mutation runs through `settleRack`, which is where consequence
+// lives. Two things can happen that the player did not explicitly ask for:
+//
+//   1. OVERLOAD — cabled load passes the PDU ceiling, so the breaker latches
+//      open and the whole rack goes dark until it is reset.
+//   2. THERMAL RUNAWAY — the rack crosses 45C, so the hottest box in it cooks.
+//      It is unracked and its unit moves to the Faulty bucket; hardware that
+//      dies in a hot rack is not a warning message, it is a purchase order.
+//
+// Only the transition INTO critical burns a device. Staying hot is already
+// punishing (everything is in thermal shutdown, `deviceOnline` is false); if
+// each subsequent action also killed a box the player could never dig out.
+
+function settleRack(
+  rack: RackState,
+  inventory: InventoryState,
+  before: RackState,
+): { rack: RackState; inventory: InventoryState } {
+  let next = rack;
+  let items = inventory.items;
+
+  // 1) Breaker.
+  if (!next.overrides?.unlimitedPower && !next.breakerTripped) {
+    if (connectedLoadWatts(next) > pduSpec(next.pduId).maxWatts) {
+      next = { ...next, breakerTripped: true, trippedAt: Date.now() };
+    }
+  }
+
+  // 2) Thermal runaway, on the transition only.
+  const wasCritical = rackThermal(before).state === "critical";
+  if (!wasCritical && rackThermal(next).state === "critical") {
+    // Hottest = topmost powered box that is not itself cooling gear; heat
+    // rises, and killing the fan tray would be a death spiral.
+    const victim = next.devices
+      .filter((d) => isPowered(next, d.id) && deviceWatts(d) > 0)
+      .filter((d) => d.kind !== "fan-tray" && d.kind !== "crac")
+      .sort((a, b) => a.uStart - b.uStart)[0];
+    if (victim) {
+      items = items.map((i) =>
+        i.id === victim.assetItemId
+          ? { ...i, deployed: Math.max(0, i.deployed - 1), faulty: i.faulty + 1 }
+          : i,
+      );
+      next = {
+        ...next,
+        devices: next.devices.filter((d) => d.id !== victim.id),
+        cables: next.cables.filter(
+          (c) => c.fromDeviceId !== victim.id && c.toDeviceId !== victim.id,
+        ),
+      };
+    }
+  }
+
+  return { rack: next, inventory: items === inventory.items ? inventory : { ...inventory, items } };
 }
 
 function patchSecurity(
@@ -920,7 +991,7 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       if (!canMount(rack, uStart, uSize)) return s;
 
       const seq = rack.devices.filter((d) => d.kind === item.deviceKind).length + 1;
-      const shortName = (k: string) => ({ server: "SRV", switch: "SW", router: "RTR", firewall: "FW", "patch-panel": "PP", ups: "UPS", pdu: "PDU" }[k] ?? "DEV");
+      const shortName = (k: string) => ({ server: "SRV", switch: "SW", router: "RTR", firewall: "FW", "patch-panel": "PP", ups: "UPS", pdu: "PDU", "fan-tray": "FAN", crac: "CRAC" }[k] ?? "DEV");
       const name = `${shortName(item.deviceKind)}-${String(seq).padStart(2, "0")}`;
 
       const device: RackDevice = {
@@ -930,6 +1001,9 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
         assetItemId,
         uStart,
         uSize,
+        // Nameplate draw comes from the SKU where the catalogue states it, so
+        // a 750W storage node is heavy because of what it IS, not its class.
+        watts: item.traits?.watts,
         // Data ports plus a PSU inlet; power distribution units expose outlets.
         ports:
           item.deviceKind === "ups" || item.deviceKind === "pdu"
@@ -956,13 +1030,20 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
             : undefined,
       };
 
-      return {
-        infra: {
-          ...s.infra,
-          inventory: { ...inv, items: inv.items.map((i) => (i.id === assetItemId ? { ...i, deployed: i.deployed + 1 } : i)) },
-          rack: { ...rack, devices: [...rack.devices, device] },
+      const settled = settleRack(
+        { ...rack, devices: [...rack.devices, device] },
+        {
+          ...inv,
+          // Racking MOVES a unit from the shelf to deployed. Incrementing
+          // `deployed` alone would mint hardware and quietly defeat the
+          // scarcity the whole economy rests on.
+          items: inv.items.map((i) =>
+            i.id === assetItemId ? { ...i, spare: Math.max(0, i.spare - 1), deployed: i.deployed + 1 } : i,
+          ),
         },
-      };
+        rack,
+      );
+      return { infra: { ...s.infra, inventory: settled.inventory, rack: settled.rack } };
     }),
 
   rackRemoveDevice: (deviceId) =>
@@ -972,24 +1053,27 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       if (!dev) return s;
       // Returning a device also reclaims every cable attached to it.
       const freed = rack.cables.filter((c) => c.fromDeviceId === deviceId || c.toDeviceId === deviceId);
-      let items = s.infra.inventory.items.map((i) =>
-        i.id === dev.assetItemId ? { ...i, deployed: Math.max(0, i.deployed - 1) } : i,
-      );
+      // Unracking returns the unit (and every cable on it) to the shelf.
+      const toSpare = (i: typeof s.infra.inventory.items[number]) => ({
+        ...i,
+        spare: i.spare + 1,
+        deployed: Math.max(0, i.deployed - 1),
+      });
+      let items = s.infra.inventory.items.map((i) => (i.id === dev.assetItemId ? toSpare(i) : i));
       for (const c of freed) {
         const sku = c.kind === "power" ? "sku-power-c13" : "sku-rj45-3m";
-        items = items.map((i) => (i.id === sku ? { ...i, deployed: Math.max(0, i.deployed - 1) } : i));
+        items = items.map((i) => (i.id === sku ? toSpare(i) : i));
       }
-      return {
-        infra: {
-          ...s.infra,
-          inventory: { ...s.infra.inventory, items },
-          rack: {
-            ...rack,
-            devices: rack.devices.filter((d) => d.id !== deviceId),
-            cables: rack.cables.filter((c) => c.fromDeviceId !== deviceId && c.toDeviceId !== deviceId),
-          },
+      const settled = settleRack(
+        {
+          ...rack,
+          devices: rack.devices.filter((d) => d.id !== deviceId),
+          cables: rack.cables.filter((c) => c.fromDeviceId !== deviceId && c.toDeviceId !== deviceId),
         },
-      };
+        { ...s.infra.inventory, items },
+        rack,
+      );
+      return { infra: { ...s.infra, inventory: settled.inventory, rack: settled.rack } };
     }),
 
   rackConnectCable: (cable) =>
@@ -1012,16 +1096,22 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       const stock = inv.items.find((i) => i.id === sku);
       if (!stock || availableOf(stock) < 1) return s; // out of cable
 
-      return {
-        infra: {
-          ...s.infra,
-          inventory: { ...inv, items: inv.items.map((i) => (i.id === sku ? { ...i, deployed: i.deployed + 1 } : i)) },
-          rack: {
-            ...rack,
-            cables: [...rack.cables, { ...cable, id: `cb-${Date.now()}-${Math.floor(Math.random() * 1000)}` }],
-          },
+      // Patching a power lead is what puts a device on the bus — so this is
+      // the moment an overload can happen.
+      const settled = settleRack(
+        {
+          ...rack,
+          cables: [...rack.cables, { ...cable, id: `cb-${Date.now()}-${Math.floor(Math.random() * 1000)}` }],
         },
-      };
+        {
+          ...inv,
+          items: inv.items.map((i) =>
+            i.id === sku ? { ...i, spare: Math.max(0, i.spare - 1), deployed: i.deployed + 1 } : i,
+          ),
+        },
+        rack,
+      );
+      return { infra: { ...s.infra, inventory: settled.inventory, rack: settled.rack } };
     }),
 
   rackDisconnectCable: (cableId) =>
@@ -1030,19 +1120,81 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       const cable = rack.cables.find((c) => c.id === cableId);
       if (!cable) return s;
       const sku = cable.kind === "power" ? "sku-power-c13" : "sku-rj45-3m";
-      return {
-        infra: {
-          ...s.infra,
-          inventory: {
-            ...s.infra.inventory,
-            items: s.infra.inventory.items.map((i) =>
-              i.id === sku ? { ...i, deployed: Math.max(0, i.deployed - 1) } : i,
-            ),
-          },
-          rack: { ...rack, cables: rack.cables.filter((c) => c.id !== cableId) },
+      const settled = settleRack(
+        { ...rack, cables: rack.cables.filter((c) => c.id !== cableId) },
+        {
+          ...s.infra.inventory,
+          items: s.infra.inventory.items.map((i) =>
+            i.id === sku ? { ...i, spare: i.spare + 1, deployed: Math.max(0, i.deployed - 1) } : i,
+          ),
         },
-      };
+        rack,
+      );
+      return { infra: { ...s.infra, inventory: settled.inventory, rack: settled.rack } };
     }),
+
+  rackResetBreaker: () => {
+    const rack = get().infra.rack;
+    if (!rack.breakerTripped) return true;
+    // Refuse while the fault is still present. Resetting into an overload is
+    // how you weld a breaker shut; here it simply does nothing and the UI says
+    // how many watts have to come off first.
+    if (connectedLoadWatts(rack) > pduSpec(rack.pduId).maxWatts) return false;
+    set((s) => ({
+      infra: { ...s.infra, rack: { ...s.infra.rack, breakerTripped: false, trippedAt: null } },
+    }));
+    return true;
+  },
+
+  rackSetPdu: (pduId) =>
+    set((s) => {
+      const rack = s.infra.rack;
+      if (rack.pduId === pduId) return s;
+      // The feed is a real unit off the shelf, so a capacity upgrade is a
+      // procurement decision rather than a free dropdown.
+      const sku = (id: string) => (id === "pdu-30a" ? "sku-pdu-30a" : "sku-pdu-1u");
+      const wanted = s.infra.inventory.items.find((i) => i.id === sku(pduId));
+      if (!wanted || availableOf(wanted) < 1) return s;
+
+      const items = s.infra.inventory.items.map((i) => {
+        if (i.id === sku(pduId)) return { ...i, spare: i.spare - 1, deployed: i.deployed + 1 };
+        if (i.id === sku(rack.pduId)) return { ...i, spare: i.spare + 1, deployed: Math.max(0, i.deployed - 1) };
+        return i;
+      });
+      const settled = settleRack({ ...rack, pduId }, { ...s.infra.inventory, items }, rack);
+      return { infra: { ...s.infra, inventory: settled.inventory, rack: settled.rack } };
+    }),
+
+  rackSetLiquidCooling: (deviceId, on) =>
+    set((s) => {
+      const rack = s.infra.rack;
+      const dev = rack.devices.find((d) => d.id === deviceId);
+      if (!dev || !!dev.liquidCooled === on) return s;
+      const kit = s.infra.inventory.items.find((i) => i.id === "sku-liquid-kit");
+      if (on && (!kit || availableOf(kit) < 1)) return s;
+
+      const items = s.infra.inventory.items.map((i) =>
+        i.id === "sku-liquid-kit"
+          ? on
+            ? { ...i, spare: i.spare - 1, deployed: i.deployed + 1 }
+            : { ...i, spare: i.spare + 1, deployed: Math.max(0, i.deployed - 1) }
+          : i,
+      );
+      const settled = settleRack(
+        { ...rack, devices: rack.devices.map((d) => (d.id === deviceId ? { ...d, liquidCooled: on } : d)) },
+        { ...s.infra.inventory, items },
+        rack,
+      );
+      return { infra: { ...s.infra, inventory: settled.inventory, rack: settled.rack } };
+    }),
+
+  rackSetOverrides: (patch) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        rack: { ...s.infra.rack, overrides: { ...s.infra.rack.overrides, ...patch } },
+      },
+    })),
 
   rackUpdateSwitch: (deviceId, patch) =>
     set((s) => ({
