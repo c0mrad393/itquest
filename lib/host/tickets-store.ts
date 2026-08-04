@@ -11,7 +11,8 @@
 import { create } from "zustand";
 import type { InfrastructureState, Ticket, TicketStatus, TicketTrack, TicketSeverity, TicketCategory } from "@/lib/core";
 import { useInfraStore } from "@/lib/infra/store";
-import { generateTicketQueue, generateTierBatch, applyQueueFaults } from "@/lib/tickets/factory";
+import { generateTicketQueue, generateTierBatch, applyQueueFaults, buildTicket, ticketLibrary } from "@/lib/tickets/factory";
+import { mulberry32 } from "@/lib/org/rng";
 import type { EmailBeat } from "@/lib/tickets/matrix";
 import { isGodMode } from "@/lib/host/god-mode";
 
@@ -53,6 +54,13 @@ interface TicketStore {
    */
   spawnForTiers: (tiers: string[], infra: InfrastructureState, level?: number) => void;
   /**
+   * Mint ONE incident reactively (the rack tripping its breaker, say). Returns
+   * the new ticket, or null when a live one from the same family is already on
+   * the board — an operator who trips the same breaker three times gets one
+   * incident, not three.
+   */
+  spawnIncident: (familyId: string, infra: InfrastructureState) => Ticket | null;
+  /**
    * Close a ticket without meeting its win-condition — the external contractor
    * path. Flagged so the reconciler and the operator both know it was bought,
    * not solved: no XP is awarded for these.
@@ -83,7 +91,7 @@ function initQueue() {
 
 const seed = initQueue();
 
-export const useTicketStore = create<TicketStore>((set) => ({
+export const useTicketStore = create<TicketStore>((set, get) => ({
   tickets: seed.tickets,
   mailThreads: seed.mailThreads,
   selectedId: seed.selectedId,
@@ -136,6 +144,31 @@ export const useTicketStore = create<TicketStore>((set) => ({
     // NOTE: conversations are opened by the caller (TicketReconciler), not
     // here. lib/dialogue/store imports THIS module and reads it during its own
     // initialisation, so importing it back would be a genuine value cycle.
+  },
+
+  spawnIncident: (familyId, infra) => {
+    const open = get().tickets.find(
+      (t) => t.templateId.startsWith(familyId) && t.status !== "resolved" && t.status !== "closed",
+    );
+    if (open) return null;
+
+    const library = ticketLibrary(infra);
+    const candidates = Object.values(library).filter((t) => t.id.startsWith(familyId));
+    if (!candidates.length) return null;
+    const rng = mulberry32((infra.org.seed ^ Date.now()) >>> 0);
+    const template = candidates[Math.floor(rng() * candidates.length)];
+
+    // Reactive incidents skip injectFault: the world is ALREADY in the failed
+    // state — that is what summoned the ticket — and re-injecting would just
+    // trip a breaker the operator may have already reset.
+    const built = buildTicket(template, infra, rng);
+    if (!built) return null;
+    const ticket: Ticket = { ...built.ticket, mailOnly: false, status: "new" };
+    set((s) => ({
+      tickets: [...s.tickets, ticket],
+      mailThreads: built.emails.length ? { ...s.mailThreads, [ticket.id]: built.emails } : s.mailThreads,
+    }));
+    return ticket;
   },
 
   outsource: (id) =>

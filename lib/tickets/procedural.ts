@@ -31,7 +31,7 @@ import type {
   TicketDifficulty,
   TicketDynamicContext,
 } from "@/lib/core";
-import { availableOf } from "@/lib/core";
+import { availableOf, connectedLoadWatts, DEVICE_COOLING_C, isPowered, pduSpec, rackPower, rackThermal } from "@/lib/core";
 import { int, pick, type Rng } from "@/lib/org/rng";
 import type { TicketTemplate } from "./matrix";
 
@@ -54,6 +54,9 @@ const TIER: Record<TicketDifficulty, TierTuning> = {
 };
 
 // ── Variant vocabulary ──────────────────────────────────────────────────────
+
+/** Rack labels the datacentre incidents name. */
+const RACK_NAMES = ["Rack 01", "Rack A", "Rack B", "Rack DC-2"];
 
 const DEPARTMENTS = ["Finance", "HR", "Sales", "Legal", "Marketing", "Operations", "Engineering", "Support"];
 
@@ -866,6 +869,151 @@ const FAMILIES: Family[] = [
           `> Finance reviews the burn rate. Over-provisioning reduces the XP awarded here.`,
         win: (infra) => infra.cloud.vnodes.filter((v) => v.status === "running").length >= 3,
       }),
+  },
+
+  // ── Datacentre physics (v0.3.1) ──────────────────────────────────────────
+  //
+  // Every win-condition here grades an ACTION the operator takes in the rack —
+  // reset the breaker, fit cooling, upgrade the feed — never a metric that can
+  // drift back into range on its own. A ticket that heals itself while the
+  // player is still reading it teaches nothing.
+  {
+    id: "gen-pdu-trip",
+    category: "System & Web Services",
+    track: "sysadmin",
+    tags: ["rack", "power", "pdu", "outage"],
+    tiers: ["Tier_2_Medium", "Tier_3_Hard"],
+    variants: 3,
+    build: ({ rng, tier, id }) => {
+      const rackName = pick(rng, RACK_NAMES);
+      const voice = pick(rng, VOICES);
+      // Tier 3 is not satisfied by a bare reset: the rack has to come back
+      // with real headroom, or the next spin-up trips it straight back.
+      const headroomPct = tier === "Tier_3_Hard" ? 85 : 100;
+      return base(
+        { category: "System & Web Services", track: "sysadmin", tags: ["rack", "power", "pdu", "outage"] },
+        tier,
+        id,
+        {
+          personaId: voice.persona,
+          severity: "critical",
+          priority: "P1",
+          summary: `${rackName} is dark — the PDU breaker has tripped.`,
+          hints: [
+            "Open Rack Lab: the header bar reads draw against the PDU ceiling",
+            "A breaker will not re-close into a fault — unpatch a power lead first",
+            headroomPct < 100
+              ? "Leave real headroom (under 85%); a rack sitting at 99% trips again immediately"
+              : "Reset the breaker once the cabled load is back under the ceiling",
+          ],
+          makeContext: () => ({ rackName }),
+          title: (ctx) => `Rack PDU power trip — ${ctx.rackName} lost all feeds`,
+          description: (ctx) =>
+            `Alert:\nThe PDU feeding **${ctx.rackName}** has tripped its breaker. Every device on ` +
+            `that bus dropped simultaneously.\n\nWhat we found:\n` +
+            `• Continuous draw exceeded the rated ceiling on the feed\n` +
+            `• The breaker is latched open and will not self-restore\n\n` +
+            `Objective:\n` +
+            `• Shed enough load to get back under the PDU rating\n` +
+            `• Re-close the breaker${headroomPct < 100 ? ` and leave the rack under ${headroomPct}% load` : ""}`,
+          injectFault: (draft) => {
+            draft.rack.breakerTripped = true;
+            draft.rack.trippedAt = Date.now();
+          },
+          win: (infra) => {
+            const r = infra.rack;
+            if (r.breakerTripped) return false;
+            return connectedLoadWatts(r) <= (pduSpec(r.pduId).maxWatts * headroomPct) / 100;
+          },
+        },
+      );
+    },
+  },
+  {
+    id: "gen-rack-cooling",
+    category: "System & Web Services",
+    track: "sysadmin",
+    tags: ["rack", "thermal", "cooling", "procurement"],
+    tiers: ["Tier_2_Medium", "Tier_3_Hard", "Tier_4_Expert"],
+    variants: 3,
+    build: ({ rng, tier, id }) => {
+      const rackName = pick(rng, RACK_NAMES);
+      const subject = pick(rng, ["SAN array", "virtualisation cluster", "database node", "backup target"]);
+      // Tier sets the grade of cooling the room actually needs: a fan tray
+      // buys 5C, a CRAC buys 18C and costs 450W of the power budget to run.
+      const needC = tier === "Tier_4_Expert" ? DEVICE_COOLING_C.crac! : DEVICE_COOLING_C["fan-tray"]!;
+      const gear = needC >= 18 ? "2U in-rack CRAC" : "1U fan tray";
+      return base(
+        { category: "System & Web Services", track: "sysadmin", tags: ["rack", "thermal", "cooling", "procurement"] },
+        tier,
+        id,
+        {
+          personaId: pick(rng, VOICES).persona,
+          summary: `${subject} in ${rackName} is running hot and throttling.`,
+          hints: [
+            "Rack Lab's header gauge reads the rack's steady-state temperature",
+            `Procurement stocks the ${gear} under Power`,
+            "Cooling only counts once it is mounted AND cabled for power — an unpatched CRAC cools nothing",
+          ],
+          makeContext: () => ({ rackName, serviceName: subject }),
+          title: (ctx) => `Overheating ${ctx.serviceName} in ${ctx.rackName}`,
+          description: (ctx) =>
+            `User request:\nThe **${ctx.serviceName}** in ${ctx.rackName} keeps throttling and the ` +
+            `chassis alarm will not clear.\n\nWhat we found:\n` +
+            `• Rack inlet temperature is well above the 20-22C target\n` +
+            `• No cooling capacity is fitted in that rack\n\n` +
+            `Objective:\n` +
+            `• Fit and power at least a ${gear} (${needC}C of cooling)\n` +
+            `• Bring the rack back out of thermal shutdown`,
+          win: (infra) => {
+            const r = infra.rack;
+            const cooling = r.devices
+              .filter((d) => isPowered(r, d.id))
+              .reduce((t, d) => t + (DEVICE_COOLING_C[d.kind] ?? 0), 0);
+            return cooling >= needC && rackThermal(r).state !== "critical";
+          },
+        },
+      );
+    },
+  },
+  {
+    id: "gen-rack-capacity",
+    category: "System & Web Services",
+    track: "sysadmin",
+    tags: ["rack", "power", "procurement", "capacity"],
+    tiers: ["Tier_3_Hard", "Tier_4_Expert"],
+    variants: 2,
+    build: ({ rng, tier, id }) => {
+      const rackName = pick(rng, RACK_NAMES);
+      return base(
+        { category: "System & Web Services", track: "sysadmin", tags: ["rack", "power", "procurement", "capacity"] },
+        tier,
+        id,
+        {
+          personaId: pick(rng, VOICES).persona,
+          summary: `${rackName} has no power budget left for the next build-out.`,
+          hints: [
+            "The 120V/20A feed tops out at 2,400W — that is the ceiling in the header bar",
+            "Procurement stocks a 208V/30A high-density PDU under Power",
+            "Swap the rack feed from Rack Lab once the unit is on the shelf",
+          ],
+          makeContext: () => ({ rackName }),
+          title: (ctx) => `Insufficient rack power capacity — ${ctx.rackName} build-out blocked`,
+          description: (ctx) =>
+            `Change request:\nCapacity planning wants two more nodes in **${ctx.rackName}**, and the ` +
+            `existing feed cannot carry them.\n\nWhat we found:\n` +
+            `• The rack runs from a standard 120V/20A PDU (2,400W ceiling)\n` +
+            `• Projected draw after the build-out exceeds that\n\n` +
+            `Objective:\n` +
+            `• Procure and cut over to the 208V/30A high-density feed\n` +
+            `• Confirm the rack is energised and inside its new envelope`,
+          win: (infra) => {
+            const r = infra.rack;
+            return r.pduId === "pdu-30a" && !r.breakerTripped && !rackPower(r).overloaded;
+          },
+        },
+      );
+    },
   },
 ];
 
