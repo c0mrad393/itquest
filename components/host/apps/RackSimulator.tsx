@@ -18,26 +18,47 @@
 
 import { useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
-import { availableOf, canMount, isPowered, uplinkOf, type AssetItem, type RackDevice } from "@/lib/core";
-import { deviceIcon, IconLink, IconPower, IconServer, IconSliders, IconTerminal, IconTrash, IconX } from "@/components/ui/icons";
+import {
+  availableOf, canMount, deviceOnline, deviceWatts, isPowered, rackThermal, slotTempC,
+  thermalState, uplinkOf, DEVICE_COOLING_C, LIQUID_COOLING_C, THERMAL_CRITICAL_C,
+  type AssetItem, type RackDevice, type RackState,
+} from "@/lib/core";
+import { deviceIcon, IconLink, IconPower, IconServer, IconSliders, IconSnowflake, IconTerminal, IconTrash, IconX } from "@/components/ui/icons";
 import SwitchCli from "./rack/SwitchCli";
 import ServerConfigModal from "./rack/ServerConfigModal";
 import CablingPanel from "./rack/CablingPanel";
 import PingTool from "./rack/PingTool";
+import RackTelemetry, { THERMAL_TONE } from "./rack/RackTelemetry";
 
 const ROW_H = 26;
+
+/**
+ * Heatmap intensity for one U. Deliberately near-invisible at room
+ * temperature: the rack should look normal until it is not, so a warm slot
+ * reads as a signal rather than decoration.
+ */
+function heatOpacity(tempC: number): number {
+  const t = (tempC - 24) / (THERMAL_CRITICAL_C - 24);
+  return Math.max(0, Math.min(0.42, t * 0.42));
+}
 
 export default function RackSimulator() {
   const inventory = useInfraStore((s) => s.infra.inventory);
   const rack = useInfraStore((s) => s.infra.rack);
   const mount = useInfraStore((s) => s.rackMountDevice);
   const remove = useInfraStore((s) => s.rackRemoveDevice);
+  const setLiquid = useInfraStore((s) => s.rackSetLiquidCooling);
+  const liquidStock = useInfraStore((s) =>
+    availableOf(s.infra.inventory.items.find((i) => i.id === "sku-liquid-kit") ?? { spare: 0 } as AssetItem),
+  );
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dragItem, setDragItem] = useState<AssetItem | null>(null);
   /** Click-to-place: an "armed" unit waiting for the operator to pick a U. */
   const [armed, setArmed] = useState<AssetItem | null>(null);
   const [hoverU, setHoverU] = useState<number | null>(null);
+  /** U slot the pointer is over — drives the per-slot power/heat readout. */
+  const [statU, setStatU] = useState<number | null>(null);
   const [modal, setModal] = useState<"cli" | "server" | null>(null);
   const [panel, setPanel] = useState<"cabling" | "ping">("cabling");
 
@@ -70,6 +91,8 @@ export default function RackSimulator() {
         </span>
         <span className="ml-auto text-[11px] text-gray-500">Rack A · {rack.sizeU}U</span>
       </div>
+
+      <RackTelemetry />
 
       <div className="flex min-h-0 flex-1">
         {/* Left: equipment */}
@@ -111,8 +134,13 @@ export default function RackSimulator() {
           </div>
         </div>
 
-        {/* Middle: the rack */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {/* Middle: the rack.
+            Two bands — the 24U frame scrolls, the readouts under it do NOT.
+            A slot stat you have to scroll past 24 rows to read is a stat
+            nobody reads, and it has to be visible WHILE the pointer is on the
+            slot it describes. */}
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4">
           <div className="mx-auto w-full max-w-md">
             <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-wider text-gray-500">
               <span>Rack A</span><span>{rack.devices.length}/{rack.sizeU}U used</span>
@@ -124,22 +152,38 @@ export default function RackSimulator() {
                   const occupied = rack.devices.some((d) => u >= d.uStart && u < d.uStart + d.uSize);
                   const isHover = hoverU !== null && u >= hoverU && u < hoverU + dragSize;
                   const legal = hoverU !== null && canMount(rack, hoverU, dragSize);
+                  // Thermal overlay: heat rises, so the top of the rack reads
+                  // hotter than the bottom even at one steady-state ambient.
+                  const slotC = slotTempC(rack, u);
+                  const slotTone = THERMAL_TONE[thermalState(slotC)];
                   return (
                     <div
                       key={u}
                       data-uslot={u}
                       onDragOver={(e) => { e.preventDefault(); setHoverU(u); }}
                       onDrop={(e) => { e.preventDefault(); placeAt(u, dragItem); }}
-                      onMouseEnter={() => armed && setHoverU(u)}
+                      onMouseEnter={() => { setStatU(u); if (armed) setHoverU(u); }}
+                      onMouseLeave={() => setStatU((cur) => (cur === u ? null : cur))}
                       onClick={() => armed && placeAt(u, armed)}
+                      title={`U${u} — ${slotC.toFixed(1)}\u00b0C`}
                       className={`absolute left-0 right-0 flex items-center border-b border-dashed border-white/5 ${
                         isHover ? (legal ? "bg-info/20" : "bg-danger/20") : ""
                       } ${armed && !occupied ? "cursor-pointer" : ""}`}
                       style={{ top: (u - 1) * ROW_H, height: ROW_H }}
                     >
-                      <span className="w-7 shrink-0 pl-1 font-mono text-[9px] text-gray-600">U{u}</span>
+                      {/* Heatmap wash — sits behind everything, hidden while
+                          the operator is aiming a drop so it never confuses
+                          "legal placement" with "hot". */}
+                      {!isHover && !rack.breakerTripped && (
+                        <span
+                          aria-hidden
+                          className={`pointer-events-none absolute inset-0 ${slotTone.bg}`}
+                          style={{ opacity: heatOpacity(slotC) }}
+                        />
+                      )}
+                      <span className="relative w-7 shrink-0 pl-1 font-mono text-[9px] text-gray-600">U{u}</span>
                       {!occupied && (
-                        <span className="text-[9px] text-gray-700">{armed ? `place ${armed.name} here` : "— empty —"}</span>
+                        <span className="relative text-[9px] text-gray-700">{armed ? `place ${armed.name} here` : "— empty —"}</span>
                       )}
                     </div>
                   );
@@ -148,6 +192,9 @@ export default function RackSimulator() {
                 {/* Mounted devices */}
                 {rack.devices.map((d) => {
                   const powered = isPowered(rack, d.id);
+                  // Cabled is not the same as RUNNING: a tripped breaker or a
+                  // thermal shutdown takes the whole rack down regardless.
+                  const online = deviceOnline(rack, d.id);
                   const link = uplinkOf(rack, d.id);
                   const isSel = d.id === selectedId;
                   return (
@@ -161,18 +208,33 @@ export default function RackSimulator() {
                       }`}
                       style={{ top: (d.uStart - 1) * ROW_H + 2, height: d.uSize * ROW_H - 4 }}
                     >
-                      <span className={powered ? "text-emerald-400" : "text-gray-600"}>{deviceIcon(d.kind, { size: 14 })}</span>
-                      <span className="min-w-0 flex-1 truncate text-[11px] text-gray-100">{d.name}</span>
+                      <span className={online ? "text-emerald-400" : powered ? "text-amber-400" : "text-gray-600"}>
+                        {deviceIcon(d.kind, { size: 14 })}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-[11px] text-gray-100">
+                        {d.name}
+                        {d.liquidCooled && <IconSnowflake size={9} className="ml-1 inline text-cyan-300" />}
+                      </span>
+                      <span className="shrink-0 font-mono text-[9px] text-gray-500">{deviceWatts(d)}W</span>
                       {link && <span className="font-mono text-[9px] text-info">{link.port}</span>}
                       <span
-                        title={powered ? "Powered" : "No power"}
-                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${powered ? "bg-emerald-400" : "bg-danger"}`}
+                        title={online ? "Online" : powered ? "Cabled but down (breaker or thermal)" : "No power"}
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                          online ? "bg-emerald-400" : powered ? "bg-amber-400" : "bg-danger"
+                        }`}
                       />
                     </button>
                   );
                 })}
               </div>
             </div>
+          </div>
+          </div>
+
+          {/* Pinned readouts */}
+          <div className="mx-auto w-full max-w-md shrink-0 px-4 pb-4">
+            {/* Slot-level power & heat — follows the pointer down the rack */}
+            <SlotStats rack={rack} u={statU} />
 
             {/* Selection toolbar */}
             {selected && (
@@ -188,6 +250,26 @@ export default function RackSimulator() {
                 )}
                 {selected.kind === "server" && (
                   <ToolBtn onClick={() => setModal("server")} icon={<IconSliders size={12} />}>Configure</ToolBtn>
+                )}
+                {/* Liquid loops are per-device, so they are fitted here rather
+                    than mounted in a U of their own. */}
+                {deviceWatts(selected) > 0 && (
+                  <ToolBtn
+                    onClick={() => setLiquid(selected.id, !selected.liquidCooled)}
+                    icon={<IconSnowflake size={12} />}
+                    disabled={!selected.liquidCooled && liquidStock < 1}
+                  >
+                    {selected.liquidCooled
+                      ? `Remove liquid loop (+${LIQUID_COOLING_C}\u00b0C)`
+                      : `Fit liquid loop (\u2212${LIQUID_COOLING_C}\u00b0C · ${liquidStock} in stock)`}
+                  </ToolBtn>
+                )}
+                {(DEVICE_COOLING_C[selected.kind] ?? 0) > 0 && (
+                  <span className="text-cyan-300">
+                    {isPowered(rack, selected.id)
+                      ? `cooling \u2212${DEVICE_COOLING_C[selected.kind]}\u00b0C`
+                      : "not cabled — cooling nothing"}
+                  </span>
                 )}
                 <ToolBtn onClick={() => { remove(selected.id); setSelectedId(null); }} icon={<IconTrash size={12} />} danger>Unrack</ToolBtn>
               </div>
@@ -238,12 +320,62 @@ function ModalShell({ title, onClose, children }: { title: string; onClose: () =
   );
 }
 
-function ToolBtn({ onClick, icon, danger, children }: { onClick: () => void; icon: React.ReactNode; danger?: boolean; children: React.ReactNode }) {
+function ToolBtn({ onClick, icon, danger, disabled, children }: { onClick: () => void; icon: React.ReactNode; danger?: boolean; disabled?: boolean; children: React.ReactNode }) {
   return (
-    <button onClick={onClick}
-      className={`flex items-center gap-1 rounded border px-2 py-0.5 ${danger ? "border-danger/40 text-danger hover:bg-danger/10" : "border-edge text-gray-200 hover:bg-panel"}`}>
+    <button onClick={onClick} disabled={disabled}
+      className={`flex items-center gap-1 rounded border px-2 py-0.5 ${
+        disabled
+          ? "cursor-not-allowed border-edge/50 text-gray-600"
+          : danger
+            ? "border-danger/40 text-danger hover:bg-danger/10"
+            : "border-edge text-gray-200 hover:bg-panel"
+      }`}>
       {icon} {children}
     </button>
+  );
+}
+
+/**
+ * Per-slot readout. Shows what the hovered U costs and what it runs at, so the
+ * relationship between "this box draws 750W" and "this rack is at 38C" is
+ * visible at the point of decision rather than only in the header total.
+ */
+function SlotStats({ rack, u }: { rack: RackState; u: number | null }) {
+  if (u === null) {
+    return (
+      <p className="mt-2 text-[10px] text-gray-600">
+        Hover a U slot for its temperature and load. Heat rises — the top of the rack always runs warmer.
+      </p>
+    );
+  }
+  const dev = rack.devices.find((d) => u >= d.uStart && u < d.uStart + d.uSize);
+  const slotC = slotTempC(rack, u);
+  const tone = THERMAL_TONE[thermalState(slotC)];
+  const cooling = dev ? (DEVICE_COOLING_C[dev.kind] ?? 0) + (dev.liquidCooled ? LIQUID_COOLING_C : 0) : 0;
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-edge bg-panelalt/60 px-2.5 py-1.5 font-mono text-[10px]">
+      <span className="text-gray-300">U{u}</span>
+      <span className={tone.text}>{slotC.toFixed(1)}&deg;C</span>
+      {dev ? (
+        <>
+          <span className="text-gray-300">{dev.name}</span>
+          <span className="text-gray-400">{deviceWatts(dev)}W draw</span>
+          {cooling > 0 && <span className="text-cyan-300">&minus;{cooling}&deg;C cooling</span>}
+          <span className={deviceOnline(rack, dev.id) ? "text-emerald-300" : "text-danger"}>
+            {deviceOnline(rack, dev.id)
+              ? "online"
+              : rack.breakerTripped
+                ? "breaker open"
+                : rackThermal(rack).state === "critical"
+                  ? "thermal shutdown"
+                  : "no power"}
+          </span>
+        </>
+      ) : (
+        <span className="text-gray-600">empty</span>
+      )}
+    </div>
   );
 }
 

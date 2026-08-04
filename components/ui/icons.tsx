@@ -102,6 +102,22 @@ export const IconLink = (p: IconProps) => (
 export const IconPower = (p: IconProps) => (
   <Svg {...p}><path d="M12 3v9" /><path d="M6.5 6.5a8 8 0 1011 0" /></Svg>
 );
+/** Thermometer — the rack temperature gauge. */
+export const IconThermometer = (p: IconProps) => (
+  <Svg {...p}><path d="M14 14.8V4a2 2 0 10-4 0v10.8a4 4 0 104 0z" /><path d="M12 9v6" /></Svg>
+);
+/** Fan — airflow / fan tray. */
+export const IconFan = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="12" r="2" /><path d="M12 10c0-3.5-.5-6 1.5-6.8C15.6 2.4 17 5 15.4 7.6c-.8 1.3-2.1 2-3.4 2.4" /><path d="M14 12c3.5 0 6-.5 6.8 1.5.8 2.1-1.8 3.5-4.4 1.9-1.3-.8-2-2.1-2.4-3.4" /><path d="M12 14c0 3.5.5 6-1.5 6.8-2.1.8-3.5-1.8-1.9-4.4.8-1.3 2.1-2 3.4-2.4" /><path d="M10 12c-3.5 0-6 .5-6.8-1.5C2.4 8.4 5 7 7.6 8.6c1.3.8 2 2.1 2.4 3.4" /></Svg>
+);
+/** Snowflake — active cooling (CRAC / liquid loop). */
+export const IconSnowflake = (p: IconProps) => (
+  <Svg {...p}><path d="M12 3v18" /><path d="M4.2 7.5l15.6 9" /><path d="M19.8 7.5l-15.6 9" /><path d="M12 6.5l2.4-2.2M12 6.5L9.6 4.3M12 17.5l2.4 2.2M12 17.5l-2.4 2.2" /></Svg>
+);
+/** Lightning — electrical load. */
+export const IconBolt = (p: IconProps) => (
+  <Svg {...p}><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" /></Svg>
+);
 export const IconAlert = (p: IconProps) => (
   <Svg {...p}><path d="M12 3l9.5 17H2.5L12 3z" /><path d="M12 10v4M12 17.5h.01" /></Svg>
 );
@@ -358,5 +374,7 @@ export function deviceIcon(kind: RackDeviceKind, props: IconProps = {}) {
     case "patch-panel": return <IconPanel {...props} />;
     case "ups": return <IconBattery {...props} />;
     case "pdu": return <IconPlug {...props} />;
+    case "fan-tray": return <IconFan {...props} />;
+    case "crac": return <IconSnowflake {...props} />;
   }
 }
