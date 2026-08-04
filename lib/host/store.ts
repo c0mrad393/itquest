@@ -49,8 +49,14 @@ interface HostStore {
   setStartMenu: (open: boolean) => void;
   toggleStartMenu: () => void;
 
-  /** Award XP to the operator and recompute their level. */
-  awardXp: (amount: number) => void;
+  /**
+   * Award XP to the operator and recompute their level. Returns the levels
+   * crossed, so the caller can announce promotions and open the newly
+   * unlocked tiers.
+   */
+  awardXp: (amount: number) => { from: number; to: number };
+  /** Credit experience to one discipline — drives the dynamic job title. */
+  awardSkillXp: (track: string, amount: number) => void;
   /** Personalization: set the desktop wallpaper (persisted with the save). */
   setWallpaper: (id: string) => void;
   /** Personalization: master switch for UI sound cues (persisted). */
@@ -235,6 +241,7 @@ export const useHostStore = create<HostStore>((set, get) => ({
   toggleStartMenu: () => set((s) => ({ startMenuOpen: !s.startMenuOpen })),
 
   awardXp: (amount) => {
+    const before = get().host.user.level;
     set((s) => {
       const xp = s.host.user.xp + amount;
       const level = levelForXp(xp);
@@ -243,7 +250,19 @@ export const useHostStore = create<HostStore>((set, get) => ({
     // Persist progression to the account profile (no-op for guests).
     const { xp, level } = get().host.user;
     reportProgress(xp, level);
+    return { from: before, to: level };
   },
+
+  awardSkillXp: (track, amount) =>
+    set((s) => ({
+      host: {
+        ...s.host,
+        user: {
+          ...s.host.user,
+          skills: { ...s.host.user.skills, [track]: (s.host.user.skills[track] ?? 0) + amount },
+        },
+      },
+    })),
 
   setWallpaper: (id) => set((s) => ({ host: { ...s.host, wallpaper: id } })),
 

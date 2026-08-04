@@ -8,7 +8,13 @@
  * The registry is DATA, not UI — Phase 2 maps each `HostAppId` to a real React
  * component. Keeping the catalog declarative lets the taskbar, Start menu, and
  * desktop all render from one source and lets scenarios gate app availability.
+ *
+ * NOTE: the progression gate lives in lib/progression/unlocks.ts and is
+ * imported here as a TYPE-ONLY-adjacent value; unlocks imports only types back,
+ * so there is no runtime cycle.
  */
+
+import { isAppUnlocked } from "@/lib/progression/unlocks";
 
 export type HostAppId =
   | "itsm" // Ticket dashboard
@@ -123,7 +129,9 @@ export type HostAppIconId =
   | "cloud"
   | "tunnel"
   | "credit"
-  | "cart";
+  | "cart"
+  | "expand"
+  | "collapse";
 
 /** Which live counter, if any, drives an app's taskbar/Start badge. */
 export type HostAppBadgeSource = "unread-tickets" | "unread-mail" | "unread-coremail" | "sla-alerts";
@@ -360,15 +368,17 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
  * else is always visible. Every surface that lists apps (desktop, Start menu,
  * taskbar) must go through this so a debug tool cannot leak into normal play.
  */
-export function visibleApps(godMode: boolean): HostAppDescriptor[] {
-  return (Object.values(HOST_APP_REGISTRY) as HostAppDescriptor[]).filter(
-    (a) => !a.godModeOnly || godMode,
-  );
+export function visibleApps(godMode: boolean, level = 99): HostAppDescriptor[] {
+  return (Object.values(HOST_APP_REGISTRY) as HostAppDescriptor[]).filter((a) => {
+    if (a.godModeOnly && !godMode) return false;
+    // God Mode ignores progression gates — that is the point of the QA profile.
+    return godMode || isAppUnlocked(a.id, level);
+  });
 }
 
 /** Ordered list of app ids pinned to the taskbar (left → right). */
-export function taskbarPinned(godMode: boolean): HostAppId[] {
-  return visibleApps(godMode)
+export function taskbarPinned(godMode: boolean, level = 99): HostAppId[] {
+  return visibleApps(godMode, level)
     .filter((a) => a.pinnedToTaskbar)
     .map((a) => a.id);
 }
@@ -387,6 +397,12 @@ export interface HostUser {
    * Distinct from XP — XP measures skill, budget measures resources.
    */
   budget: number;
+  /**
+   * Per-discipline experience. Drives the dynamic job title — see
+   * lib/progression/tracks.ts. Kept as a plain record so it persists with the
+   * rest of the profile.
+   */
+  skills: Record<string, number>;
 }
 
 export interface SystemTrayState {

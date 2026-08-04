@@ -32,8 +32,8 @@ const GUEST_DEFAULTS: UserProfile = {
   username: "Guest Operator",
   avatar: "indigo",
   provider: "guest",
-  xp: 6420,
-  level: 4,
+  xp: 0,
+  level: 1,
   createdAt: Date.now(),
 };
 
@@ -99,8 +99,8 @@ function toProfile(user: User, row: Partial<UserProfile> | null): UserProfile {
       "Operator",
     avatar: (row?.avatar as string) ?? (meta.avatar_url as string) ?? "indigo",
     provider,
-    xp: row?.xp ?? 6420,
-    level: row?.level ?? 4,
+    xp: row?.xp ?? 0,
+    level: row?.level ?? 1,
     createdAt: row?.createdAt ?? Date.parse(user.created_at) ?? Date.now(),
   };
 }

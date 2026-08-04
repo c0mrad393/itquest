@@ -16,6 +16,7 @@ import { levelForXp, xpForLevel } from "@/lib/scenario/scoring";
 import Avatar from "../Avatar";
 import { AppIcon } from "@/components/ui/app-icons";
 import { HOST_WALLPAPERS, type WallpaperFamily } from "@/lib/host/wallpapers";
+import { jobTitle } from "@/lib/progression/tracks";
 
 const FAMILY_LABEL: Record<WallpaperFamily, string> = {
   gradient: "Gradients",
@@ -52,7 +53,7 @@ export default function SettingsApp() {
           <Avatar value={user.avatar} name={user.displayName} className="h-14 w-14" />
           <div className="flex-1">
             <div className="text-base font-semibold text-gray-100">{user.displayName}</div>
-            <div className="text-[11px] text-gray-500">{user.role}</div>
+            <div className="text-[11px] text-gray-500">{jobTitle(user.level, user.skills)}</div>
             <div className="mt-2">
               <div className="flex items-center justify-between text-[10px] text-gray-500">
                 <span>

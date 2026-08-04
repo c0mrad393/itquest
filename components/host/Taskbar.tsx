@@ -21,13 +21,16 @@ import { useNotificationStore, unreadCount } from "@/lib/host/notifications-stor
 import { ActionCenter } from "./Notifications";
 import { AppIcon, APP_ICON_SIZE } from "@/components/ui/app-icons";
 import { useGodMode } from "@/lib/host/god-mode";
+import { useFullscreen } from "@/lib/host/fullscreen";
 import Clock from "./Clock";
 import { useState } from "react";
 
 export default function Taskbar() {
   const [actionCenter, setActionCenter] = useState(false);
+  const [full, toggleFull] = useFullscreen();
   const godMode = useGodMode();
-  const pinned = taskbarPinned(godMode);
+  const level = useHostStore((s) => s.host.user.level);
+  const pinned = taskbarPinned(godMode, level);
   const unread = useNotificationStore((s) => unreadCount(s.items));
   const windows = useHostStore((s) => s.windows);
   const startMenuOpen = useHostStore((s) => s.startMenuOpen);
@@ -125,6 +128,16 @@ export default function Taskbar() {
           <NetIcon on={host.tray.networkConnected} />
           <VolIcon />
         </div>
+
+        {/* Fullscreen — makes the shell take over the monitor */}
+        <button
+          onClick={toggleFull}
+          aria-label={full ? "Exit fullscreen" : "Enter fullscreen"}
+          title={full ? "Exit fullscreen" : "Fullscreen"}
+          className="flex h-9 w-9 items-center justify-center rounded-md text-gray-300 transition hover:bg-white/10"
+        >
+          <AppIcon id={full ? "collapse" : "expand"} size={16} />
+        </button>
 
         {/* Action Center (notification history) */}
         <button

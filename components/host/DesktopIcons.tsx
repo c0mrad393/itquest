@@ -25,6 +25,7 @@ const PAD = 16;
 export default function DesktopIcons() {
   const openApp = useHostStore((s) => s.openApp);
   const godMode = useGodMode();
+  const level = useHostStore((s) => s.host.user.level);
   const [selected, setSelected] = useState<HostAppId | null>(null);
   const [rows, setRows] = useState(6);
 
@@ -37,7 +38,7 @@ export default function DesktopIcons() {
     return () => window.removeEventListener("resize", calc);
   }, []);
 
-  const desktopApps = visibleApps(godMode).filter((a) => a.showOnDesktop);
+  const desktopApps = visibleApps(godMode, level).filter((a) => a.showOnDesktop);
 
   return (
     <div

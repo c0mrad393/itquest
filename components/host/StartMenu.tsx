@@ -14,6 +14,7 @@ import { useHostStore } from "@/lib/host/store";
 import Avatar from "./Avatar";
 import { useGodMode } from "@/lib/host/god-mode";
 import { AppIcon, APP_ICON_SIZE } from "@/components/ui/app-icons";
+import { jobTitle } from "@/lib/progression/tracks";
 
 export default function StartMenu() {
   const open = useHostStore((s) => s.startMenuOpen);
@@ -25,7 +26,7 @@ export default function StartMenu() {
 
   if (!open) return null;
 
-  const apps = visibleApps(godMode).filter((a) =>
+  const apps = visibleApps(godMode, host.user.level).filter((a) =>
     a.title.toLowerCase().includes(query.trim().toLowerCase()),
   );
 
@@ -79,7 +80,7 @@ export default function StartMenu() {
           <div className="leading-tight">
             <div className="text-sm text-gray-100">{host.user.displayName}</div>
             <div className="text-[11px] text-gray-500">
-              {host.user.role} · Lvl {host.user.level} ·{" "}
+              {jobTitle(host.user.level, host.user.skills)} · Lvl {host.user.level} ·{" "}
               <span className="font-mono text-emerald-300/90">
                 {host.user.budget.toLocaleString()} Cr
               </span>

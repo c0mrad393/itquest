@@ -20,6 +20,7 @@ import { rankForXp } from "@/lib/host/leaderboard-data";
 import { AVATAR_PALETTES, isImageAvatar } from "@/lib/core";
 import Avatar from "../Avatar";
 import { AppIcon } from "@/components/ui/app-icons";
+import { TRACK_META, SPECIALISATION_THRESHOLD, dominantTrack, jobTitle, trackShares } from "@/lib/progression/tracks";
 
 const PROVIDER_META = {
   google: { label: "Google account", color: "bg-sky-500/15 text-sky-300" },
@@ -103,6 +104,48 @@ export default function ProfileApp() {
           </span>
         )}
       </div>
+
+      {/* Career track — where the experience actually went */}
+      <section className="rounded-xl border border-edge bg-panelalt p-4">
+        <div className="mb-1 flex items-baseline gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+            Career track
+          </span>
+          <span className="ml-auto text-[13px] font-semibold text-gray-100">
+            {jobTitle(hostUser.level, hostUser.skills)}
+          </span>
+        </div>
+        <div className="mb-3 text-[10px] text-gray-600">
+          {dominantTrack(hostUser.skills)
+            ? "Your title follows whichever discipline you work most — it moves as your habits do."
+            : `Specialise by resolving more in one discipline (${SPECIALISATION_THRESHOLD.toLocaleString()} XP in a track).`}
+        </div>
+        <div className="space-y-1.5">
+          {trackShares(hostUser.skills).map(({ track, xp: txp, pct }) => {
+            const meta = TRACK_META[track];
+            const lead = dominantTrack(hostUser.skills) === track;
+            return (
+              <div key={track} className="flex items-center gap-2.5">
+                <span className={`w-4 shrink-0 ${meta.color}`}>
+                  <AppIcon id={meta.iconId} size={13} />
+                </span>
+                <span className={`w-20 shrink-0 text-[11px] ${lead ? "font-semibold text-gray-100" : "text-gray-400"}`}>
+                  {meta.label}
+                </span>
+                <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-black/40">
+                  <span
+                    className={`block h-full rounded-full ${lead ? "bg-info" : "bg-gray-600"}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </span>
+                <span className="w-16 shrink-0 text-right font-mono text-[10px] text-gray-500">
+                  {txp.toLocaleString()}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Gamification dashboard */}
       <section className="rounded-xl border border-edge bg-panelalt p-4">

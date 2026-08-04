@@ -122,9 +122,15 @@ export function budgetReward(ticket: Ticket, breached: boolean): number {
   return Math.round(base * (breached ? BUDGET_BREACH_FACTOR : 1));
 }
 
-/** XP required to reach a given level (simple escalating curve). */
+/**
+ * XP required to reach a given level.
+ *
+ * Deliberately gentle through the intern phase: the first promotions gate the
+ * apps, so a new player should feel the OS opening up within a couple of
+ * tickets rather than after an hour. It steepens from there.
+ */
 export function xpForLevel(level: number): number {
-  return Math.round(500 * level * (level + 1) * 0.5);
+  return Math.round(250 * level * (level - 1));
 }
 
 export function levelForXp(xp: number): number {
