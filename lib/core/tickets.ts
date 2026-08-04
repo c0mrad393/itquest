@@ -68,6 +68,8 @@ export interface TicketDynamicContext {
   rackVlanId?: number;
   /** Switch interface that must carry `rackVlanId`. */
   rackPort?: string;
+  /** Human label for the rack an incident names, e.g. "Rack B". */
+  rackName?: string;
 }
 
 export type TicketStatus =

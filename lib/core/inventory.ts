@@ -26,7 +26,17 @@ export type AssetCategory =
   | "panel"; // patch panels
 
 /** Rack-mountable device kinds (assets with a `deviceKind` can be racked). */
-export type RackDeviceKind = "server" | "switch" | "router" | "firewall" | "patch-panel" | "ups" | "pdu";
+export type RackDeviceKind =
+  | "server"
+  | "switch"
+  | "router"
+  | "firewall"
+  | "patch-panel"
+  | "ups"
+  | "pdu"
+  /** Cooling: airflow booster and in-rack air conditioner. */
+  | "fan-tray"
+  | "crac";
 
 /** Where a unit is in its life. Every owned unit sits in exactly one. */
 export type AssetStatus = "spare" | "deployed" | "in-transit" | "faulty";

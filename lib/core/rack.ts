@@ -12,6 +12,93 @@ import type { RackDeviceKind } from "./inventory";
 
 export const RACK_SIZE_U = 24;
 
+// ── Datacentre physics (v0.3.1) ─────────────────────────────────────────────
+//
+// DESIGN NOTE — why temperature is DERIVED, not ticked.
+// A rack's thermal state is a pure function of what is mounted, what is
+// powered, and what cooling is fitted. Storing a "current temperature" that
+// eases toward a target would mean writing to `infra` every couple of seconds,
+// which (a) bloats every autosave and (b) re-runs all 134 win-conditions on a
+// timer, since the reconciler subscribes to infra. The same reasoning that put
+// Monitor telemetry in a session store keeps thermal maths as a pure
+// calculation here: one function, called by the UI and by ticket
+// win-conditions, so what the player reads is exactly what is graded.
+//
+// The one genuinely LATCHED bit of state is the breaker: once it trips it
+// stays tripped until the operator resets it, which is how a real breaker
+// behaves and gives the overload a consequence that outlives the cause.
+
+/** Power distribution unit feeding the rack. */
+export interface PduSpec {
+  id: string;
+  label: string;
+  volts: number;
+  amps: number;
+  /** Continuous load ceiling. Breakers trip above this. */
+  maxWatts: number;
+}
+
+export const PDU_SPECS: PduSpec[] = [
+  { id: "pdu-20a", label: "Standard 120V / 20A", volts: 120, amps: 20, maxWatts: 2400 },
+  { id: "pdu-30a", label: "High-density 208V / 30A", volts: 208, amps: 30, maxWatts: 6240 },
+];
+
+export function pduSpec(id: string): PduSpec {
+  return PDU_SPECS.find((p) => p.id === id) ?? PDU_SPECS[0];
+}
+
+/**
+ * Fallback draw per device class, in watts. A device mounted from a SKU whose
+ * traits carry `watts` uses that instead — the catalogue is more specific.
+ */
+export const DEVICE_WATTS: Record<RackDeviceKind, number> = {
+  server: 250,
+  switch: 180,
+  router: 140,
+  firewall: 160,
+  "patch-panel": 0, // passive
+  ups: 0, // feeds the rack, does not draw from it
+  pdu: 0,
+  "fan-tray": 80,
+  crac: 450,
+};
+
+/** Cooling delivered by a mounted unit, in degrees C removed. */
+export const DEVICE_COOLING_C: Partial<Record<RackDeviceKind, number>> = {
+  "fan-tray": 5,
+  crac: 18,
+};
+
+/** Per-device liquid loop, fitted rather than racked. */
+export const LIQUID_COOLING_C = 4;
+
+/** Room supply temperature the rack starts from. */
+export const AMBIENT_C = 21;
+
+/**
+ * Degrees added per 100W of dissipated heat. Tuned so a 2400W PDU driven to
+ * its ceiling with no cooling lands around 47C — i.e. maxing the power budget
+ * is by itself a thermal emergency, which is the lesson.
+ */
+export const RISE_C_PER_100W = 1.1;
+
+export type ThermalState = "optimal" | "warning" | "critical";
+
+export const THERMAL_WARNING_C = 30;
+export const THERMAL_CRITICAL_C = 45;
+
+export function thermalState(tempC: number): ThermalState {
+  if (tempC >= THERMAL_CRITICAL_C) return "critical";
+  if (tempC >= THERMAL_WARNING_C) return "warning";
+  return "optimal";
+}
+
+export const THERMAL_LABEL: Record<ThermalState, string> = {
+  optimal: "OPTIMAL",
+  warning: "WARNING",
+  critical: "CRITICAL",
+};
+
 // ── Logical configuration ────────────────────────────────────────────────────
 
 export interface SwitchInterface {
@@ -46,6 +133,10 @@ export interface RackDevice {
   id: string;
   kind: RackDeviceKind;
   name: string;
+  /** Nameplate draw in watts, from the SKU's traits where available. */
+  watts?: number;
+  /** A liquid loop has been fitted to this unit (extra local cooling). */
+  liquidCooled?: boolean;
   /** Inventory SKU this unit came from (returned to stock when unracked). */
   assetItemId: string;
   /** Topmost U the device occupies (1 = top of the rack). */
@@ -84,6 +175,116 @@ export interface RackState {
   cables: RackCable[];
   /** Ping-tool history, newest first. */
   tests: NetworkTestResult[];
+  /** Which PDU feeds the rack (sets the power ceiling). */
+  pduId: string;
+  /**
+   * Latched breaker. Trips when draw exceeds the PDU ceiling and STAYS tripped
+   * until the operator sheds load and resets it — everything in the rack is
+   * dead while it is true.
+   */
+  breakerTripped: boolean;
+  /** When it last tripped, for the incident narrative. */
+  trippedAt: number | null;
+  /** QA only: `sudo elevate debug` can suspend the physics. */
+  overrides?: { unlimitedPower?: boolean; unlimitedCooling?: boolean };
+}
+
+// ── Power & thermal (pure — UI and win-conditions call the same functions) ──
+
+/** Watts a single mounted device draws when live. */
+export function deviceWatts(d: RackDevice): number {
+  return d.watts ?? DEVICE_WATTS[d.kind] ?? 0;
+}
+
+export interface RackPower {
+  drawWatts: number;
+  capacityWatts: number;
+  /** 0-100+; over 100 is an overload. */
+  loadPct: number;
+  overloaded: boolean;
+  tripped: boolean;
+  pdu: PduSpec;
+}
+
+/**
+ * Live electrical load. Only POWERED devices draw — an unpatched unit is dead
+ * weight in the rack, which is what makes cabling matter beyond connectivity.
+ */
+export function connectedLoadWatts(rack: RackState): number {
+  return rack.devices.reduce((t, d) => t + (isPowered(rack, d.id) ? deviceWatts(d) : 0), 0);
+}
+
+export function rackPower(rack: RackState): RackPower {
+  const pdu = pduSpec(rack.pduId);
+  const capacityWatts = rack.overrides?.unlimitedPower ? Number.MAX_SAFE_INTEGER : pdu.maxWatts;
+  const drawWatts = rack.breakerTripped ? 0 : connectedLoadWatts(rack);
+  const loadPct = rack.overrides?.unlimitedPower ? 0 : Math.round((drawWatts / pdu.maxWatts) * 100);
+  return {
+    drawWatts,
+    capacityWatts,
+    loadPct,
+    // Judged on what is CABLED, not on what is flowing: a tripped rack draws
+    // nothing, and reading that as "load is fine now" would let the operator
+    // reset the breaker straight back into the same overload.
+    overloaded: !rack.overrides?.unlimitedPower && connectedLoadWatts(rack) > pdu.maxWatts,
+    tripped: rack.breakerTripped,
+    pdu,
+  };
+}
+
+export interface RackThermal {
+  tempC: number;
+  state: ThermalState;
+  /** Degrees of cooling currently installed and powered. */
+  coolingC: number;
+  /** Degrees added by dissipated heat. */
+  riseC: number;
+}
+
+/**
+ * Steady-state rack temperature.
+ *
+ * Cooling units are only counted when they are POWERED — a CRAC that nobody
+ * cabled cools nothing, and it is the commonest mistake in the rack lab.
+ */
+export function rackThermal(rack: RackState): RackThermal {
+  if (rack.overrides?.unlimitedCooling) {
+    return { tempC: AMBIENT_C, state: "optimal", coolingC: 999, riseC: 0 };
+  }
+  const power = rackPower(rack);
+  const riseC = (power.drawWatts / 100) * RISE_C_PER_100W;
+
+  let coolingC = 0;
+  for (const d of rack.devices) {
+    if (!isPowered(rack, d.id)) continue;
+    coolingC += DEVICE_COOLING_C[d.kind] ?? 0;
+    if (d.liquidCooled) coolingC += LIQUID_COOLING_C;
+  }
+
+  // Cooling cannot drive the rack below the room feeding it.
+  const tempC = Math.max(AMBIENT_C - 4, AMBIENT_C + riseC - coolingC);
+  return { tempC: Math.round(tempC * 10) / 10, state: thermalState(tempC), coolingC, riseC };
+}
+
+/**
+ * Per-slot temperature for the heatmap. Heat rises, so upper U run hotter than
+ * the bottom of the rack — a small gradient, but it is why operators put the
+ * hot boxes low and the fan tray high.
+ */
+export function slotTempC(rack: RackState, u: number): number {
+  const { tempC } = rackThermal(rack);
+  // U1 is the TOP of the rack, so height rises as `u` falls. The gradient is
+  // centred on the rack mean: +1.75C at the top, -1.75C at the floor.
+  const height = (rack.sizeU - u) / Math.max(1, rack.sizeU - 1);
+  const gradient = height * 3.5 - 1.75;
+  return Math.round((tempC + gradient) * 10) / 10;
+}
+
+/** Is a device actually running, given breaker and thermal shutdown? */
+export function deviceOnline(rack: RackState, deviceId: string): boolean {
+  if (rack.breakerTripped) return false;
+  if (rackThermal(rack).state === "critical") return false;
+  return isPowered(rack, deviceId);
 }
 
 // ── Derived helpers (pure — used by UI *and* ticket win-conditions) ──────────
