@@ -111,25 +111,41 @@ const catalogue: AssetItem[] = [
 
   // ── Network ─────────────────────────────────────────────────────────────
   { id: "sku-sw-24p", name: "AeroSwitch 24-Port Gigabit", brand: "AeroSwitch", category: "network", model: "AS-2400",
-    spare: 1, deployed: 0, inTransit: 0, faulty: 0, uSize: 1, deviceKind: "switch", price: 1250 },
+    spare: 1, deployed: 0, inTransit: 0, faulty: 0, uSize: 1, deviceKind: "switch", price: 1250 , traits: { watts: 180 } },
   { id: "sku-sw-48p", name: "AeroSwitch 48-Port 10GbE", brand: "AeroSwitch", category: "network", model: "AS-4810",
-    spare: 0, deployed: 0, inTransit: 0, faulty: 0, uSize: 1, deviceKind: "switch", price: 3900 },
+    spare: 0, deployed: 0, inTransit: 0, faulty: 0, uSize: 1, deviceKind: "switch", price: 3900 , traits: { watts: 320 } },
   { id: "sku-router", name: "AeroSwitch Edge Router", brand: "AeroSwitch", category: "network", model: "AS-ER800",
-    spare: 0, deployed: 1, inTransit: 0, faulty: 0, uSize: 1, deviceKind: "router", price: 2100 },
+    spare: 0, deployed: 1, inTransit: 0, faulty: 0, uSize: 1, deviceKind: "router", price: 2100 , traits: { watts: 140 } },
   { id: "sku-fw", name: "AeroSwitch Firewall Appliance", brand: "AeroSwitch", category: "network", model: "AS-FW450",
-    spare: 0, deployed: 0, inTransit: 0, faulty: 0, uSize: 1, deviceKind: "firewall", price: 3400 },
+    spare: 0, deployed: 0, inTransit: 0, faulty: 0, uSize: 1, deviceKind: "firewall", price: 3400 , traits: { watts: 160 } },
   { id: "sku-patch-24", name: "Meridian 24-Port Patch Panel", brand: "Meridian", category: "panel", model: "MP-24",
-    spare: 1, deployed: 0, inTransit: 0, faulty: 0, uSize: 1, deviceKind: "patch-panel", price: 320 },
+    spare: 1, deployed: 0, inTransit: 0, faulty: 0, uSize: 1, deviceKind: "patch-panel", price: 320 , traits: { watts: 0 } },
 
   // ── Servers & power ─────────────────────────────────────────────────────
   { id: "sku-srv-1u", name: "NexaCore Rack Server 1U", brand: "NexaCore", category: "server", model: "NC-R100",
-    spare: 1, deployed: 0, inTransit: 0, faulty: 0, uSize: 1, deviceKind: "server", price: 4200 },
+    spare: 1, deployed: 0, inTransit: 0, faulty: 0, uSize: 1, deviceKind: "server", price: 4200 , traits: { watts: 250 } },
   { id: "sku-srv-2u", name: "NexaCore Storage Server 2U", brand: "NexaCore", category: "server", model: "NC-R220",
-    spare: 0, deployed: 0, inTransit: 0, faulty: 0, uSize: 2, deviceKind: "server", price: 6800 },
+    spare: 0, deployed: 0, inTransit: 0, faulty: 0, uSize: 2, deviceKind: "server", price: 6800 , traits: { watts: 750 } },
   { id: "sku-ups-2u", name: "Voltix UPS 1500VA", brand: "Voltix", category: "power", model: "VX-U1500",
     spare: 1, deployed: 0, inTransit: 0, faulty: 0, uSize: 2, deviceKind: "ups", price: 890 },
   { id: "sku-pdu-1u", name: "Voltix Rack PDU 8-way", brand: "Voltix", category: "power", model: "VX-PDU8",
     spare: 1, deployed: 0, inTransit: 0, faulty: 0, uSize: 1, deviceKind: "pdu", price: 410 },
+
+  { id: "sku-pdu-30a", name: "Voltix High-Density PDU 208V/30A", brand: "Voltix", category: "power", model: "VX-PDU30",
+    spare: 0, deployed: 0, inTransit: 0, faulty: 0, price: 1850, traits: { watts: 6240 } },
+
+  // ── Cooling (v0.3.1) ────────────────────────────────────────────────────
+  // Every cooling unit is itself a load on the PDU: the CRAC removes 18C but
+  // costs 450W, which is the whole tension — you cool the rack by spending the
+  // power budget you were trying to use for compute.
+  { id: "sku-fan-1u", name: "Voltix 1U Fan Tray", brand: "Voltix", category: "power", model: "VX-FT1",
+    spare: 0, deployed: 0, inTransit: 0, faulty: 0, uSize: 1, deviceKind: "fan-tray", price: 320,
+    traits: { watts: 80 } },
+  { id: "sku-crac-2u", name: "Voltix 2U In-Rack CRAC", brand: "Voltix", category: "power", model: "VX-CR2",
+    spare: 0, deployed: 0, inTransit: 0, faulty: 0, uSize: 2, deviceKind: "crac", price: 2650,
+    traits: { watts: 450 } },
+  { id: "sku-liquid-kit", name: "Voltix Liquid Cooling Kit", brand: "Voltix", category: "component", model: "VX-LQ1",
+    spare: 0, deployed: 0, inTransit: 0, faulty: 0, price: 540, traits: { watts: 15 } },
 ];
 
 export function createInventory(): InventoryState {
@@ -137,5 +153,13 @@ export function createInventory(): InventoryState {
 }
 
 export function createRack(): RackState {
-  return { sizeU: RACK_SIZE_U, devices: [], cables: [], tests: [] };
+  return {
+    sizeU: RACK_SIZE_U,
+    devices: [],
+    cables: [],
+    tests: [],
+    pduId: "pdu-20a",
+    breakerTripped: false,
+    trippedAt: null,
+  };
 }
