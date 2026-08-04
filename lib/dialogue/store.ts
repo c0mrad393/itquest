@@ -31,6 +31,12 @@ interface DialogueStore {
   event: (ticketId: string, kind: SystemEvent) => void;
   /** Append a system note (e.g. a scoring summary) to a thread. */
   note: (ticketId: string, text: string) => void;
+  /**
+   * Open threads for tickets that do not have one yet (tiers unlocked on
+   * promotion). Additive on purpose — rebuilding would discard the emotion and
+   * CSAT history of every conversation already in flight.
+   */
+  syncConversations: () => void;
 }
 
 function clamp(n: number) {
@@ -45,9 +51,10 @@ const DIFFICULTY_METER_SHIFT: Record<string, number> = {
   Tier_4_Expert: -26,
 };
 
-function buildConversations(): Record<string, Conversation> {
+function buildConversations(only?: Set<string>): Record<string, Conversation> {
   const out: Record<string, Conversation> = {};
   for (const ticket of useTicketStore.getState().tickets) {
+    if (only && !only.has(ticket.id)) continue;
     const persona = getPersona(ticket.personaId);
     if (!persona) continue;
     // Authored branching tree if one exists for this scenario; otherwise the
@@ -195,4 +202,16 @@ export const useDialogueStore = create<DialogueStore>((set, get) => ({
       };
     });
   },
+
+  syncConversations: () =>
+    set((st) => {
+      const missing = new Set(
+        useTicketStore
+          .getState()
+          .tickets.filter((t) => !st.conversations[t.id])
+          .map((t) => t.id),
+      );
+      if (missing.size === 0) return st;
+      return { conversations: { ...st.conversations, ...buildConversations(missing) } };
+    }),
 }));

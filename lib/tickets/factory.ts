@@ -16,6 +16,24 @@ import type { InfrastructureState, Ticket } from "@/lib/core";
 import { mulberry32, shuffle, type Rng } from "@/lib/org/rng";
 import { TICKET_TEMPLATES, type EmailBeat, type TicketTemplate } from "./matrix";
 import { isGodMode } from "@/lib/host/god-mode";
+import { generateProceduralTemplates } from "./procedural";
+import { unlockedTiers, templateMinLevel } from "@/lib/progression/unlocks";
+
+/**
+ * The full library for a world: hand-authored set-pieces plus the procedural
+ * catalogue. Cached per seed because the reconciler resolves win-conditions by
+ * looking templates up here on every infra change — rebuilding 100+ closures
+ * on each tick would be wasteful.
+ */
+let libraryCache: { seed: number; templates: Record<string, TicketTemplate> } | null = null;
+
+export function ticketLibrary(infra: InfrastructureState): Record<string, TicketTemplate> {
+  if (libraryCache?.seed === infra.org.seed) return libraryCache.templates;
+  const rng = mulberry32((infra.org.seed ^ 0x9e37) >>> 0);
+  const templates = { ...TICKET_TEMPLATES, ...generateProceduralTemplates(rng) };
+  libraryCache = { seed: infra.org.seed, templates };
+  return templates;
+}
 
 let ticketSeq = 4820;
 
@@ -86,24 +104,32 @@ export interface GeneratedQueue {
  * categories, plus a random spread of higher-tier tickets — all bound to the
  * given world.
  */
-export function generateTicketQueue(infra: InfrastructureState): GeneratedQueue {
+export function generateTicketQueue(infra: InfrastructureState, level = 1): GeneratedQueue {
   ticketSeq = 4820;
   const rng = mulberry32((infra.org.seed ^ 0x71c) >>> 0);
+  const library = ticketLibrary(infra);
 
+  // Only scenarios whose TOOL is unlocked: a ticket you cannot open the app
+  // for is a dead end in the queue, not a challenge.
   const byTier = (tier: string) =>
-    Object.values(TICKET_TEMPLATES).filter((t) => t.difficulty === tier);
+    Object.values(library).filter(
+      (t) => t.difficulty === tier && templateMinLevel(t.tags) <= level,
+    );
 
-  // God Mode (QA): every template at once so any ticket can be tested without
-  // playing through the tiers. Normal play gets the curated starter spread:
-  // all Tier-1s + 2 Tier-2s + 2 Tier-3s.
+  // God Mode (QA): every template at once so any scenario can be tested
+  // without playing through the tiers.
+  //
+  // Normal play opens with a SMALL intern queue drawn only from the tiers the
+  // operator has unlocked. More arrives on promotion (see `spawnForTiers`) —
+  // a level-1 player facing 100 tickets would learn nothing from any of them.
+  const open = unlockedTiers(level);
   const chosen: TicketTemplate[] = isGodMode()
-    ? Object.values(TICKET_TEMPLATES)
+    ? Object.values(library)
     : [
-        ...byTier("Tier_1_Easy"),
-        ...shuffle(rng, byTier("Tier_2_Medium")).slice(0, 2),
-        ...shuffle(rng, byTier("Tier_3_Hard")).slice(0, 2),
-        // Expert tickets are rare in normal play: one at most.
-        ...shuffle(rng, byTier("Tier_4_Expert")).slice(0, 1),
+        ...shuffle(rng, byTier("Tier_1_Easy")).slice(0, 5),
+        ...(open.includes("Tier_2_Medium") ? shuffle(rng, byTier("Tier_2_Medium")).slice(0, 2) : []),
+        ...(open.includes("Tier_3_Hard") ? shuffle(rng, byTier("Tier_3_Hard")).slice(0, 2) : []),
+        ...(open.includes("Tier_4_Expert") ? shuffle(rng, byTier("Tier_4_Expert")).slice(0, 1) : []),
       ];
 
   const tickets: Ticket[] = [];
@@ -118,6 +144,40 @@ export function generateTicketQueue(infra: InfrastructureState): GeneratedQueue 
     if (built.injectFault) faults.push(built.injectFault);
   }
 
+  return { tickets, emailThreads, faults };
+}
+
+/**
+ * Mint a fresh batch for newly-unlocked tiers — called on promotion, so harder
+ * work starts arriving the moment the operator is entitled to it.
+ */
+export function generateTierBatch(
+  infra: InfrastructureState,
+  tiers: string[],
+  level = 99,
+  perTier = 2,
+): GeneratedQueue {
+  const rng = mulberry32((infra.org.seed ^ (0x51a + ticketSeq)) >>> 0);
+  const library = ticketLibrary(infra);
+  const tickets: Ticket[] = [];
+  const emailThreads: Record<string, EmailBeat[]> = {};
+  const faults: ((draft: InfrastructureState) => void)[] = [];
+
+  for (const tier of tiers) {
+    const pool = shuffle(
+      rng,
+      Object.values(library).filter(
+        (t) => t.difficulty === tier && templateMinLevel(t.tags) <= level,
+      ),
+    );
+    for (const template of pool.slice(0, perTier)) {
+      const built = buildTicket(template, infra, rng);
+      if (!built) continue;
+      tickets.push(built.ticket);
+      if (built.emails.length) emailThreads[built.ticket.id] = built.emails;
+      if (built.injectFault) faults.push(built.injectFault);
+    }
+  }
   return { tickets, emailThreads, faults };
 }
 

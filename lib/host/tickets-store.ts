@@ -9,10 +9,11 @@
 "use client";
 
 import { create } from "zustand";
-import type { Ticket, TicketStatus, TicketTrack, TicketSeverity, TicketCategory } from "@/lib/core";
+import type { InfrastructureState, Ticket, TicketStatus, TicketTrack, TicketSeverity, TicketCategory } from "@/lib/core";
 import { useInfraStore } from "@/lib/infra/store";
-import { generateTicketQueue, applyQueueFaults } from "@/lib/tickets/factory";
+import { generateTicketQueue, generateTierBatch, applyQueueFaults } from "@/lib/tickets/factory";
 import type { EmailBeat } from "@/lib/tickets/matrix";
+import { isGodMode } from "@/lib/host/god-mode";
 
 export interface TicketFilters {
   track: TicketTrack | "all";
@@ -47,6 +48,11 @@ interface TicketStore {
   /** Commit to (or leave) Hard Mode. Blocked once a hint has been spent. */
   setHardMode: (id: string, on: boolean) => void;
   /**
+   * Mint and inject a batch for newly-unlocked tiers (called on promotion).
+   * Applies the batch's world faults too, so the new incidents are real.
+   */
+  spawnForTiers: (tiers: string[], infra: InfrastructureState, level?: number) => void;
+  /**
    * Close a ticket without meeting its win-condition — the external contractor
    * path. Flagged so the reconciler and the operator both know it was bought,
    * not solved: no XP is awarded for these.
@@ -55,9 +61,18 @@ interface TicketStore {
 }
 
 /** Build the initial queue for the current world + inject its faults. */
+/**
+ * The level the starter queue is sized for. Read from the host seed rather
+ * than the store, because the ticket store initialises before hydration and
+ * must not import the host store's live state (that would be a cycle).
+ */
+function startingLevel(): number {
+  return isGodMode() ? 99 : 1;
+}
+
 function initQueue() {
   const infra = useInfraStore.getState().infra;
-  const { tickets, emailThreads, faults } = generateTicketQueue(infra);
+  const { tickets, emailThreads, faults } = generateTicketQueue(infra, startingLevel());
   if (faults.length) {
     useInfraStore.getState().setInfra(applyQueueFaults(infra, faults));
   }
@@ -105,6 +120,23 @@ export const useTicketStore = create<TicketStore>((set) => ({
           : t,
       ),
     })),
+
+  spawnForTiers: (tiers, infra, level = 99) => {
+    const batch = generateTierBatch(infra, tiers, level);
+    if (batch.tickets.length === 0) return;
+    // Faults must land before the tickets are visible, or the reconciler could
+    // resolve a brand-new incident on the frame it appears.
+    if (batch.faults.length) {
+      useInfraStore.setState((st) => ({ infra: applyQueueFaults(st.infra, batch.faults) }));
+    }
+    set((s) => ({
+      tickets: [...s.tickets, ...batch.tickets],
+      mailThreads: { ...s.mailThreads, ...batch.emailThreads },
+    }));
+    // NOTE: conversations are opened by the caller (TicketReconciler), not
+    // here. lib/dialogue/store imports THIS module and reads it during its own
+    // initialisation, so importing it back would be a genuine value cycle.
+  },
 
   outsource: (id) =>
     set((s) => ({
