@@ -1,0 +1,406 @@
+"use client";
+
+/**
+ * Developer Debug Panel (v0.6.0)
+ * ==============================
+ * `sudo elevate debug` proved the idea; this is the tool. Everything the
+ * console API could do, plus the things it could not: spawning one specific
+ * ticket family out of thirty, and injecting a named hardware fault to watch
+ * the physics react.
+ *
+ * WHY IT IS HIDDEN RATHER THAN LOCKED. Ctrl+Shift+D opens it, and only in a
+ * session that already has debug rights (Sandbox or God Mode). A player who
+ * finds the shortcut in a career save gets nothing, so the growth arc cannot
+ * be skipped by accident — but a tester never has to remember console
+ * incantations.
+ *
+ * EVERY ACTION GOES THROUGH THE REAL STORE. Nothing here writes state the
+ * normal path could not produce: Force Level Up calls `awardXp`, so the
+ * reconciler's promotion handling — including the company growth milestone —
+ * runs exactly as it would in play. A debug tool that bypasses the systems it
+ * is meant to test is worse than none.
+ *
+ * SVG and CSS indicators only — no emoji.
+ */
+
+import { useEffect, useMemo, useState } from "react";
+import { useHostStore } from "@/lib/host/store";
+import { useInfraStore } from "@/lib/infra/store";
+import { useTicketStore } from "@/lib/host/tickets-store";
+import { useDialogueStore } from "@/lib/dialogue/store";
+import { useNotificationStore } from "@/lib/host/notifications-store";
+import { debugEnabled } from "@/lib/host/session-mode";
+import { ticketLibrary } from "@/lib/tickets/factory";
+import {
+  GROWTH_PHASES,
+  phaseForLevel,
+  phaseSpec,
+  rackThermal,
+} from "@/lib/core";
+import { xpForLevel } from "@/lib/scenario/scoring";
+import { IconAlert, IconBolt, IconCheck, IconPlus, IconWrench, IconX } from "@/components/ui/icons";
+
+type Tab = "progress" | "tickets" | "faults";
+
+export default function DebugPanel() {
+  const [open, setOpen] = useState(false);
+  const [enabled, setEnabled] = useState(false);
+  const [tab, setTab] = useState<Tab>("progress");
+  const [log, setLog] = useState<string[]>([]);
+
+  // Read after mount: `debugEnabled` touches localStorage, which does not
+  // exist during SSR, and reading it in render would desync the markup.
+  useEffect(() => setEnabled(debugEnabled()), []);
+
+  useEffect(() => {
+    if (!enabled) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.ctrlKey && e.shiftKey && (e.key === "D" || e.key === "d")) {
+        e.preventDefault();
+        setOpen((v) => !v);
+      }
+      if (e.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [enabled]);
+
+  if (!enabled) return null;
+
+  const say = (line: string) => setLog((l) => [line, ...l].slice(0, 8));
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        title="Developer tools (Ctrl+Shift+D)"
+        aria-label="Open developer tools"
+        className="fixed bottom-16 right-3 z-[60] flex h-7 w-7 items-center justify-center rounded-md border border-amber-500/40 bg-black/60 text-amber-300 backdrop-blur transition hover:bg-amber-500/15"
+      >
+        <IconWrench size={13} />
+      </button>
+    );
+  }
+
+  return (
+    <div className="fixed bottom-16 right-3 z-[60] flex max-h-[70vh] w-[26rem] flex-col overflow-hidden rounded-lg border border-amber-500/40 bg-panel/95 shadow-2xl backdrop-blur">
+      <div className="flex shrink-0 items-center gap-2 border-b border-amber-500/30 bg-amber-500/[0.07] px-3 py-2">
+        <IconWrench size={13} className="text-amber-300" />
+        <span className="text-[11px] font-semibold text-amber-200">Developer tools</span>
+        <span className="font-mono text-[9px] text-amber-200/60">Ctrl+Shift+D</span>
+        <button
+          onClick={() => setOpen(false)}
+          aria-label="Close"
+          className="ml-auto text-gray-400 hover:text-gray-200"
+        >
+          <IconX size={12} />
+        </button>
+      </div>
+
+      <div className="flex shrink-0 border-b border-edge">
+        <TabBtn active={tab === "progress"} onClick={() => setTab("progress")}>Progression</TabBtn>
+        <TabBtn active={tab === "tickets"} onClick={() => setTab("tickets")}>Tickets</TabBtn>
+        <TabBtn active={tab === "faults"} onClick={() => setTab("faults")}>Faults</TabBtn>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        {tab === "progress" && <Progression say={say} />}
+        {tab === "tickets" && <TicketSpawner say={say} />}
+        {tab === "faults" && <FaultInjector say={say} />}
+      </div>
+
+      {log.length > 0 && (
+        <div className="shrink-0 border-t border-edge bg-black/30 px-3 py-1.5">
+          {log.map((line, i) => (
+            <div key={i} className={`font-mono text-[9px] ${i === 0 ? "text-emerald-300" : "text-gray-600"}`}>
+              {line}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Progression ─────────────────────────────────────────────────────────────
+
+function Progression({ say }: { say: (s: string) => void }) {
+  const user = useHostStore((s) => s.host.user);
+  const awardXp = useHostStore((s) => s.awardXp);
+  const awardBudget = useHostStore((s) => s.awardBudget);
+  const growth = useInfraStore((s) => s.infra.growth);
+  const org = useInfraStore((s) => s.infra.org);
+
+  const nextLevelXp = xpForLevel(user.level + 1);
+  const spec = phaseSpec(growth.phase);
+
+  /**
+   * Force a level up by awarding the XP it actually takes.
+   *
+   * Deliberately NOT `setState({ level })`: the reconciler's promotion branch
+   * is what unlocks apps, opens tiers and grows the company, and it only fires
+   * on a real award. Setting the number directly would test nothing.
+   */
+  function levelUp() {
+    const need = Math.max(1, nextLevelXp - user.xp);
+    const promo = awardXp(need);
+    say(`level ${promo.from} -> ${promo.to} (+${need} XP)`);
+  }
+
+  return (
+    <div className="space-y-3">
+      <section>
+        <Head>Operator</Head>
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[10px]">
+          <Stat label="Level" value={String(user.level)} />
+          <Stat label="XP" value={`${user.xp.toLocaleString()} / ${nextLevelXp.toLocaleString()}`} />
+          <Stat label="Budget" value={`${user.budget.toLocaleString()} Cr`} />
+          <Stat label="Role" value={user.role} />
+        </dl>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <Btn onClick={levelUp} icon={<IconPlus size={10} />}>Force level up</Btn>
+          <Btn onClick={() => { awardXp(5000); say("+5,000 XP"); }}>+5k XP</Btn>
+          <Btn onClick={() => { awardBudget(50_000); say("+50,000 Cr"); }}>+50k Cr</Btn>
+        </div>
+      </section>
+
+      <section>
+        <Head>Company</Head>
+        <p className="mb-1.5 text-[10px] text-gray-400">
+          {org.name} · {spec.label} · {growth.employees} staff
+        </p>
+        {/* The milestone ladder, so a tester can see where the next jump is
+            without counting levels in their head. */}
+        <ol className="space-y-0.5">
+          {GROWTH_PHASES.map((p) => {
+            const done = growth.applied.includes(p.phase);
+            const current = growth.phase === p.phase;
+            return (
+              <li key={p.phase} className="flex items-center gap-2 text-[10px]">
+                <span
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                    current ? "bg-info" : done ? "bg-emerald-400" : "bg-edge"
+                  }`}
+                />
+                <span className={current ? "text-gray-100" : done ? "text-gray-400" : "text-gray-600"}>
+                  L{p.level} · {p.label}
+                </span>
+                <span className="ml-auto font-mono text-gray-600">{p.employees} staff</span>
+              </li>
+            );
+          })}
+        </ol>
+        <p className="mt-1.5 text-[9px] leading-relaxed text-gray-600">
+          Growth fires from the promotion handler, so forcing a level up to {phaseSpec(
+            phaseForLevel(user.level + 1),
+          ).level} runs the real milestone — hiring, new OUs and the project ticket.
+        </p>
+      </section>
+    </div>
+  );
+}
+
+// ── Ticket spawner ──────────────────────────────────────────────────────────
+
+function TicketSpawner({ say }: { say: (s: string) => void }) {
+  const infra = useInfraStore((s) => s.infra);
+  const spawn = useTicketStore((s) => s.spawnIncident);
+  const [family, setFamily] = useState("");
+
+  /** Family ids, deduplicated from the generated library. */
+  const families = useMemo(() => {
+    const lib = ticketLibrary(infra);
+    const ids = new Set<string>();
+    for (const t of Object.values(lib)) {
+      // Procedural ids are `<family>-<tierNumber>-<variant>`, e.g.
+      // `gen-lockout-1-3`; hand-authored ones are whole families of one. Both
+      // collapse to something `spawnIncident` can take.
+      const m = /^(gen-.+?)-\d+-\d+$/.exec(t.id);
+      ids.add(m ? m[1] : t.id);
+    }
+    return [...ids].sort();
+  }, [infra]);
+
+  function fire() {
+    if (!family) return;
+    const t = spawn(family, infra);
+    if (t) {
+      useDialogueStore.getState().syncConversations();
+      useNotificationStore.getState().push({
+        kind: "info",
+        title: `${t.code} injected`,
+        body: t.title,
+        badge: "Debug",
+      });
+      say(`spawned ${family} -> ${t.code}`);
+    } else {
+      say(`${family}: already open, or no valid context`);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <Head>Spawn a ticket family</Head>
+      <select
+        value={family}
+        onChange={(e) => setFamily(e.target.value)}
+        className="w-full rounded border border-edge bg-panel px-2 py-1 font-mono text-[10px] text-gray-200"
+      >
+        <option value="">Pick a family&hellip; ({families.length})</option>
+        {families.map((f) => (
+          <option key={f} value={f}>{f}</option>
+        ))}
+      </select>
+      <Btn onClick={fire} icon={<IconPlus size={10} />}>Inject</Btn>
+      <p className="text-[9px] leading-relaxed text-gray-600">
+        Spawns through the same path a reactive incident uses, so the ticket is bound to this world and its
+        win-condition grades normally. One live ticket per family — inject again after resolving it.
+      </p>
+    </div>
+  );
+}
+
+// ── Fault injection ─────────────────────────────────────────────────────────
+
+function FaultInjector({ say }: { say: (s: string) => void }) {
+  const infra = useInfraStore((s) => s.infra);
+  const setInfra = useInfraStore((s) => s.setInfra);
+  const setPower = useInfraStore((s) => s.setNodePower);
+  const [rackId, setRackId] = useState(infra.datacenter.racks[0]?.id ?? "");
+
+  const rack = infra.datacenter.racks.find((r) => r.id === rackId) ?? infra.datacenter.racks[0];
+
+  /**
+   * Faults are written as STATE, not as a scripted animation: trip the
+   * breaker, unpatch the cooling, mark the part faulty. The reconciler and
+   * the physics then react to them exactly as they would to a player's
+   * mistake — which is the only way to test that they do.
+   */
+  function tripBreaker() {
+    if (!rack) return;
+    const draft = structuredClone(infra);
+    const target = draft.datacenter.racks.find((r) => r.id === rack.id)!;
+    target.breakerTripped = true;
+    target.trippedAt = Date.now();
+    setInfra(draft);
+    say(`${rack.name}: breaker tripped`);
+  }
+
+  function thermalSpike() {
+    if (!rack) return;
+    const draft = structuredClone(infra);
+    const target = draft.datacenter.racks.find((r) => r.id === rack.id)!;
+    // Pull the power leads off every cooling unit. The rack heats up because
+    // the physics says it should, not because a temperature was set.
+    const coolingIds = new Set(
+      target.devices.filter((d) => d.kind === "crac" || d.kind === "fan-tray").map((d) => d.id),
+    );
+    target.cables = target.cables.filter(
+      (c) => !(c.kind === "power" && (coolingIds.has(c.fromDeviceId) || coolingIds.has(c.toDeviceId))),
+    );
+    setInfra(draft);
+    const after = rackThermal(
+      draft.datacenter.racks.find((r) => r.id === rack.id)!,
+      draft.nodes,
+    );
+    say(`${rack.name}: cooling unpatched, now ${after.tempC.toFixed(1)}C`);
+  }
+
+  function driveFailure() {
+    const fs = Object.values(infra.nodes).find((n) => n.role === "file-server");
+    if (!fs) { say("no file server in this estate"); return; }
+    const draft = structuredClone(infra);
+    // Condemn a spare disk and take the host down — a dead array in the one
+    // chassis that everybody's home drive lives on.
+    draft.inventory.items = draft.inventory.items.map((i) =>
+      i.category === "storage" && i.spare > 0
+        ? { ...i, spare: i.spare - 1, faulty: i.faulty + 1 }
+        : i,
+    );
+    setInfra(draft);
+    setPower(fs.nodeId, false);
+    say(`${fs.hostname}: array failed, host down`);
+  }
+
+  return (
+    <div className="space-y-2">
+      <Head>Hardware faults</Head>
+      <select
+        value={rack?.id ?? ""}
+        onChange={(e) => setRackId(e.target.value)}
+        className="w-full rounded border border-edge bg-panel px-2 py-1 font-mono text-[10px] text-gray-200"
+      >
+        {infra.datacenter.racks.map((r) => (
+          <option key={r.id} value={r.id}>
+            {r.name} — {rackThermal(r, infra.nodes).tempC.toFixed(1)}C
+            {r.breakerTripped ? " · breaker open" : ""}
+          </option>
+        ))}
+      </select>
+      <div className="flex flex-wrap gap-1.5">
+        <Btn onClick={tripBreaker} icon={<IconBolt size={10} />} tone="danger">Trip PDU</Btn>
+        <Btn onClick={thermalSpike} icon={<IconAlert size={10} />} tone="danger">Thermal spike</Btn>
+        <Btn onClick={driveFailure} icon={<IconAlert size={10} />} tone="danger">Drive failure</Btn>
+      </div>
+      <p className="text-[9px] leading-relaxed text-gray-600">
+        Each fault is written as state and left for the simulation to react to — the reconciler raises the
+        incident, the Gateway drops the host, and the consoles that depend on it fail with the real diagnosis.
+      </p>
+    </div>
+  );
+}
+
+// ── atoms ───────────────────────────────────────────────────────────────────
+
+function Head({ children }: { children: React.ReactNode }) {
+  return (
+    <h3 className="mb-1.5 text-[9px] font-semibold uppercase tracking-wider text-gray-500">{children}</h3>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <>
+      <dt className="text-gray-600">{label}</dt>
+      <dd className="truncate text-gray-200">{value}</dd>
+    </>
+  );
+}
+
+function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex-1 py-1.5 text-[10px] ${
+        active ? "border-b-2 border-amber-400 text-amber-200" : "text-gray-500 hover:text-gray-300"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Btn({
+  onClick,
+  icon,
+  tone,
+  children,
+}: {
+  onClick: () => void;
+  icon?: React.ReactNode;
+  tone?: "danger";
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1 rounded border px-2 py-1 text-[10px] ${
+        tone === "danger"
+          ? "border-danger/40 text-danger hover:bg-danger/10"
+          : "border-edge text-gray-200 hover:bg-panelalt"
+      }`}
+    >
+      {icon} {children}
+    </button>
+  );
+}

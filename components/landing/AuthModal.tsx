@@ -11,6 +11,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { setGodMode } from "@/lib/host/god-mode";
+import { setSessionMode, type SessionMode } from "@/lib/host/session-mode";
 import { clearSave, setSaveScope } from "@/lib/persistence/save";
 import { useAuthStore } from "@/lib/auth/store";
 import { isSupabaseConfigured } from "@/lib/auth/supabase";
@@ -44,8 +45,12 @@ export default function AuthModal({ open, onClose }: { open: boolean; onClose: (
    * guest slot if the mode changed (a God Mode world and a normal world can't be
    * loaded into each other), sign in, and land on the desktop.
    */
-  function localSession(godMode: boolean) {
-    const changed = setGodMode(godMode);
+  function localSession(godMode: boolean, mode: SessionMode = "career") {
+    // The world's SIZE is decided here too (v0.6.0). A career world is a
+    // 35-person startup; a sandbox world is the full enterprise. Both are
+    // built in the infra store's initializer, so either flag changing means
+    // the same thing: wipe the slot and do a real page load.
+    const changed = setGodMode(godMode) || setSessionMode(godMode ? "sandbox" : mode);
     // Scope the wipe explicitly — continueAsGuest builds its profile from the
     // save it finds, so the slot has to be cleared before it runs.
     setSaveScope("guest");
@@ -176,15 +181,34 @@ export default function AuthModal({ open, onClose }: { open: boolean; onClose: (
               </button>
             </div>
           )}
-          <div>
+          {/* Two ways in, because they are genuinely different games: the
+              career is the growth arc from a 35-person startup, the sandbox
+              is the finished enterprise for anyone who wants to poke at the
+              late-game systems now. Burying that choice behind one "Guest"
+              link made the second one invisible. */}
+          <div className="grid gap-2 sm:grid-cols-2">
             <button
-              onClick={() => localSession(false)}
-              className="text-gray-400 hover:text-gray-200 hover:underline"
+              onClick={() => localSession(false, "career")}
+              className="rounded-lg border border-edge bg-panelalt/60 p-2.5 text-left transition hover:border-info/60"
             >
-              Continue as Guest (local session)
+              <span className="block text-[12px] font-semibold text-gray-100">Start Career</span>
+              <span className="mt-0.5 block text-[10px] leading-relaxed text-gray-500">
+                Level 1 at a 35-person startup: one rack, a flat directory. The company hires as you level,
+                and you build the datacenter it grows into.
+              </span>
+            </button>
+            <button
+              onClick={() => localSession(false, "sandbox")}
+              className="rounded-lg border border-info/40 bg-info/[0.07] p-2.5 text-left transition hover:border-info"
+            >
+              <span className="block text-[12px] font-semibold text-info">Sandbox Mode</span>
+              <span className="mt-0.5 block text-[10px] leading-relaxed text-gray-400">
+                Full enterprise: 450 staff, three racks, every app unlocked, unlimited budget and the
+                developer tools switched on.
+              </span>
             </button>
           </div>
-          {/* QA profile: every ticket unlocked, progression bypassed. */}
+          {/* QA profile: every ticket at once, progression bypassed. */}
           <div>
             <button
               onClick={() => localSession(true)}

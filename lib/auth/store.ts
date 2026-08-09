@@ -23,8 +23,12 @@ import { loadSave, setSaveScope } from "@/lib/persistence/save";
 import type { AuthStatus, UserProfile } from "@/lib/core";
 import { GOD_MODE_USERNAME, GOD_MODE_XP, isGodMode } from "@/lib/host/god-mode";
 import { levelForXp } from "@/lib/scenario/scoring";
+import { isSandbox } from "@/lib/host/session-mode";
 
 const GUEST_FLAG = "triageos-guest";
+
+/** Enough to sit at the level-15 enterprise milestone with every app open. */
+const SANDBOX_XP = 60_000;
 
 const GUEST_DEFAULTS: UserProfile = {
   id: "guest",
@@ -52,6 +56,19 @@ function guestProfile(): UserProfile {
       username: GOD_MODE_USERNAME,
       xp: GOD_MODE_XP,
       level: levelForXp(GOD_MODE_XP),
+    };
+  }
+  // Sandbox starts at the top of the ladder for the same reason: its purpose
+  // is to reach the late-game systems immediately, and a level-1 sandbox with
+  // Rack Lab locked would be a career start with a different label.
+  if (isSandbox()) {
+    const saved = loadSave()?.user;
+    return {
+      ...GUEST_DEFAULTS,
+      username: saved?.displayName ?? "Sandbox Operator",
+      avatar: saved?.avatar ?? GUEST_DEFAULTS.avatar,
+      xp: SANDBOX_XP,
+      level: levelForXp(SANDBOX_XP),
     };
   }
   const saved = loadSave()?.user;
@@ -139,15 +156,41 @@ async function ensureProfileRow(user: User): Promise<UserProfile> {
 /** Hydrate the in-sim operator identity from the persistent profile. */
 async function applyProfileToHost(profile: UserProfile): Promise<void> {
   const { useHostStore } = await import("@/lib/host/store");
+  const sandbox = isSandbox();
+  const { LICENSES } = sandbox
+    ? await import("@/lib/economy/licenses")
+    : { LICENSES: [] as { id: string }[] };
+
   useHostStore.setState((s) => ({
     host: {
       ...s.host,
+      // Sandbox is a testbed, not a save: every licence and a budget that
+      // never gets in the way, so nothing between here and the late-game
+      // systems is a shopping trip.
+      licenses: sandbox ? LICENSES.map((l) => l.id) : s.host.licenses,
       user: {
         ...s.host.user,
         displayName: profile.username,
         avatar: profile.avatar,
         xp: profile.xp,
         level: profile.level,
+        // Skills too, not just the level. The job title is DERIVED from
+        // discipline XP, so a sandbox operator sitting at level 16 would
+        // otherwise still be introduced as an IT Intern.
+        ...(sandbox
+          ? {
+              budget: 999_999,
+              role: "Principal Infrastructure Engineer",
+              skills: {
+                hardware: 9000,
+                networking: 9000,
+                systems: 9000,
+                security: 9000,
+                identity: 9000,
+                cloud: 9000,
+              },
+            }
+          : {}),
       },
     },
   }));

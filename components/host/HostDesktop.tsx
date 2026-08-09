@@ -23,6 +23,7 @@ import TelemetryEngine from "./TelemetryEngine";
 import { ToastHost } from "./Notifications";
 import { wallpaperById } from "@/lib/host/wallpapers";
 import { installGodModeConsoleApi } from "@/lib/host/god-mode";
+import DebugPanel from "./DebugPanel";
 import { useEffect } from "react";
 
 export default function HostDesktop() {
@@ -52,6 +53,7 @@ export default function HostDesktop() {
 
       {/* Headless engines. PersistenceManager first: hydrate before evaluating. */}
       <PersistenceManager />
+      <DebugPanel />
       <TicketReconciler />
       <SlaEngine />
       <NetworkEngine />
