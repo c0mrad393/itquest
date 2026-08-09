@@ -9,6 +9,7 @@
  */
 
 import type { RackDeviceKind } from "./inventory";
+import type { NodeId, Workload, WorkloadKind } from "./nodes";
 
 export const RACK_SIZE_U = 24;
 
@@ -62,6 +63,34 @@ export const DEVICE_WATTS: Record<RackDeviceKind, number> = {
   "fan-tray": 80,
   crac: 450,
 };
+
+/**
+ * Additional draw per hosted workload, in watts (v0.4.0).
+ *
+ * This is the physical half of the bi-directional sync: provisioning a heavy
+ * database in the Server Manager makes that specific chassis draw more current
+ * and run hotter in the rack, because the same numbers feed both views.
+ */
+export const WORKLOAD_WATTS: Record<WorkloadKind, number> = {
+  web: 45,
+  database: 120,
+  file: 60,
+  directory: 40,
+  app: 55,
+  balancer: 35,
+};
+
+/**
+ * The only thing the physics needs to know about a logical node. Declared
+ * structurally so `rack.ts` never imports `infrastructure.ts` — that would be
+ * a module cycle, since InfrastructureState holds the datacenter.
+ */
+export interface RackNodeView {
+  workloads: Workload[];
+  connection: { online: boolean };
+}
+
+export type RackNodeMap = Record<NodeId, RackNodeView>;
 
 /** Cooling delivered by a mounted unit, in degrees C removed. */
 export const DEVICE_COOLING_C: Partial<Record<RackDeviceKind, number>> = {
@@ -137,6 +166,14 @@ export interface RackDevice {
   watts?: number;
   /** A liquid loop has been fitted to this unit (extra local cooling). */
   liquidCooled?: boolean;
+  /**
+   * THE UNIFICATION (v0.4.0). A racked chassis bound to a logical node IS that
+   * server — there is no second copy of it anywhere. Undefined means the box is
+   * racked but has no network identity yet: it needs a ToR uplink first.
+   */
+  nodeId?: NodeId;
+  /** Fitted hardware. Upgrading this immediately changes logical capacity. */
+  hardware?: ServerHardware;
   /** Inventory SKU this unit came from (returned to stock when unracked). */
   assetItemId: string;
   /** Topmost U the device occupies (1 = top of the rack). */
@@ -169,7 +206,27 @@ export interface NetworkTestResult {
   detail: string;
 }
 
+/**
+ * What is physically inside a chassis. The Server Manager reports capacity
+ * straight off these numbers, so fitting a DIMM in the rack raises the memory
+ * the operator can commit to workloads with no sync step in between.
+ */
+export interface ServerHardware {
+  cpuCores: number;
+  ramGb: number;
+  /** Generation of the fitted DIMMs — an upgrade has to match. */
+  ramType: "DDR4" | "DDR5";
+  storageGb: number;
+  /** Populated DIMM slots, and how many the board has. */
+  dimmSlots: number;
+  dimmsUsed: number;
+}
+
 export interface RackState {
+  /** Stable id, e.g. "rack-01". */
+  id: string;
+  /** Operator-facing label, e.g. "Rack 01". */
+  name: string;
   sizeU: number;
   devices: RackDevice[];
   cables: RackCable[];
@@ -191,9 +248,25 @@ export interface RackState {
 
 // ── Power & thermal (pure — UI and win-conditions call the same functions) ──
 
-/** Watts a single mounted device draws when live. */
+/** Nameplate draw of a chassis, before anything is running on it. */
 export function deviceWatts(d: RackDevice): number {
   return d.watts ?? DEVICE_WATTS[d.kind] ?? 0;
+}
+
+/**
+ * Watts a mounted device actually draws, including the workloads its bound
+ * node is running. This is where the logical layer pushes back on the physical
+ * one: commit a database to a server and its chassis gets measurably heavier
+ * on the PDU, in the same numbers the rack header displays.
+ *
+ * `nodes` is optional so the physical-only call sites (and the spec) keep a
+ * pure single-argument form.
+ */
+export function liveDeviceWatts(d: RackDevice, nodes?: RackNodeMap): number {
+  const base = deviceWatts(d);
+  const node = d.nodeId && nodes ? nodes[d.nodeId] : undefined;
+  if (!node || !node.connection.online) return base;
+  return base + node.workloads.reduce((t, w) => t + (WORKLOAD_WATTS[w.kind] ?? 0), 0);
 }
 
 export interface RackPower {
@@ -210,14 +283,14 @@ export interface RackPower {
  * Live electrical load. Only POWERED devices draw — an unpatched unit is dead
  * weight in the rack, which is what makes cabling matter beyond connectivity.
  */
-export function connectedLoadWatts(rack: RackState): number {
-  return rack.devices.reduce((t, d) => t + (isPowered(rack, d.id) ? deviceWatts(d) : 0), 0);
+export function connectedLoadWatts(rack: RackState, nodes?: RackNodeMap): number {
+  return rack.devices.reduce((t, d) => t + (isPowered(rack, d.id) ? liveDeviceWatts(d, nodes) : 0), 0);
 }
 
-export function rackPower(rack: RackState): RackPower {
+export function rackPower(rack: RackState, nodes?: RackNodeMap): RackPower {
   const pdu = pduSpec(rack.pduId);
   const capacityWatts = rack.overrides?.unlimitedPower ? Number.MAX_SAFE_INTEGER : pdu.maxWatts;
-  const drawWatts = rack.breakerTripped ? 0 : connectedLoadWatts(rack);
+  const drawWatts = rack.breakerTripped ? 0 : connectedLoadWatts(rack, nodes);
   const loadPct = rack.overrides?.unlimitedPower ? 0 : Math.round((drawWatts / pdu.maxWatts) * 100);
   return {
     drawWatts,
@@ -226,7 +299,7 @@ export function rackPower(rack: RackState): RackPower {
     // Judged on what is CABLED, not on what is flowing: a tripped rack draws
     // nothing, and reading that as "load is fine now" would let the operator
     // reset the breaker straight back into the same overload.
-    overloaded: !rack.overrides?.unlimitedPower && connectedLoadWatts(rack) > pdu.maxWatts,
+    overloaded: !rack.overrides?.unlimitedPower && connectedLoadWatts(rack, nodes) > pdu.maxWatts,
     tripped: rack.breakerTripped,
     pdu,
   };
@@ -247,11 +320,11 @@ export interface RackThermal {
  * Cooling units are only counted when they are POWERED — a CRAC that nobody
  * cabled cools nothing, and it is the commonest mistake in the rack lab.
  */
-export function rackThermal(rack: RackState): RackThermal {
+export function rackThermal(rack: RackState, nodes?: RackNodeMap): RackThermal {
   if (rack.overrides?.unlimitedCooling) {
     return { tempC: AMBIENT_C, state: "optimal", coolingC: 999, riseC: 0 };
   }
-  const power = rackPower(rack);
+  const power = rackPower(rack, nodes);
   const riseC = (power.drawWatts / 100) * RISE_C_PER_100W;
 
   let coolingC = 0;
@@ -271,8 +344,8 @@ export function rackThermal(rack: RackState): RackThermal {
  * the bottom of the rack — a small gradient, but it is why operators put the
  * hot boxes low and the fan tray high.
  */
-export function slotTempC(rack: RackState, u: number): number {
-  const { tempC } = rackThermal(rack);
+export function slotTempC(rack: RackState, u: number, nodes?: RackNodeMap): number {
+  const { tempC } = rackThermal(rack, nodes);
   // U1 is the TOP of the rack, so height rises as `u` falls. The gradient is
   // centred on the rack mean: +1.75C at the top, -1.75C at the floor.
   const height = (rack.sizeU - u) / Math.max(1, rack.sizeU - 1);
@@ -281,9 +354,9 @@ export function slotTempC(rack: RackState, u: number): number {
 }
 
 /** Is a device actually running, given breaker and thermal shutdown? */
-export function deviceOnline(rack: RackState, deviceId: string): boolean {
+export function deviceOnline(rack: RackState, deviceId: string, nodes?: RackNodeMap): boolean {
   if (rack.breakerTripped) return false;
-  if (rackThermal(rack).state === "critical") return false;
+  if (rackThermal(rack, nodes).state === "critical") return false;
   return isPowered(rack, deviceId);
 }
 

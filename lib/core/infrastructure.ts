@@ -13,7 +13,7 @@ import type { MacNodeState } from "./mac";
 import type { ConnectionProtocol, NodeId } from "./nodes";
 import type { OrganizationProfile } from "./organization";
 import type { InventoryState } from "./inventory";
-import type { RackState } from "./rack";
+import type { DatacenterState } from "./datacenter";
 import type { CloudState } from "./cloud";
 
 /** Discriminated union of every node kind. Narrow on `.os`. */
@@ -71,6 +71,21 @@ export interface SecurityState {
   onboardingComplete: boolean;
   /** Nodes whose hardware was replaced + field-dispatched (Hardware Lab). */
   hardwareReplaced: NodeId[];
+  /**
+   * Hosts the operator powered down while they were still carrying live
+   * workloads (v0.4.0). Each entry is an outage the business felt, and the
+   * reconciler turns it into a critical incident with an SLA cost — the price
+   * of skipping the migration step.
+   */
+  unplannedOutages: UnplannedOutage[];
+}
+
+export interface UnplannedOutage {
+  nodeId: NodeId;
+  hostname: string;
+  at: number;
+  /** How many business services went down with the host. */
+  workloadCount: number;
 }
 
 /** A row in the Level-0 Remote Gateway Manager. */
@@ -103,8 +118,12 @@ export interface InfrastructureState {
   security: SecurityState;
   /** Physical asset store room (AssetManager app). */
   inventory: InventoryState;
-  /** Server rack: mounted devices, cabling and logical config. */
-  rack: RackState;
+  /**
+   * The datacenter floor: every rack, and through `RackDevice.nodeId` the
+   * physical half of every server in `nodes`. See lib/core/datacenter.ts for
+   * why the join is one field and everything else derives from it.
+   */
+  datacenter: DatacenterState;
   /** AetherCloud tenant: virtual networks, vNodes, storage, VPN and audit. */
   cloud: CloudState;
 

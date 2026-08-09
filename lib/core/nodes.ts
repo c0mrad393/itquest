@@ -58,6 +58,56 @@ export interface ConnectionState {
 
 export type HealthStatus = "healthy" | "degraded" | "critical" | "offline";
 
+// ── Workloads (v0.4.0 — the unit that MIGRATES) ─────────────────────────────
+//
+// A workload is a hosted service considered as a RESOURCE CONSUMER: the thing
+// that eats CPU and memory, generates heat, and has to be moved somewhere else
+// before its host can be powered down.
+//
+// Deliberately separate from `LinuxNodeState.services` (systemd units) and
+// `WindowsNodeState.services` (SCM entries). Those model the OS plumbing an
+// operator pokes at with systemctl or services.msc; a workload models the
+// BUSINESS SERVICE that plumbing exists to run. Conflating them would mean
+// live-migrating `sshd`, which is nonsense.
+
+export type WorkloadKind = "web" | "database" | "file" | "directory" | "app" | "balancer";
+
+export const WORKLOAD_LABEL: Record<WorkloadKind, string> = {
+  web: "Web",
+  database: "Database",
+  file: "File",
+  directory: "Directory",
+  app: "Application",
+  balancer: "Load balancer",
+};
+
+export interface Workload {
+  id: string;
+  /** Operator-facing name, e.g. "orders-api", "PostgreSQL 15". */
+  name: string;
+  kind: WorkloadKind;
+  /** Steady-state CPU demand as a percentage of ONE core. */
+  cpuPct: number;
+  /** Resident memory demand in GB. */
+  ramGb: number;
+  /**
+   * Node this workload normally lives on. Set when it is migrated away, so
+   * the operator can put the estate back the way they found it.
+   */
+  homeNodeId?: NodeId;
+}
+
+/**
+ * Change-control state. `mode` is the operator's declared intent (the node is
+ * being worked on); `drainedAt` records when the last workload left. Powering
+ * down a node that is not drained is an unplanned outage, and the simulation
+ * treats it as one.
+ */
+export interface MaintenanceState {
+  mode: boolean;
+  drainedAt: number | null;
+}
+
 /** Coarse machine telemetry surfaced in the gateway list and node headers. */
 export interface NodeHealth {
   status: HealthStatus;
@@ -84,4 +134,11 @@ export interface BaseNode {
   network: NetworkState;
   health: NodeHealth;
   tags: string[];
+  /**
+   * Business services this node hosts. Empty on endpoints — only infrastructure
+   * roles carry workloads, and only workloads migrate.
+   */
+  workloads: Workload[];
+  /** Change-control state (v0.4.0). Absent on endpoints. */
+  maintenance?: MaintenanceState;
 }
