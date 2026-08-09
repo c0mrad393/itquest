@@ -17,6 +17,7 @@
  */
 
 import { useInfraStore } from "@/lib/infra/store";
+import { useSelectedRack } from "./rack-context";
 import {
   connectedLoadWatts,
   pduSpec,
@@ -46,14 +47,16 @@ function loadState(pct: number): ThermalState {
 }
 
 export default function RackTelemetry() {
-  const rack = useInfraStore((s) => s.infra.rack);
+  const { rackId, rack } = useSelectedRack();
   const items = useInfraStore((s) => s.infra.inventory.items);
+  // Live draw includes what the bound nodes are actually running.
+  const nodes = useInfraStore((s) => s.infra.nodes);
   const resetBreaker = useInfraStore((s) => s.rackResetBreaker);
   const setPdu = useInfraStore((s) => s.rackSetPdu);
 
-  const power = rackPower(rack);
-  const thermal = rackThermal(rack);
-  const cabled = connectedLoadWatts(rack);
+  const power = rackPower(rack, nodes);
+  const thermal = rackThermal(rack, nodes);
+  const cabled = connectedLoadWatts(rack, nodes);
   const ceiling = pduSpec(rack.pduId).maxWatts;
   const overBy = cabled - ceiling;
 
@@ -78,7 +81,7 @@ export default function RackTelemetry() {
               : "Load is back inside the envelope."}
           </span>
           <button
-            onClick={() => resetBreaker()}
+            onClick={() => resetBreaker(rackId)}
             disabled={overBy > 0}
             className={`ml-auto rounded border px-2 py-0.5 font-semibold ${
               overBy > 0
@@ -138,7 +141,7 @@ export default function RackTelemetry() {
           <span>Feed</span>
           <select
             value={rack.pduId}
-            onChange={(e) => setPdu(e.target.value)}
+            onChange={(e) => setPdu(rackId, e.target.value)}
             className="rounded border border-edge bg-panel px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-gray-200"
           >
             {PDU_SPECS.map((p) => {

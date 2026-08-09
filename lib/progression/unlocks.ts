@@ -27,6 +27,7 @@ export const APP_UNLOCK_LEVEL: Partial<Record<HostAppId, number>> = {
   assetmanager: 4, // manage stock
   procurement: 4, // spend money
   racklab: 5, // build infrastructure
+  serverman: 5, // ...and run what is in it
   aethercloud: 6, // run the cloud
 };
 
@@ -39,6 +40,8 @@ export const APP_UNLOCK_LEVEL: Partial<Record<HostAppId, number>> = {
 const TAG_APP: [string, HostAppId][] = [
   ["aether", "aethercloud"],
   ["cloud", "aethercloud"],
+  ["migration", "serverman"],
+  ["capacity-plan", "serverman"],
   ["rack", "racklab"],
   ["procurement", "procurement"],
   ["shipping", "procurement"],

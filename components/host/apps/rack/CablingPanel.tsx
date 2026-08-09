@@ -8,13 +8,14 @@
 
 import { useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
+import { useSelectedRack } from "./rack-context";
 import { availableOf, type CableKind } from "@/lib/core";
 import { IconAlert, IconLink, IconPlus, IconPower, IconX } from "@/components/ui/icons";
 
 const SKU: Record<CableKind, string> = { patch: "sku-rj45-3m", power: "sku-power-c13" };
 
 export default function CablingPanel() {
-  const rack = useInfraStore((s) => s.infra.rack);
+  const { rackId, rack } = useSelectedRack();
   const inventory = useInfraStore((s) => s.infra.inventory);
   const connect = useInfraStore((s) => s.rackConnectCable);
   const disconnect = useInfraStore((s) => s.rackDisconnectCable);
@@ -44,10 +45,11 @@ export default function CablingPanel() {
     if (!fromId || !toId || !fromPort || !toPort) { setErr("Pick both ends of the cable."); return; }
     if (cableStock < 1) { setErr(`Out of ${kind === "power" ? "power leads" : "patch cables"} — restock in AssetManager.`); return; }
     const before = rack.cables.length;
-    connect({ kind, fromDeviceId: fromId, fromPort, toDeviceId: toId, toPort });
+    connect(rackId, { kind, fromDeviceId: fromId, fromPort, toDeviceId: toId, toPort });
     // The store rejects double-patched ports silently; surface that to the operator.
     setTimeout(() => {
-      const after = useInfraStore.getState().infra.rack.cables.length;
+      const after =
+        useInfraStore.getState().infra.datacenter.racks.find((r) => r.id === rackId)?.cables.length ?? 0;
       if (after === before) setErr("That port is already in use.");
       else { setErr(null); setFromPort(""); setToPort(""); }
     }, 0);
@@ -107,7 +109,7 @@ export default function CablingPanel() {
             <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-gray-300">
               {a?.name}:{c.fromPort} → {b?.name}:{c.toPort}
             </span>
-            <button onClick={() => disconnect(c.id)} aria-label="Disconnect" className="text-gray-500 hover:text-danger"><IconX size={11} /></button>
+            <button onClick={() => disconnect(rackId, c.id)} aria-label="Disconnect" className="text-gray-500 hover:text-danger"><IconX size={11} /></button>
           </div>
         );
       })}

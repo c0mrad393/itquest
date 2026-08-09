@@ -75,22 +75,36 @@ export default function Toolbox() {
  * a mechanic that is in the way.
  */
 function PhysicsDebug() {
-  const rack = useInfraStore((s) => s.infra.rack);
+  const racks = useInfraStore((s) => s.infra.datacenter.racks);
+  const nodes = useInfraStore((s) => s.infra.nodes);
+  const [rackIdx, setRackIdx] = useState(0);
+  const rack = racks[Math.min(rackIdx, racks.length - 1)];
   const setOverrides = useInfraStore((s) => s.rackSetOverrides);
   const resetBreaker = useInfraStore((s) => s.rackResetBreaker);
 
-  const power = rackPower(rack);
-  const thermal = rackThermal(rack);
+  const power = rackPower(rack, nodes);
+  const thermal = rackThermal(rack, nodes);
   const ceiling = pduSpec(rack.pduId).maxWatts;
 
   return (
     <div className="mx-auto max-w-xl space-y-4">
       <section className="rounded-lg border border-edge bg-panelalt/50 p-3">
-        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Live rack state</h3>
+        <h3 className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+          Live rack state
+          <select
+            value={rack.id}
+            onChange={(e) => setRackIdx(racks.findIndex((r) => r.id === e.target.value))}
+            className="ml-auto rounded border border-edge bg-panel px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-gray-200"
+          >
+            {racks.map((r) => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </select>
+        </h3>
         <dl className="grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[11px]">
           <Stat label="Feed" value={pduSpec(rack.pduId).label} />
           <Stat label="Ceiling" value={`${ceiling.toLocaleString()}W`} />
-          <Stat label="Cabled load" value={`${connectedLoadWatts(rack).toLocaleString()}W`} />
+          <Stat label="Cabled load" value={`${connectedLoadWatts(rack, nodes).toLocaleString()}W`} />
           <Stat label="Flowing draw" value={`${power.drawWatts.toLocaleString()}W (${power.loadPct}%)`} />
           <Stat label="Temperature" value={`${thermal.tempC.toFixed(1)}\u00b0C [${THERMAL_LABEL[thermal.state]}]`} />
           <Stat label="Cooling fitted" value={`\u2212${thermal.coolingC}\u00b0C`} />
@@ -114,7 +128,7 @@ function PhysicsDebug() {
           onChange={(v) => setOverrides({ unlimitedCooling: v })}
         />
         <button
-          onClick={() => resetBreaker()}
+          onClick={() => resetBreaker(rack.id)}
           className="mt-2 rounded border border-edge px-2 py-1 text-[11px] text-gray-200 hover:bg-panel"
         >
           Force breaker reset

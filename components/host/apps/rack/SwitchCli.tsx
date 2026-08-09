@@ -13,12 +13,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
+import { useSelectedRack } from "./rack-context";
 import { playCue } from "@/lib/audio/engine";
 
 type Mode = "user" | "priv" | "config" | "config-if" | "config-vlan";
 
 export default function SwitchCli({ deviceId }: { deviceId: string }) {
-  const device = useInfraStore((s) => s.infra.rack.devices.find((d) => d.id === deviceId));
+  const { rackId, rack } = useSelectedRack();
+  const device = rack.devices.find((d) => d.id === deviceId);
   const update = useInfraStore((s) => s.rackUpdateSwitch);
 
   const [mode, setMode] = useState<Mode>("user");
@@ -135,12 +137,12 @@ export default function SwitchCli({ deviceId }: { deviceId: string }) {
 
     // ── config mode ──
     if (mode === "config" || mode === "config-if" || mode === "config-vlan") {
-      if (t[0]?.toLowerCase() === "hostname" && t[1]) { update(deviceId, { hostname: t[1] }); return; }
+      if (t[0]?.toLowerCase() === "hostname" && t[1]) { update(rackId, deviceId, { hostname: t[1] }); return; }
 
       if (t[0]?.toLowerCase() === "vlan" && t[1]) {
         const id = Number(t[1]);
         if (!Number.isInteger(id) || id < 1 || id > 4094) { out("% Invalid VLAN id."); return; }
-        if (!cfg.vlans.includes(id)) update(deviceId, { vlans: [...cfg.vlans, id] });
+        if (!cfg.vlans.includes(id)) update(rackId, deviceId, { vlans: [...cfg.vlans, id] });
         setMode("config-vlan"); setCtxVlan(id);
         return;
       }
@@ -155,14 +157,14 @@ export default function SwitchCli({ deviceId }: { deviceId: string }) {
 
       if (mode === "config-if" && ctxIf) {
         const patchIf = (fn: (i: typeof cfg.interfaces[number]) => typeof cfg.interfaces[number]) =>
-          update(deviceId, { interfaces: cfg.interfaces.map((i) => (i.name === ctxIf ? fn(i) : i)) });
+          update(rackId, deviceId, { interfaces: cfg.interfaces.map((i) => (i.name === ctxIf ? fn(i) : i)) });
 
         if (lc.startsWith("switchport access vlan")) {
           const id = Number(t[3]);
           if (!Number.isInteger(id)) { out("% Invalid VLAN id."); return; }
           if (!cfg.vlans.includes(id)) {
             out(`% Access VLAN does not exist. Creating vlan ${id}`);
-            update(deviceId, { vlans: [...cfg.vlans, id], interfaces: cfg.interfaces.map((i) => (i.name === ctxIf ? { ...i, accessVlan: id } : i)) });
+            update(rackId, deviceId, { vlans: [...cfg.vlans, id], interfaces: cfg.interfaces.map((i) => (i.name === ctxIf ? { ...i, accessVlan: id } : i)) });
             return;
           }
           patchIf((i) => ({ ...i, accessVlan: id }));

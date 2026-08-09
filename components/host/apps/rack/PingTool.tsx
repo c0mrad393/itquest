@@ -8,11 +8,12 @@
 
 import { useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
+import { useSelectedRack } from "./rack-context";
 import { isPowered, uplinkOf } from "@/lib/core";
 import { IconActivity, IconAlert, IconCheck, IconX } from "@/components/ui/icons";
 
 export default function PingTool() {
-  const rack = useInfraStore((s) => s.infra.rack);
+  const { rackId, rack } = useSelectedRack();
   const runPing = useInfraStore((s) => s.rackRunPing);
 
   const hosts = rack.devices.filter((d) => d.kind === "server");
@@ -39,7 +40,7 @@ export default function PingTool() {
             <option value="">— destination —</option>
             {hosts.filter((d) => d.id !== from).map((d) => <option key={d.id} value={d.id}>{d.name}{d.serverConfig?.ipv4 ? ` (${d.serverConfig.ipv4})` : ""}</option>)}
           </select>
-          <button onClick={() => from && to && runPing(from, to)} disabled={!from || !to}
+          <button onClick={() => from && to && runPing(rackId, from, to)} disabled={!from || !to}
             className="flex w-full items-center justify-center gap-1.5 rounded bg-info px-2 py-1.5 text-[11px] font-semibold text-black hover:brightness-110 disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500">
             <IconActivity size={12} /> Run ping test
           </button>

@@ -1,10 +1,23 @@
 "use client";
 
 /**
- * RackSimulator — physical + logical infrastructure lab (Level-0 host app)
- * =======================================================================
+ * Datacenter Floor — physical infrastructure, unified with the logical estate
+ * ==========================================================================
+ * v0.4.0 turns the single-rack lab into a floor. A rack selector runs across
+ * the top; everything below it operates on the rack in front of you, supplied
+ * through RackProvider so the cabling, console and ping panels do not each
+ * need the id threaded down to them.
+ *
+ * THE UNIFICATION SHOWS UP HERE as three things the old lab could not do:
+ *   - a mounted chassis names the logical server it IS, and its live draw
+ *     includes the workloads that server is running;
+ *   - a chassis with no ToR uplink is called out as unreachable, with the
+ *     button that fixes it;
+ *   - fitting a part is refused while the host is live, which is what sends
+ *     the operator to the Server Manager to migrate first.
+ *
  * Left: rackable equipment pulled live from the AssetManager inventory.
- * Right: a 24U rack. Drag a unit onto a free U to mount it (consuming stock).
+ * Right: the selected rack. Drag a unit onto a free U to mount it.
  *
  * Selecting a mounted device opens its logical layer:
  *   switch / router → Cisco-style CLI (SwitchCli)
@@ -21,14 +34,17 @@ import { useInfraStore } from "@/lib/infra/store";
 import {
   availableOf, canMount, deviceOnline, deviceWatts, isPowered, rackThermal, slotTempC,
   thermalState, uplinkOf, DEVICE_COOLING_C, LIQUID_COOLING_C, THERMAL_CRITICAL_C,
-  type AssetItem, type RackDevice, type RackState,
+  liveDeviceWatts, floorSummary, freeSpaceU, isUplinked, uplinkBlocker,
+  serverCapacity, serverLiveness, serverUtilisation, WORKLOAD_LABEL, type TargetNode,
+  type AssetItem, type RackDevice, type RackState, type RackNodeMap,
 } from "@/lib/core";
-import { deviceIcon, IconLink, IconPower, IconServer, IconSliders, IconSnowflake, IconTerminal, IconTrash, IconX } from "@/components/ui/icons";
+import { deviceIcon, IconAlert, IconLink, IconPlus, IconPower, IconServer, IconSliders, IconSnowflake, IconTerminal, IconTrash, IconX } from "@/components/ui/icons";
 import SwitchCli from "./rack/SwitchCli";
 import ServerConfigModal from "./rack/ServerConfigModal";
 import CablingPanel from "./rack/CablingPanel";
 import PingTool from "./rack/PingTool";
 import RackTelemetry, { THERMAL_TONE } from "./rack/RackTelemetry";
+import { RackProvider } from "./rack/rack-context";
 
 const ROW_H = 26;
 
@@ -44,7 +60,8 @@ function heatOpacity(tempC: number): number {
 
 export default function RackSimulator() {
   const inventory = useInfraStore((s) => s.infra.inventory);
-  const rack = useInfraStore((s) => s.infra.rack);
+  const datacenter = useInfraStore((s) => s.infra.datacenter);
+  const nodes = useInfraStore((s) => s.infra.nodes);
   const mount = useInfraStore((s) => s.rackMountDevice);
   const remove = useInfraStore((s) => s.rackRemoveDevice);
   const setLiquid = useInfraStore((s) => s.rackSetLiquidCooling);
@@ -52,6 +69,14 @@ export default function RackSimulator() {
     availableOf(s.infra.inventory.items.find((i) => i.id === "sku-liquid-kit") ?? { spare: 0 } as AssetItem),
   );
 
+  const addRack = useInfraStore((s) => s.dcAddRack);
+  const connectUplink = useInfraStore((s) => s.dcConnectUplink);
+  const disconnectUplink = useInfraStore((s) => s.dcDisconnectUplink);
+  const rackStock = useInfraStore((s) =>
+    availableOf(s.infra.inventory.items.find((i) => i.id === "sku-rack-24u") ?? ({ spare: 0 } as AssetItem)),
+  );
+
+  const [rackId, setRackId] = useState<string>(datacenter.racks[0]?.id ?? "rack-01");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dragItem, setDragItem] = useState<AssetItem | null>(null);
   /** Click-to-place: an "armed" unit waiting for the operator to pick a U. */
@@ -62,13 +87,18 @@ export default function RackSimulator() {
   const [modal, setModal] = useState<"cli" | "server" | null>(null);
   const [panel, setPanel] = useState<"cabling" | "ping">("cabling");
 
+  // A rack can be removed from under us (never today, but the selector must
+  // not be able to point at nothing), so fall back to the first on the floor.
+  const rack = datacenter.racks.find((r) => r.id === rackId) ?? datacenter.racks[0];
   const rackable = inventory.items.filter((i) => !!i.deviceKind);
   const selected = rack.devices.find((d) => d.id === selectedId) ?? null;
+  const selectedNode = selected?.nodeId ? nodes[selected.nodeId] : undefined;
   const units = Array.from({ length: rack.sizeU }, (_, i) => i + 1);
+  const floor = floorSummary(datacenter, nodes);
 
   /** Placing a unit — from a drag-drop or from a click-to-place selection. */
   function placeAt(u: number, item: AssetItem | null) {
-    if (item) mount(item.id, u);
+    if (item) mount(rack.id, item.id, u);
     setDragItem(null); setArmed(null); setHoverU(null);
   }
   function openLogical(d: RackDevice) {
@@ -81,15 +111,63 @@ export default function RackSimulator() {
   const dragSize = pending?.uSize ?? 1;
 
   return (
+    <RackProvider value={{ rackId: rack.id, rack }}>
     <div className="flex h-full flex-col bg-panel text-gray-200">
       {/* Header */}
       <div className="flex shrink-0 items-center gap-3 border-b border-edge bg-panelalt px-4 py-2.5">
         <IconServer size={18} className="text-info" />
-        <span className="text-sm font-semibold">Rack &amp; Network Lab</span>
+        <span className="text-sm font-semibold">Datacenter Floor</span>
         <span className="ml-2 rounded-full bg-info/15 px-2 py-0.5 text-[10px] font-semibold text-info">
-          {rack.devices.length} mounted · {rack.cables.length} cables
+          {floor.rackCount} racks · {floor.serverCount} servers
         </span>
-        <span className="ml-auto text-[11px] text-gray-500">Rack A · {rack.sizeU}U</span>
+        {floor.unlinkedCount > 0 && (
+          <span
+            title="Racked, powered, and unreachable — these need a ToR uplink."
+            className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300"
+          >
+            {floor.unlinkedCount} without uplink
+          </span>
+        )}
+        <span className="ml-auto font-mono text-[11px] text-gray-500">
+          floor {floor.drawWatts.toLocaleString()}W / {floor.capacityWatts.toLocaleString()}W · hottest{" "}
+          {floor.hottestC.toFixed(1)}&deg;C
+        </span>
+      </div>
+
+      {/* Rack selector — the floor plan, one row */}
+      <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-edge bg-panel px-4 py-1.5">
+        {datacenter.racks.map((r) => {
+          const t = rackThermal(r, nodes);
+          const tone = THERMAL_TONE[t.state];
+          const active = r.id === rack.id;
+          const free = freeSpaceU(r);
+          return (
+            <button
+              key={r.id}
+              onClick={() => { setRackId(r.id); setSelectedId(null); }}
+              title={`${r.name} — ${free}U free · ${t.tempC.toFixed(1)}\u00b0C`}
+              className={`flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] transition ${
+                active ? "border-info bg-info/15 text-gray-100" : "border-edge text-gray-400 hover:border-info/50"
+              }`}
+            >
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${r.breakerTripped ? "bg-danger" : tone.bg}`} />
+              {r.name}
+              <span className="font-mono text-[9px] text-gray-500">{free}U</span>
+            </button>
+          );
+        })}
+        <button
+          onClick={() => { const id = addRack(); if (id) setRackId(id); }}
+          disabled={rackStock < 1}
+          title={rackStock < 1 ? "No racks on the shelf — order one from Procurement." : "Roll a new rack onto the floor"}
+          className={`flex shrink-0 items-center gap-1 rounded-md border border-dashed px-2.5 py-1 text-[11px] ${
+            rackStock < 1
+              ? "cursor-not-allowed border-edge/60 text-gray-600"
+              : "border-info/50 text-info hover:bg-info/10"
+          }`}
+        >
+          <IconPlus size={11} /> Add rack{rackStock > 0 ? ` (${rackStock})` : ""}
+        </button>
       </div>
 
       <RackTelemetry />
@@ -154,7 +232,7 @@ export default function RackSimulator() {
                   const legal = hoverU !== null && canMount(rack, hoverU, dragSize);
                   // Thermal overlay: heat rises, so the top of the rack reads
                   // hotter than the bottom even at one steady-state ambient.
-                  const slotC = slotTempC(rack, u);
+                  const slotC = slotTempC(rack, u, nodes);
                   const slotTone = THERMAL_TONE[thermalState(slotC)];
                   return (
                     <div
@@ -194,7 +272,7 @@ export default function RackSimulator() {
                   const powered = isPowered(rack, d.id);
                   // Cabled is not the same as RUNNING: a tripped breaker or a
                   // thermal shutdown takes the whole rack down regardless.
-                  const online = deviceOnline(rack, d.id);
+                  const online = deviceOnline(rack, d.id, nodes);
                   const link = uplinkOf(rack, d.id);
                   const isSel = d.id === selectedId;
                   return (
@@ -234,7 +312,13 @@ export default function RackSimulator() {
           {/* Pinned readouts */}
           <div className="mx-auto w-full max-w-md shrink-0 px-4 pb-4">
             {/* Slot-level power & heat — follows the pointer down the rack */}
-            <SlotStats rack={rack} u={statU} />
+            <SlotStats rack={rack} u={statU} nodes={nodes} />
+
+            {/* The logical half of whatever is selected. This panel IS the
+                unification made visible: one chassis, both sets of facts. */}
+            {selected?.kind === "server" && (
+              <BoundServer rack={rack} device={selected} node={selectedNode} />
+            )}
 
             {/* Selection toolbar */}
             {selected && (
@@ -251,11 +335,30 @@ export default function RackSimulator() {
                 {selected.kind === "server" && (
                   <ToolBtn onClick={() => setModal("server")} icon={<IconSliders size={12} />}>Configure</ToolBtn>
                 )}
+                {/* THE UPLINK. Until this is patched the chassis is a space
+                    heater: no port, no network, no server. */}
+                {selected.kind === "server" && !isUplinked(rack, selected.id) && (
+                  <ToolBtn
+                    onClick={() => connectUplink(rack.id, selected.id)}
+                    icon={<IconLink size={12} />}
+                    disabled={!!uplinkBlocker(rack, selected.id)}
+                  >
+                    Connect uplink
+                  </ToolBtn>
+                )}
+                {selected.kind === "server" && isUplinked(rack, selected.id) && (
+                  <ToolBtn
+                    onClick={() => disconnectUplink(rack.id, selected.id)}
+                    icon={<IconLink size={12} />}
+                  >
+                    Disconnect uplink
+                  </ToolBtn>
+                )}
                 {/* Liquid loops are per-device, so they are fitted here rather
                     than mounted in a U of their own. */}
                 {deviceWatts(selected) > 0 && (
                   <ToolBtn
-                    onClick={() => setLiquid(selected.id, !selected.liquidCooled)}
+                    onClick={() => setLiquid(rack.id, selected.id, !selected.liquidCooled)}
                     icon={<IconSnowflake size={12} />}
                     disabled={!selected.liquidCooled && liquidStock < 1}
                   >
@@ -271,7 +374,7 @@ export default function RackSimulator() {
                       : "not cabled — cooling nothing"}
                   </span>
                 )}
-                <ToolBtn onClick={() => { remove(selected.id); setSelectedId(null); }} icon={<IconTrash size={12} />} danger>Unrack</ToolBtn>
+                <ToolBtn onClick={() => { remove(rack.id, selected.id); setSelectedId(null); }} icon={<IconTrash size={12} />} danger>Unrack</ToolBtn>
               </div>
             )}
           </div>
@@ -300,6 +403,108 @@ export default function RackSimulator() {
           <ServerConfigModal deviceId={selected.id} />
         </ModalShell>
       )}
+    </div>
+    </RackProvider>
+  );
+}
+
+
+/**
+ * The logical identity of a racked chassis, shown next to its physical one.
+ *
+ * A server with no uplink gets the diagnosis, not just a blank panel: it is
+ * the single most confusing state in the whole app ("I racked it, why is it
+ * not in the Server Manager?") and the answer is one sentence long.
+ */
+function BoundServer({
+  rack,
+  device,
+  node,
+}: {
+  rack: RackState;
+  device: RackDevice;
+  node?: TargetNode;
+}) {
+  const linked = isUplinked(rack, device.id);
+  const life = node ? serverLiveness(rack, device, node) : null;
+  const cap = serverCapacity(device);
+  const util = node ? serverUtilisation(device, node.workloads) : null;
+  const hw = device.hardware;
+
+  if (!linked || !node || !life) {
+    return (
+      <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/[0.07] p-2.5 text-[11px]">
+        <div className="mb-1 flex items-center gap-1.5 font-semibold text-amber-200">
+          <IconAlert size={12} /> No network identity
+        </div>
+        <p className="leading-relaxed text-gray-300">
+          {device.name} is racked and {isPowered(rack, device.id) ? "powered" : "not even powered"}, but it has no
+          top-of-rack uplink — so it has no IP, no gateway entry, and no row in the Server Manager.{" "}
+          {uplinkBlocker(rack, device.id) ?? "Connect its uplink to provision it."}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 rounded-md border border-edge bg-panelalt/60 p-2.5 text-[11px]">
+      <div className="mb-1.5 flex flex-wrap items-center gap-2">
+        <IconServer size={12} className="text-info" />
+        <span className="font-semibold text-gray-100">{node.hostname}</span>
+        <span className="font-mono text-[10px] text-info">{node.connection.ip}</span>
+        <span className="text-gray-500">{node.os === "linux" ? node.displayName : node.displayName}</span>
+        {node.maintenance?.mode && (
+          <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-amber-300">
+            MAINTENANCE
+          </span>
+        )}
+        <span className={`ml-auto ${life.live ? "text-emerald-300" : "text-danger"}`}>
+          {life.live ? "running" : life.reason}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 font-mono text-[10px] sm:grid-cols-3">
+        <Fact label="CPU" value={`${cap.cpuCores} cores`} sub={util ? `${util.cpuPct}% committed` : undefined} hot={!!util?.oversubscribed} />
+        <Fact
+          label="Memory"
+          value={`${cap.ramGb} GB ${hw?.ramType ?? ""}`.trim()}
+          sub={util ? `${util.memPct}% committed` : undefined}
+          hot={!!util && util.memPct > 100}
+        />
+        <Fact label="Storage" value={`${Math.round(cap.storageGb / 1024)} TB`} />
+        <Fact label="DIMM slots" value={hw ? `${hw.dimmsUsed}/${hw.dimmSlots} populated` : "—"} />
+        <Fact label="Draw" value={`${liveDeviceWatts(device, { [node.nodeId]: node })}W`} sub={`${deviceWatts(device)}W idle`} />
+        <Fact label="Workloads" value={`${node.workloads.length} hosted`} />
+      </div>
+
+      {node.workloads.length > 0 && (
+        <ul className="mt-1.5 space-y-0.5">
+          {node.workloads.map((w) => (
+            <li key={w.id} className="flex items-center gap-2 text-[10px] text-gray-400">
+              <span className="h-1 w-1 shrink-0 rounded-full bg-info" />
+              <span className="min-w-0 flex-1 truncate text-gray-200">{w.name}</span>
+              <span className="font-mono">{WORKLOAD_LABEL[w.kind]}</span>
+              <span className="font-mono text-gray-500">{Math.round(w.cpuPct)}% · {w.ramGb} GB</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="mt-1.5 text-[10px] text-gray-600">
+        {node.connection.online
+          ? "Live host. Opening the chassis needs a change window — migrate its workloads in the Server Manager first."
+          : "Powered down. Safe to fit parts."}
+      </p>
+    </div>
+  );
+}
+
+function Fact({ label, value, sub, hot }: { label: string; value: string; sub?: string; hot?: boolean }) {
+  return (
+    <div>
+      <span className="block text-[9px] uppercase tracking-wider text-gray-600">{label}</span>
+      <span className={hot ? "text-danger" : "text-gray-200"}>{value}</span>
+      {sub && <span className={`ml-1 ${hot ? "text-danger" : "text-gray-500"}`}>({sub})</span>}
     </div>
   );
 }
@@ -340,7 +545,7 @@ function ToolBtn({ onClick, icon, danger, disabled, children }: { onClick: () =>
  * relationship between "this box draws 750W" and "this rack is at 38C" is
  * visible at the point of decision rather than only in the header total.
  */
-function SlotStats({ rack, u }: { rack: RackState; u: number | null }) {
+function SlotStats({ rack, u, nodes }: { rack: RackState; u: number | null; nodes: RackNodeMap }) {
   if (u === null) {
     return (
       <p className="mt-2 text-[10px] text-gray-600">
@@ -349,7 +554,7 @@ function SlotStats({ rack, u }: { rack: RackState; u: number | null }) {
     );
   }
   const dev = rack.devices.find((d) => u >= d.uStart && u < d.uStart + d.uSize);
-  const slotC = slotTempC(rack, u);
+  const slotC = slotTempC(rack, u, nodes);
   const tone = THERMAL_TONE[thermalState(slotC)];
   const cooling = dev ? (DEVICE_COOLING_C[dev.kind] ?? 0) + (dev.liquidCooled ? LIQUID_COOLING_C : 0) : 0;
 
@@ -360,14 +565,14 @@ function SlotStats({ rack, u }: { rack: RackState; u: number | null }) {
       {dev ? (
         <>
           <span className="text-gray-300">{dev.name}</span>
-          <span className="text-gray-400">{deviceWatts(dev)}W draw</span>
+          <span className="text-gray-400">{liveDeviceWatts(dev, nodes)}W draw</span>
           {cooling > 0 && <span className="text-cyan-300">&minus;{cooling}&deg;C cooling</span>}
-          <span className={deviceOnline(rack, dev.id) ? "text-emerald-300" : "text-danger"}>
-            {deviceOnline(rack, dev.id)
+          <span className={deviceOnline(rack, dev.id, nodes) ? "text-emerald-300" : "text-danger"}>
+            {deviceOnline(rack, dev.id, nodes)
               ? "online"
               : rack.breakerTripped
                 ? "breaker open"
-                : rackThermal(rack).state === "critical"
+                : rackThermal(rack, nodes).state === "critical"
                   ? "thermal shutdown"
                   : "no power"}
           </span>

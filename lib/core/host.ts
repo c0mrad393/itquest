@@ -23,7 +23,8 @@ export type HostAppId =
   | "gateway" // Remote Gateway Manager (RDP/SSH launcher)
   | "hardwarelab" // Hardware Provisioning Lab & Field Dispatch
   | "assetmanager" // Hardware inventory / store room
-  | "racklab" // Server rack & network infrastructure simulator
+  | "racklab" // Datacenter floor — racks, cabling, power and heat
+  | "serverman" // Server Manager — logical estate, maintenance and migration
   | "netops" // Network topology console (link optimization)
   | "monitor" // Infrastructure metrics dashboard (observability)
   | "aethercloud" // AetherCloud Engine — hybrid cloud console
@@ -288,12 +289,25 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     pinnedToTaskbar: true,
     showOnDesktop: true,
   },
+  serverman: {
+    id: "serverman",
+    title: "Server Manager",
+    iconId: "server",
+    category: "work",
+    description:
+      "The logical estate: every server's addressing, capacity and hosted workloads, with maintenance mode and live migration.",
+    defaultSize: { w: 1040, h: 660 },
+    minSize: { w: 800, h: 500 },
+    singleton: true,
+    pinnedToTaskbar: true,
+    showOnDesktop: true,
+  },
   racklab: {
     id: "racklab",
-    title: "Rack & Network Lab",
+    title: "Datacenter Floor",
     iconId: "rack",
     category: "work",
-    description: "Build the rack, cable it, configure switches and servers, and test connectivity.",
+    description: "Every rack on the floor: mount and cable hardware, patch uplinks, and watch power and heat.",
     defaultSize: { w: 1080, h: 680 },
     minSize: { w: 820, h: 520 },
     singleton: true,
