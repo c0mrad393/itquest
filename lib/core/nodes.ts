@@ -16,6 +16,7 @@
  */
 
 import type { NetworkState } from "@/lib/vm/types";
+import type { FileShare } from "./fileshares";
 
 /** Stable identifier for a node, e.g. "prod-nginx-srv", "client-win-01". */
 export type NodeId = string;
@@ -141,4 +142,10 @@ export interface BaseNode {
   workloads: Workload[];
   /** Change-control state (v0.4.0). Absent on endpoints. */
   maintenance?: MaintenanceState;
+  /**
+   * SMB shares this host serves (v0.5.0). Present only on file servers — a
+   * share belongs to the server that serves it, for the same reason a workload
+   * belongs to its host.
+   */
+  shares?: FileShare[];
 }

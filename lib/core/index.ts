@@ -24,6 +24,8 @@ export * from "./endpoint";
 export * from "./inventory";
 export * from "./rack";
 export * from "./datacenter";
+export * from "./directory";
+export * from "./fileshares";
 export * from "./cloud";
 export * from "./infrastructure";
 export * from "./tickets";
