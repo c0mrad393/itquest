@@ -70,6 +70,13 @@ export interface TicketDynamicContext {
   rackPort?: string;
   /** Human label for the rack an incident names, e.g. "Rack B". */
   rackName?: string;
+  // ── Directory & file shares (v0.5.0) ──
+  /** Share the request is about. */
+  shareId?: string;
+  shareName?: string;
+  sharePath?: string;
+  /** Access level the requester must end up with. */
+  accessLevel?: "read" | "change" | "full";
 }
 
 export type TicketStatus =

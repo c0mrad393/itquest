@@ -34,8 +34,10 @@ import type {
 import {
   availableOf, baseHardwareFor, connectedLoadWatts, DEVICE_COOLING_C, floorSummary,
   isPowered, isRackable, locationOf, pduSpec, rackPower, rackThermal,
+  effectiveGroups, hasAccess,
 } from "@/lib/core";
-import { int, pick, type Rng } from "@/lib/org/rng";
+import type { ShareAccess } from "@/lib/core";
+import { int, pick, sample, type Rng } from "@/lib/org/rng";
 import type { TicketTemplate } from "./matrix";
 
 // ── Tier tuning ─────────────────────────────────────────────────────────────
@@ -109,6 +111,24 @@ function adUsers(infra: InfrastructureState) {
 }
 
 const mailDomain = (org: { domain: string }) => org.domain.replace(".internal", ".com");
+
+/**
+ * The directory as DATA.
+ *
+ * Deliberately NOT `liveDirectory`: a win-condition grades the state of the
+ * estate, not whether the console happens to be reachable at the instant the
+ * reconciler runs. Gating the grade on reachability would un-resolve a
+ * finished ticket the moment someone tripped a breaker elsewhere.
+ */
+function adOf(infra: InfrastructureState) {
+  const dc = Object.values(infra.nodes).find((n) => n.os === "windows" && !!n.activeDirectory);
+  return dc && dc.os === "windows" ? dc.activeDirectory : undefined;
+}
+
+/** The estate's file server, whatever it is called in this org. */
+function fileServerOf(infra: InfrastructureState) {
+  return Object.values(infra.nodes).find((n) => n.role === "file-server");
+}
 
 // ── Family definitions ──────────────────────────────────────────────────────
 
@@ -1284,6 +1304,230 @@ const FAMILIES: Family[] = [
               .every((n) => n.connection.online),
         },
       ),
+  },
+
+  // ── The software topology (v0.5.0) ───────────────────────────────────────
+  //
+  // These families cannot be closed from any single app. Each one needs a
+  // directory change AND a share change, and each is graded on EFFECTIVE
+  // ACCESS — the same resolver the Shared Drives app shows — so half a fix
+  // reads as half a fix rather than silently passing.
+  //
+  // They also inherit the whole stack beneath them: if the domain controller's
+  // rack has tripped, none of this is reachable until the breaker is back on.
+  // The cascade is not scripted, it just falls out of the dependency chain.
+  {
+    id: "gen-share-access",
+    category: "Identity & Access",
+    track: "helpdesk",
+    tags: ["ad", "identity", "shares", "acl", "access"],
+    tiers: ["Tier_2_Medium", "Tier_3_Hard"],
+    variants: 3,
+    build: ({ rng, tier, id }) => {
+      const level = tier === "Tier_3_Hard" ? ("change" as const) : ("read" as const);
+      const voice = pick(rng, VOICES);
+      return base(
+        { category: "Identity & Access", track: "helpdesk", tags: ["ad", "identity", "shares", "acl", "access"] },
+        tier,
+        id,
+        {
+          personaId: voice.persona,
+          summary: "A member of staff needs access to a departmental share they are not entitled to yet.",
+          hints: [
+            "Open Active Directory and add the account to the group that owns the data",
+            "Then open Shared Drives — membership alone grants nothing until the group is on the share's access list",
+            "Use Effective access on the share to prove it before you resolve",
+          ],
+          makeContext: (infra, r) => {
+            const dir = adOf(infra);
+            const fs = fileServerOf(infra);
+            if (!dir || !fs?.shares?.length) return null;
+
+            // A share whose access list does NOT already reach the requester,
+            // so the ticket needs both halves of the fix.
+            const share = pick(r, fs.shares.filter((sh) => sh.acl.length > 0 && !sh.acl.some((a) => a.deny)));
+            if (!share) return null;
+            const owningGroup = share.acl.find((a) => !a.deny && a.groupName !== "Domain Admins")?.groupName;
+            if (!owningGroup) return null;
+
+            const outsiders = dir.users.filter(
+              (u) => u.enabled && !effectiveGroups(dir, u.samAccountName).includes(owningGroup),
+            );
+            if (!outsiders.length) return null;
+            const user = pick(r, outsiders);
+
+            return {
+              targetUserId: user.samAccountName,
+              targetUserName: user.displayName,
+              department: user.department,
+              targetGroup: owningGroup,
+              shareId: share.id,
+              shareName: share.name,
+              sharePath: share.path,
+              accessLevel: level,
+            };
+          },
+          title: (ctx) => `Access request — ${ctx.targetUserName} needs ${ctx.shareName}`,
+          description: (ctx) =>
+            `User request:\n**${ctx.targetUserName}** (${ctx.targetUserId}, ${ctx.department}) has been asked to ` +
+            `work on material in **${ctx.sharePath}** and cannot open it.\n\nWhat we found:\n` +
+            `• The share grants access through the **${ctx.targetGroup}** security group\n` +
+            `• Their account is not in that group\n\nObjective:\n` +
+            `• Grant them **${ctx.accessLevel === "change" ? "Change" : "Read"}** access to ${ctx.shareName}\n` +
+            `• Group-based access only — do not add the account to the share directly\n\n` +
+            `> Membership and the access list are two different things. Check both.`,
+          requester: (ctx, org) => ({
+            name: String(ctx.targetUserName),
+            role: voice.role,
+            email: `${ctx.targetUserId}@${mailDomain(org)}`,
+            department: String(ctx.department),
+          }),
+          win: (infra, ctx) => {
+            const dir = adOf(infra);
+            const fs = fileServerOf(infra);
+            const share = fs?.shares?.find((sh) => sh.id === ctx.shareId);
+            if (!dir || !share) return false;
+            // Graded on what the user can ACTUALLY do, not on the steps taken.
+            return hasAccess(dir, share, String(ctx.targetUserId), ctx.accessLevel as ShareAccess);
+          },
+        },
+      );
+    },
+  },
+  {
+    id: "gen-stale-deny",
+    category: "Identity & Access",
+    track: "helpdesk",
+    tags: ["ad", "identity", "shares", "acl"],
+    tiers: ["Tier_2_Medium", "Tier_3_Hard"],
+    variants: 2,
+    build: ({ rng, tier, id }) =>
+      base(
+        { category: "Identity & Access", track: "helpdesk", tags: ["ad", "identity", "shares", "acl"] },
+        tier,
+        id,
+        {
+          personaId: pick(rng, VOICES).persona,
+          summary: "A user is in the right group and still cannot open the share.",
+          hints: [
+            "Run Effective access on the share against their logon name — it names the reason",
+            "An explicit Deny beats every grant, including Full control",
+            "The Deny is on a group, not on the person; take it off the access list",
+          ],
+          makeContext: (infra, r) => {
+            const dir = adOf(infra);
+            const fs = fileServerOf(infra);
+            const share = fs?.shares?.find((sh) => sh.acl.some((a) => a.deny));
+            if (!dir || !share) return null;
+            const deny = share.acl.find((a) => a.deny)!;
+            const victims = dir.users.filter(
+              (u) => u.enabled && effectiveGroups(dir, u.samAccountName).includes(deny.groupName),
+            );
+            if (!victims.length) return null;
+            const user = pick(r, victims);
+            return {
+              targetUserId: user.samAccountName,
+              targetUserName: user.displayName,
+              department: user.department,
+              targetGroup: deny.groupName,
+              shareId: share.id,
+              shareName: share.name,
+              sharePath: share.path,
+            };
+          },
+          title: (ctx) => `${ctx.targetUserName} is denied ${ctx.shareName} despite being in the group`,
+          description: (ctx) =>
+            `User request:\n**${ctx.targetUserName}** says ${ctx.sharePath} throws access denied, and their ` +
+            `manager confirms they should have it.\n\nWhat we found:\n` +
+            `• The account IS in a group that appears on the share\n` +
+            `• Access is still refused\n\nObjective:\n` +
+            `• Work out what is overriding the grant and clear it\n\n` +
+            `> This one is a five-minute fix if you check effective access first, and an afternoon if you do not.`,
+          requester: (ctx, org) => ({
+            name: String(ctx.targetUserName),
+            role: "Analyst",
+            email: `${ctx.targetUserId}@${mailDomain(org)}`,
+            department: String(ctx.department),
+          }),
+          win: (infra, ctx) => {
+            const dir = adOf(infra);
+            const fs = fileServerOf(infra);
+            const share = fs?.shares?.find((sh) => sh.id === ctx.shareId);
+            if (!dir || !share) return false;
+            return hasAccess(dir, share, String(ctx.targetUserId), "read");
+          },
+        },
+      ),
+  },
+  {
+    id: "gen-onboard-access",
+    category: "Identity & Access",
+    track: "helpdesk",
+    tags: ["ad", "identity", "onboarding", "shares", "acl"],
+    tiers: ["Tier_2_Medium", "Tier_3_Hard"],
+    variants: 2,
+    build: ({ rng, tier, id }) => {
+      const groupSuffix = pick(rng, ["Project", "Programme", "Workstream"]);
+      return base(
+        { category: "Identity & Access", track: "helpdesk", tags: ["ad", "identity", "onboarding", "shares", "acl"] },
+        tier,
+        id,
+        {
+          personaId: pick(rng, VOICES).persona,
+          summary: "A new cross-team workstream needs its own security group and share access.",
+          hints: [
+            "Create the security group in Active Directory first — the share cannot grant to a group that does not exist",
+            "Add the named people to it",
+            "Then grant that group Change on the share in Shared Drives",
+          ],
+          makeContext: (infra, r) => {
+            const dir = adOf(infra);
+            const fs = fileServerOf(infra);
+            if (!dir || !fs?.shares?.length) return null;
+            const share = pick(r, fs.shares.filter((sh) => !sh.acl.some((a) => a.deny)));
+            if (!share) return null;
+            const members = sample(r, dir.users.filter((u) => u.enabled), 2);
+            if (members.length < 2) return null;
+            const dept = share.owner.replace(/\s+/g, "");
+            return {
+              targetGroup: `${dept}_${groupSuffix}`,
+              shareId: share.id,
+              shareName: share.name,
+              sharePath: share.path,
+              targetUserId: members[0].samAccountName,
+              targetUserName: members[0].displayName,
+              newUserSam: members[1].samAccountName,
+              newUserName: members[1].displayName,
+              department: share.owner,
+            };
+          },
+          title: (ctx) => `Stand up ${ctx.targetGroup} and give it ${ctx.shareName}`,
+          description: (ctx) =>
+            `Change request:\nA new cross-team workstream is starting and needs its own access, kept separate ` +
+            `from the departmental groups.\n\nWhat we need:\n` +
+            `• A security group named **${ctx.targetGroup}**\n` +
+            `• **${ctx.targetUserName}** (${ctx.targetUserId}) and **${ctx.newUserName}** (${ctx.newUserSam}) in it\n` +
+            `• That group granted **Change** on **${ctx.sharePath}**\n\n` +
+            `> Do not grant the individuals directly. The point of the group is that the next joiner is one click.`,
+          win: (infra, ctx) => {
+            const dir = adOf(infra);
+            const fs = fileServerOf(infra);
+            const share = fs?.shares?.find((sh) => sh.id === ctx.shareId);
+            if (!dir || !share) return false;
+            const group = String(ctx.targetGroup);
+            if (!dir.groups.some((g) => g.name === group)) return false;
+            // Both people, and through the NEW group specifically — otherwise
+            // an existing departmental grant would close the ticket for free.
+            const ace = share.acl.find((a) => a.groupName === group && !a.deny);
+            if (!ace || ace.access === "read") return false;
+            return (
+              effectiveGroups(dir, String(ctx.targetUserId)).includes(group) &&
+              effectiveGroups(dir, String(ctx.newUserSam)).includes(group)
+            );
+          },
+        },
+      );
+    },
   },
 ];
 
