@@ -10,6 +10,7 @@
  */
 
 import { useInfraStore } from "@/lib/infra/store";
+import { gatewayTargets } from "@/lib/core";
 import { useHostStore } from "@/lib/host/store";
 import type { HealthStatus } from "@/lib/core";
 import { AppIcon, OS_ICON_ID } from "@/components/ui/app-icons";
@@ -27,6 +28,10 @@ export default function RemoteGateway() {
   const openRemote = useHostStore((s) => s.openRemote);
   const focus = useHostStore((s) => s.focus);
 
+  // Derived from the datacenter every render, so unracking a server or
+  // tripping its PDU removes it from the list on the same frame.
+  const targets = gatewayTargets(infra);
+
   function sessionFor(nodeId: string) {
     return windows.find((w) => w.kind === "remote" && w.nodeId === nodeId);
   }
@@ -36,18 +41,18 @@ export default function RemoteGateway() {
       <div className="flex items-center gap-2 border-b border-edge bg-panelalt px-4 py-3">
         <span className="text-sm font-semibold">{infra.clientOrg}</span>
         <span className="rounded-full bg-info/15 px-2 py-0.5 text-[10px] font-semibold text-info">
-          {infra.gateway.length} nodes
+          {targets.filter((t) => t.connectable).length} of {targets.length} reachable
         </span>
         <span className="ml-auto text-[11px] text-gray-500">Remote Gateway · RDP / SSH</span>
       </div>
 
       <div className="grid flex-1 gap-3 overflow-y-auto term-scroll p-4 md:grid-cols-2">
-        {infra.gateway.map((entry) => {
-          const node = infra.nodes[entry.nodeId];
-          if (!node) return null;
+        {targets.map((entry) => {
+          const node = entry.node;
           const h = HEALTH[node.health.status];
           const session = sessionFor(entry.nodeId);
-          const canConnect = entry.reachable && node.connection.online;
+          // Physical reality decides, not a list captured at world generation.
+          const canConnect = entry.connectable;
 
           return (
             <div
@@ -61,15 +66,16 @@ export default function RemoteGateway() {
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold text-gray-100">{node.displayName}</div>
                   <div className="font-mono text-[11px] text-gray-500">
-                    {node.hostname} · {entry.ip}
+                    {node.hostname} · {node.connection.ip}
+                    {entry.location && <span className="ml-1.5 text-gray-600">{entry.location}</span>}
                   </div>
                 </div>
                 <span
                   className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
-                    entry.protocol === "rdp" ? "bg-sky-500/15 text-sky-300" : "bg-violet-500/15 text-violet-300"
+                    node.connection.protocol === "rdp" ? "bg-sky-500/15 text-sky-300" : "bg-violet-500/15 text-violet-300"
                   }`}
                 >
-                  {entry.protocol}
+                  {node.connection.protocol}
                 </span>
               </div>
 
@@ -104,9 +110,15 @@ export default function RemoteGateway() {
                   onClick={() =>
                     openRemote(node.nodeId, node.displayName, OS_ICON_ID[node.os], node.connection.protocol)
                   }
+                  title={entry.reason ?? undefined}
                   className="w-full rounded-md bg-info px-3 py-2 text-xs font-semibold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500"
                 >
-                  {canConnect ? `Connect via ${entry.protocol.toUpperCase()}` : "Unreachable"}
+                  {canConnect
+                    ? `Connect via ${node.connection.protocol.toUpperCase()}`
+                    : /* Naming the cause here is what turns a dead button into
+                         a trail: the operator learns the rack is the problem
+                         without opening three apps to find out. */
+                      `Unreachable — ${entry.reason ?? "no route"}`}
                 </button>
               )}
             </div>

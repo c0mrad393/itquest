@@ -15,6 +15,8 @@ import HardwareLab from "./apps/HardwareLab";
 import AssetManager from "./apps/AssetManager";
 import RackSimulator from "./apps/RackSimulator";
 import ServerManager from "./apps/ServerManager";
+import DirectoryConsole from "./apps/DirectoryConsole";
+import SharedDrives from "./apps/SharedDrives";
 import Mail from "./apps/Mail";
 import CoreMail from "./apps/CoreMail";
 import NetOpsConsole from "./apps/NetOpsConsole";
@@ -41,6 +43,10 @@ export function renderHostApp(appId: HostAppId): React.ReactNode {
       return <RackSimulator />;
     case "serverman":
       return <ServerManager />;
+    case "directory":
+      return <DirectoryConsole />;
+    case "shares":
+      return <SharedDrives />;
     case "mail":
       return <Mail />;
     case "coremail":

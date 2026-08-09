@@ -25,6 +25,8 @@ export type HostAppId =
   | "assetmanager" // Hardware inventory / store room
   | "racklab" // Datacenter floor — racks, cabling, power and heat
   | "serverman" // Server Manager — logical estate, maintenance and migration
+  | "directory" // Active Directory Users & Computers (host-level RSAT console)
+  | "shares" // Shared Drives — enterprise SMB shares and their access lists
   | "netops" // Network topology console (link optimization)
   | "monitor" // Infrastructure metrics dashboard (observability)
   | "aethercloud" // AetherCloud Engine — hybrid cloud console
@@ -285,6 +287,32 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     description: "Hardware inventory: stock levels, allocations and repairs.",
     defaultSize: { w: 900, h: 600 },
     minSize: { w: 640, h: 420 },
+    singleton: true,
+    pinnedToTaskbar: true,
+    showOnDesktop: true,
+  },
+  directory: {
+    id: "directory",
+    title: "Active Directory",
+    iconId: "users",
+    category: "work",
+    description:
+      "Users, organizational units and security groups. Talks to the domain controller over the network, so it fails when the DC does.",
+    defaultSize: { w: 1100, h: 660 },
+    minSize: { w: 860, h: 500 },
+    singleton: true,
+    pinnedToTaskbar: true,
+    showOnDesktop: true,
+  },
+  shares: {
+    id: "shares",
+    title: "Shared Drives",
+    iconId: "folder",
+    category: "work",
+    description:
+      "Enterprise file shares and their access control lists, bound to Active Directory security groups.",
+    defaultSize: { w: 1000, h: 640 },
+    minSize: { w: 780, h: 480 },
     singleton: true,
     pinnedToTaskbar: true,
     showOnDesktop: true,

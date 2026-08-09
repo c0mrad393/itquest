@@ -13,6 +13,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
+import { reachNode } from "@/lib/core";
 import { useHostStore } from "@/lib/host/store";
 import type { RemoteSessionWindow } from "@/lib/host/windows";
 import NodeEnvironment from "./NodeEnvironment";
@@ -44,9 +45,13 @@ function handshakeLines(protocol: string, ip: string, port: number, hostname: st
 
 export default function RemoteSession({ win }: { win: RemoteSessionWindow }) {
   const node = useInfraStore((s) => s.infra.nodes[win.nodeId]);
+  // Subscribed, not sampled: if the operator trips a PDU on the Datacenter
+  // Floor while this session is open, the session has to notice.
+  const infra = useInfraStore((s) => s.infra);
   const authenticate = useInfraStore((s) => s.authenticate);
   const close = useHostStore((s) => s.close);
 
+  const reach = reachNode(infra, node);
   const [phase, setPhase] = useState<Phase>("connecting");
   const [logIndex, setLogIndex] = useState(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -60,7 +65,7 @@ export default function RemoteSession({ win }: { win: RemoteSessionWindow }) {
       setPhase("error");
       return;
     }
-    if (!node.connection.online || !node.connection.reachable) {
+    if (!reach.reachable) {
       setPhase("error");
       return;
     }
@@ -90,10 +95,17 @@ export default function RemoteSession({ win }: { win: RemoteSessionWindow }) {
   if (!node) {
     return <SessionError message={`Node '${win.nodeId}' not found in infrastructure.`} onClose={() => close(win.instanceId)} />;
   }
-  if (phase === "error") {
+  // A LIVE SESSION DROPS. An SSH window that keeps working after its rack goes
+  // dark is the exact fiction v0.5.0 exists to remove, so reachability is
+  // re-checked on every render rather than only at connect time.
+  if (phase === "error" || !reach.reachable) {
     return (
       <SessionError
-        message={`Unable to reach ${node.hostname} (${node.connection.ip}). Host offline or filtered.`}
+        message={
+          reach.reason
+            ? `${reach.reason}${reach.remedy ? ` ${reach.remedy}` : ""}`
+            : `Unable to reach ${node.hostname} (${node.connection.ip}). Host offline or filtered.`
+        }
         onClose={() => close(win.instanceId)}
       />
     );
