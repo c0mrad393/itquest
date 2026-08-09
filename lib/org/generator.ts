@@ -46,7 +46,8 @@ import {
 } from "@/lib/core";
 import { chance, int, mulberry32, pick, sample, shuffle, type Rng } from "./rng";
 import { COMPANY_PARTS, DEPARTMENTS, FIRST_NAMES, LAST_NAMES } from "./namegen";
-import { createInventory, createRack } from "@/lib/inventory/seed";
+import { createInventory } from "@/lib/inventory/seed";
+import { buildDatacenter } from "@/lib/datacenter/seed";
 import { createCloudState } from "@/lib/cloud/seed";
 
 const now = Date.now();
@@ -594,6 +595,7 @@ function makeFaultWebNode(rng: Rng, org: OrganizationProfile, spec: NodeSpec): L
     connection: baseConnection(spec, rng),
     network: vm.network,
     health: health(rng, "degraded"),
+    workloads: [],
     tags: ["production", "web", "dmz"],
     os: "linux",
     distro: "Ubuntu 22.04.3 LTS",
@@ -636,6 +638,7 @@ function makeLinuxNode(rng: Rng, org: OrganizationProfile, spec: NodeSpec, label
     connection: baseConnection(spec, rng),
     network: baseNetwork(spec, org),
     health: health(rng),
+    workloads: [],
     tags: [kind],
     os: "linux",
     distro: pick(rng, ["Ubuntu 22.04.3 LTS", "Debian 12", "Rocky Linux 9.3"]),
@@ -700,6 +703,7 @@ function makeWindowsNode(
     connection: baseConnection(spec, rng),
     network: baseNetwork(spec, org),
     health: health(rng),
+    workloads: [],
     tags: isDc ? ["domain-controller", "critical-infra"] : [spec.role],
     os: "windows",
     edition: isDc || spec.role === "file-server" ? "Windows Server 2022 Standard" : "Windows 11 Pro",
@@ -760,6 +764,7 @@ function makeMacNode(rng: Rng, org: OrganizationProfile, spec: NodeSpec, label: 
     connection: baseConnection(spec, rng),
     network: baseNetwork(spec, org),
     health: health(rng),
+    workloads: [],
     tags: ["workstation", "macos"],
     os: "macos",
     productName: pick(rng, ["macOS 14 Sonoma", "macOS 15 Sequoia", "macOS 13 Ventura"]),
@@ -1003,9 +1008,10 @@ export function generateWorld(seed: number): InfrastructureState {
       logsRotated: [],
       onboardingComplete: false,
       hardwareReplaced: [],
+      unplannedOutages: [],
     },
     inventory: createInventory(),
-    rack: createRack(),
+    datacenter: buildDatacenter(rng, nodes),
     cloud: createCloudState(org.name, slugOf(org), rng),
     loadedAt: now,
   };

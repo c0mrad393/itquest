@@ -17,8 +17,7 @@
  * faulty); `price` present means Procurement can restock it.
  */
 
-import type { AssetItem, InventoryState, RackState } from "@/lib/core";
-import { RACK_SIZE_U } from "@/lib/core";
+import type { AssetItem, InventoryState } from "@/lib/core";
 
 /** Fictional enterprise vendors. No real trademarks anywhere in the estate. */
 export const BRANDS = [
@@ -131,6 +130,8 @@ const catalogue: AssetItem[] = [
   { id: "sku-pdu-1u", name: "Voltix Rack PDU 8-way", brand: "Voltix", category: "power", model: "VX-PDU8",
     spare: 1, deployed: 0, inTransit: 0, faulty: 0, uSize: 1, deviceKind: "pdu", price: 410 },
 
+  { id: "sku-rack-24u", name: "Meridian 24U Server Rack", brand: "Meridian", category: "power", model: "MR-R24",
+    spare: 0, deployed: 0, inTransit: 0, faulty: 0, price: 3200 },
   { id: "sku-pdu-30a", name: "Voltix High-Density PDU 208V/30A", brand: "Voltix", category: "power", model: "VX-PDU30",
     spare: 0, deployed: 0, inTransit: 0, faulty: 0, price: 1850, traits: { watts: 6240 } },
 
@@ -150,16 +151,4 @@ const catalogue: AssetItem[] = [
 
 export function createInventory(): InventoryState {
   return { items: catalogue.map((i) => ({ ...i })), allocations: [], orders: [] };
-}
-
-export function createRack(): RackState {
-  return {
-    sizeU: RACK_SIZE_U,
-    devices: [],
-    cables: [],
-    tests: [],
-    pduId: "pdu-20a",
-    breakerTripped: false,
-    trippedAt: null,
-  };
 }
