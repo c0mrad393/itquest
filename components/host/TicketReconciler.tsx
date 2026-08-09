@@ -18,7 +18,7 @@ import { useSlaStore } from "@/lib/sla/store";
 import { useNotificationStore } from "@/lib/host/notifications-store";
 import { ticketLibrary } from "@/lib/tickets/factory";
 import { budgetReward, computeScore } from "@/lib/scenario/scoring";
-import { burnRate, HOST_APP_REGISTRY, rackPower, rackThermal } from "@/lib/core";
+import { burnRate, HOST_APP_REGISTRY, phaseForLevel, phaseSpec, rackPower, rackThermal } from "@/lib/core";
 import { skillOf, jobTitle } from "@/lib/progression/tracks";
 import { appsUnlockedAt, tiersUnlockedAt } from "@/lib/progression/unlocks";
 
@@ -185,6 +185,30 @@ export default function TicketReconciler() {
             if (tiers.length) {
               useTicketStore.getState().spawnForTiers(tiers, infra, lvl);
               useDialogueStore.getState().syncConversations();
+            }
+
+            // ── THE COMPANY GROWS (v0.6.0) ──────────────────────────────
+            // Crossing a milestone level hires staff onto the world that
+            // already exists. It provisions NOTHING: the new headcount eats
+            // addresses, disk and power, and the project ticket that follows
+            // asks the operator to deal with it. Auto-scaling the estate
+            // would remove the entire point of the milestone.
+            const want = phaseForLevel(lvl);
+            if (want > useInfraStore.getState().infra.growth.phase) {
+              const grew = useInfraStore.getState().growCompany(want);
+              if (grew) {
+                const spec = phaseSpec(want);
+                useNotificationStore.getState().push({
+                  kind: "info",
+                  title: `${useInfraStore.getState().infra.org.name} is now ${spec.label.toLowerCase()}`,
+                  body: `${grew.hired} people hired — headcount ${grew.from} to ${grew.to}. ${spec.blurb}`,
+                  badge: `Phase ${want}`,
+                });
+                const project = useTicketStore
+                  .getState()
+                  .spawnIncident("gen-scaling-project", useInfraStore.getState().infra);
+                if (project) useDialogueStore.getState().syncConversations();
+              }
             }
           }
         }
