@@ -15,6 +15,7 @@ import type { OrganizationProfile } from "./organization";
 import type { InventoryState } from "./inventory";
 import type { DatacenterState } from "./datacenter";
 import type { CloudState } from "./cloud";
+import type { GrowthState } from "./growth";
 
 /** Discriminated union of every node kind. Narrow on `.os`. */
 export type TargetNode = LinuxNodeState | WindowsNodeState | MacNodeState;
@@ -126,6 +127,11 @@ export interface InfrastructureState {
   datacenter: DatacenterState;
   /** AetherCloud tenant: virtual networks, vNodes, storage, VPN and audit. */
   cloud: CloudState;
+  /**
+   * How big the company is, and how it got there (v0.6.0). Growth is additive:
+   * a milestone hires onto this world rather than replacing it.
+   */
+  growth: GrowthState;
 
   loadedAt: number;
 }

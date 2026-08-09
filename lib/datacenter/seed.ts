@@ -38,11 +38,12 @@ import {
   isRackable,
   connectedLoadWatts,
   pduSpec,
+  phaseSpec,
   preferredRackRole,
   rackThermal,
   type RackRole,
 } from "@/lib/core";
-import type { LinuxNodeState } from "@/lib/core";
+import type { GrowthPhase, LinuxNodeState } from "@/lib/core";
 import { createSeedVM } from "@/lib/vm/seed";
 import { int, pick, type Rng } from "@/lib/org/rng";
 
@@ -280,9 +281,19 @@ export const RACK_ROLE_OF: Record<string, RackRole> = {
  * Mutates `nodes` to attach workloads and maintenance state — the logical half
  * of the same servers — and returns the physical half.
  */
-export function buildDatacenter(rng: Rng, nodes: Record<string, TargetNode>): DatacenterState {
+export function buildDatacenter(
+  rng: Rng,
+  nodes: Record<string, TargetNode>,
+  phase: GrowthPhase = 1,
+): DatacenterState {
   seq = 0;
-  const built = PLANS.map((plan) => ({ plan, ...buildRack(plan) }));
+  // A startup has ONE rack. The floor grows when the player buys racks to keep
+  // up with the milestones — handing them three on day one would give away the
+  // whole build-out arc.
+  const built = PLANS.slice(0, Math.max(1, phaseSpec(phase).racks)).map((plan) => ({
+    plan,
+    ...buildRack(plan),
+  }));
 
   // Give every rackable node its workloads first: cooling has to be sized
   // against the heat the workloads actually generate, not the idle chassis.

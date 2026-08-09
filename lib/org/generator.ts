@@ -46,6 +46,22 @@ import {
 } from "@/lib/core";
 import { chance, int, mulberry32, pick, sample, shuffle, type Rng } from "./rng";
 import { COMPANY_PARTS, DEPARTMENTS, FIRST_NAMES, LAST_NAMES } from "./namegen";
+import { initialGrowth, phaseSpec, type GrowthPhase } from "@/lib/core";
+
+/**
+ * The departments a company of this size actually has.
+ *
+ * Ordered so the three a startup opens with — Finance, IT, Operations — come
+ * first, because scenario-pinned accounts (j.doe in Finance, a.smith in IT)
+ * have to exist at every phase.
+ */
+export function departmentsFor(phase: GrowthPhase): typeof DEPARTMENTS {
+  const order = ["Finance", "IT", "Operations", "Sales", "HR", "Marketing", "Legal", "Customer Success"];
+  const ranked = order
+    .map((n) => DEPARTMENTS.find((d) => d.name === n))
+    .filter((d): d is (typeof DEPARTMENTS)[number] => !!d);
+  return ranked.slice(0, phaseSpec(phase).departments);
+}
 import { createInventory } from "@/lib/inventory/seed";
 import { buildDatacenter } from "@/lib/datacenter/seed";
 import { seedShares } from "@/lib/directory/seed";
@@ -407,7 +423,7 @@ const winSvc = (
 
 // ── Org profile ─────────────────────────────────────────────────────────────
 
-function generateProfile(seed: number, rng: Rng): OrganizationProfile {
+function generateProfile(seed: number, rng: Rng, phase: GrowthPhase): OrganizationProfile {
   const sector = pick(rng, Object.keys(SECTOR_META) as Sector[]);
   const parts = COMPANY_PARTS[sector];
   const name = `${pick(rng, parts.pre)} ${pick(rng, parts.post)}`;
@@ -415,9 +431,13 @@ function generateProfile(seed: number, rng: Rng): OrganizationProfile {
   // roles a small org never generates (database replica, web-server cluster, …)
   // and would silently drop out of the queue — which defeats a QA profile whose
   // whole point is that every scenario is reachable.
-  const scale = isGodMode()
-    ? "enterprise"
-    : pick(rng, ["small", "midmarket", "enterprise"] as OrgScale[]);
+  // v0.6.0: size follows the GROWTH PHASE, not a dice roll. A career starts
+  // as a startup and grows; God Mode and Sandbox start at full scale because
+  // many templates bind to roles a small org never generates and would
+  // silently drop out of the queue.
+  const spec = phaseSpec(phase);
+  const scale: OrgScale =
+    spec.phase >= 4 ? "enterprise" : spec.phase >= 3 ? "midmarket" : "small";
   const slug = name.split(" ")[0].toLowerCase();
   return {
     id: `org-${seed.toString(16)}`,
@@ -427,7 +447,7 @@ function generateProfile(seed: number, rng: Rng): OrganizationProfile {
     scale,
     domain: `${slug}.internal`,
     netbios: slug.toUpperCase().slice(0, 10),
-    employeeCount: int(rng, ...SCALE_META[scale].employeeRange),
+    employeeCount: spec.employees,
     foundedYear: int(rng, 1978, 2019),
     topologyKind: pick(rng, ["star", "hybrid-mesh", "segmented-vlan", "multi-subnet"] as TopologyKind[]),
   };
@@ -435,7 +455,7 @@ function generateProfile(seed: number, rng: Rng): OrganizationProfile {
 
 // ── Directory (100+ users) ──────────────────────────────────────────────────
 
-function generateDirectory(rng: Rng, org: OrganizationProfile): ActiveDirectoryState {
+function generateDirectory(rng: Rng, org: OrganizationProfile, phase: GrowthPhase): ActiveDirectoryState {
   const ouDn = (dept: string) => `OU=${dept},DC=${org.domain.split(".").join(",DC=")}`;
   const users: ADUser[] = [];
   const seenSams = new Set<string>();
@@ -473,8 +493,11 @@ function generateDirectory(rng: Rng, org: OrganizationProfile): ActiveDirectoryS
   };
 
   // Scenario-pinned accounts (dialogue coherence): the locked j.doe + an admin.
-  const finance = DEPARTMENTS[0];
-  const it = DEPARTMENTS.find((d) => d.name === "IT")!;
+  // A startup has Finance, IT and Operations — not eight departments with one
+  // person in each. The rest arrive with the milestones that hire them.
+  const active = departmentsFor(phase);
+  const finance = active[0];
+  const it = active.find((d) => d.name === "IT")!;
   users.push(
     makeUser("Jane", "Doe", finance, {
       locked: true,
@@ -493,19 +516,19 @@ function generateDirectory(rng: Rng, org: OrganizationProfile): ActiveDirectoryS
   );
 
   for (let i = users.length; i < org.employeeCount; i++) {
-    users.push(makeUser(pick(rng, FIRST_NAMES), pick(rng, LAST_NAMES), pick(rng, DEPARTMENTS)));
+    users.push(makeUser(pick(rng, FIRST_NAMES), pick(rng, LAST_NAMES), pick(rng, active)));
   }
 
   return {
     domainDns: org.domain,
     netbios: org.netbios,
     functionalLevel: "2016",
-    ous: DEPARTMENTS.map((d) => ({ dn: ouDn(d.name), name: d.name })),
+    ous: active.map((d) => ({ dn: ouDn(d.name), name: d.name })),
     users,
     groups: [
       { sid: "S-1-5-21-...-513", name: "Domain Users", scope: "Global" as const, category: "Security" as const, members: [] },
       { sid: "S-1-5-21-...-512", name: "Domain Admins", scope: "Global" as const, category: "Security" as const, members: ["a.smith"] },
-      ...DEPARTMENTS.map((d, i) => ({
+      ...active.map((d, i) => ({
         sid: `S-1-5-21-...-${1700 + i}`,
         name: d.name,
         scope: "Global" as const,
@@ -514,7 +537,7 @@ function generateDirectory(rng: Rng, org: OrganizationProfile): ActiveDirectoryS
       })),
       // Per-department resource groups (share/app access) — onboarding and
       // department-transfer tickets add/remove membership on these.
-      ...DEPARTMENTS.map((d, i) => ({
+      ...active.map((d, i) => ({
         sid: `S-1-5-21-...-${1800 + i}`,
         name: `${d.name.replace(/\s+/g, "")}_RW`,
         scope: "DomainLocal" as const,
@@ -811,12 +834,12 @@ function ipIn(rng: Rng, subnet: SubnetDef, host: number): string {
 
 // ── The generator ───────────────────────────────────────────────────────────
 
-export function generateWorld(seed: number): InfrastructureState {
+export function generateWorld(seed: number, phase: GrowthPhase = 1): InfrastructureState {
   const rng = mulberry32(seed);
-  const org = generateProfile(seed, rng);
+  const org = generateProfile(seed, rng, phase);
   const subnets = generateSubnets(rng, org.topologyKind);
   const sub = (label: string) => subnets.find((s) => s.label.startsWith(label)) ?? subnets[0];
-  const directory = generateDirectory(rng, org);
+  const directory = generateDirectory(rng, org, phase);
 
   const nodes: Record<NodeId, TargetNode> = {};
   const add = (n: TargetNode) => (nodes[n.nodeId] = n);
@@ -1021,8 +1044,9 @@ export function generateWorld(seed: number): InfrastructureState {
       unplannedOutages: [],
     },
     inventory: createInventory(),
-    datacenter: buildDatacenter(rng, nodes),
+    datacenter: buildDatacenter(rng, nodes, phase),
     cloud: createCloudState(org.name, slugOf(org), rng),
+    growth: initialGrowth(phase),
     loadedAt: now,
   };
 }
