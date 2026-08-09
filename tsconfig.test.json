@@ -1,0 +1,14 @@
+{
+  "//": "Transpiles the pure model modules so tests/*.mjs can run them on bare node. Inherits the path aliases from the root config; overrides only module/target/output.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".test-build",
+    "module": "esnext",
+    "target": "es2020",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "jsx": "preserve"
+  },
+  "include": ["lib/core/rack.ts", "lib/core/datacenter.ts"]
+}
