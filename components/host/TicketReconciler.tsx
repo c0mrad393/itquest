@@ -35,48 +35,69 @@ export default function TicketReconciler() {
     // Datacentre incidents are REACTIVE: nothing put them in the queue, the
     // operator's own rack did. Tracked here (not in the infra store) so the
     // physics layer stays pure and free of ticket/notification coupling.
-    let breakerWasTripped: boolean | null = null;
-    let thermalWasCritical: boolean | null = null;
+    // Per-rack, because a floor with three racks has three independent
+    // breakers; one shared flag would swallow the second rack to trip.
+    const breakerWasTripped = new Map<string, boolean>();
+    const thermalWasCritical = new Map<string, boolean>();
+    let outagesSeen: number | null = null;
+    let primed = false;
 
     function checkRackPhysics() {
       const infra = useInfraStore.getState().infra;
-      const tripped = infra.rack.breakerTripped;
-      const critical = rackThermal(infra.rack).state === "critical";
+      const nodes = infra.nodes;
 
-      // First pass only primes the edge detector — a save restored mid-outage
-      // must not re-raise an incident the player already has.
-      if (breakerWasTripped === null) {
-        breakerWasTripped = tripped;
-        thermalWasCritical = critical;
-        return;
+      for (const rack of infra.datacenter.racks) {
+        const tripped = rack.breakerTripped;
+        const critical = rackThermal(rack, nodes).state === "critical";
+
+        // The first pass only primes the edge detector — a save restored
+        // mid-outage must not re-raise an incident the player already has.
+        if (primed) {
+          if (tripped && !breakerWasTripped.get(rack.id)) {
+            const t = useTicketStore.getState().spawnIncident("gen-pdu-trip", infra);
+            if (t) useDialogueStore.getState().syncConversations();
+            useNotificationStore.getState().push({
+              kind: "warning",
+              title: `${rack.name} — PDU breaker tripped`,
+              body: `Cabled load exceeded ${rackPower(rack, nodes).pdu.maxWatts.toLocaleString()}W. Everything in the rack is down.`,
+              badge: t ? t.code : rack.name,
+            });
+          }
+          if (critical && !thermalWasCritical.get(rack.id)) {
+            const t = useTicketStore.getState().spawnIncident("gen-rack-cooling", infra);
+            if (t) useDialogueStore.getState().syncConversations();
+            useNotificationStore.getState().push({
+              kind: "warning",
+              title: `${rack.name} — thermal shutdown`,
+              body: `${rackThermal(rack, nodes).tempC}C. Devices are offline and hardware is failing.`,
+              badge: t ? t.code : rack.name,
+            });
+          }
+        }
+        breakerWasTripped.set(rack.id, tripped);
+        thermalWasCritical.set(rack.id, critical);
       }
 
-      if (tripped && !breakerWasTripped) {
-        const t = useTicketStore.getState().spawnIncident("gen-pdu-trip", infra);
-        if (t) {
-          useDialogueStore.getState().syncConversations();
-          const p = rackPower(infra.rack);
+      // An unplanned outage — a live host yanked without draining it — is the
+      // v0.4.0 lesson delivered as a bill. The store records it; turning that
+      // into an incident is the reconciler's job, same as everything else.
+      const outages = infra.security.unplannedOutages;
+      if (outagesSeen !== null && outages.length > outagesSeen) {
+        for (const o of outages.slice(outagesSeen)) {
+          const t = useTicketStore.getState().spawnIncident("gen-unplanned-outage", infra);
+          if (t) useDialogueStore.getState().syncConversations();
           useNotificationStore.getState().push({
             kind: "warning",
-            title: "Rack PDU breaker tripped",
-            body: `Cabled load exceeded ${p.pdu.maxWatts.toLocaleString()}W. Everything in the rack is down.`,
-            badge: t.code,
+            title: "Unplanned outage",
+            body: `${o.hostname} was powered down carrying ${o.workloadCount} live workload${
+              o.workloadCount === 1 ? "" : "s"
+            }. They did not migrate — they stopped.`,
+            badge: t ? t.code : "Change control",
           });
         }
       }
-      if (critical && !thermalWasCritical) {
-        const t = useTicketStore.getState().spawnIncident("gen-rack-cooling", infra);
-        if (t) useDialogueStore.getState().syncConversations();
-        useNotificationStore.getState().push({
-          kind: "warning",
-          title: "Rack thermal shutdown",
-          body: `${rackThermal(infra.rack).tempC}C — devices are offline and hardware is failing.`,
-          badge: t ? t.code : "Rack Lab",
-        });
-      }
-
-      breakerWasTripped = tripped;
-      thermalWasCritical = critical;
+      outagesSeen = outages.length;
+      primed = true;
     }
 
     function check() {

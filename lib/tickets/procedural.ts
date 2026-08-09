@@ -31,7 +31,10 @@ import type {
   TicketDifficulty,
   TicketDynamicContext,
 } from "@/lib/core";
-import { availableOf, connectedLoadWatts, DEVICE_COOLING_C, isPowered, pduSpec, rackPower, rackThermal } from "@/lib/core";
+import {
+  availableOf, baseHardwareFor, connectedLoadWatts, DEVICE_COOLING_C, floorSummary,
+  isPowered, isRackable, locationOf, pduSpec, rackPower, rackThermal,
+} from "@/lib/core";
 import { int, pick, type Rng } from "@/lib/org/rng";
 import type { TicketTemplate } from "./matrix";
 
@@ -917,14 +920,22 @@ const FAMILIES: Family[] = [
             `• Shed enough load to get back under the PDU rating\n` +
             `• Re-close the breaker${headroomPct < 100 ? ` and leave the rack under ${headroomPct}% load` : ""}`,
           injectFault: (draft) => {
-            draft.rack.breakerTripped = true;
-            draft.rack.trippedAt = Date.now();
+            // Trip the busiest rack — the one where an overload is plausible.
+            const target = [...draft.datacenter.racks].sort(
+              (a, b) => connectedLoadWatts(b) - connectedLoadWatts(a),
+            )[0];
+            if (target) {
+              target.breakerTripped = true;
+              target.trippedAt = Date.now();
+            }
           },
-          win: (infra) => {
-            const r = infra.rack;
-            if (r.breakerTripped) return false;
-            return connectedLoadWatts(r) <= (pduSpec(r.pduId).maxWatts * headroomPct) / 100;
-          },
+          win: (infra) =>
+            // Every rack closed, and none of them sitting on the limit.
+            infra.datacenter.racks.every(
+              (r) =>
+                !r.breakerTripped &&
+                connectedLoadWatts(r, infra.nodes) <= (pduSpec(r.pduId).maxWatts * headroomPct) / 100,
+            ),
         },
       );
     },
@@ -965,13 +976,15 @@ const FAMILIES: Family[] = [
             `Objective:\n` +
             `• Fit and power at least a ${gear} (${needC}C of cooling)\n` +
             `• Bring the rack back out of thermal shutdown`,
-          win: (infra) => {
-            const r = infra.rack;
-            const cooling = r.devices
-              .filter((d) => isPowered(r, d.id))
-              .reduce((t, d) => t + (DEVICE_COOLING_C[d.kind] ?? 0), 0);
-            return cooling >= needC && rackThermal(r).state !== "critical";
-          },
+          win: (infra) =>
+            // Cooling has to land in a rack that is actually carrying load —
+            // fitting a CRAC in an empty rack fixes nothing.
+            infra.datacenter.racks.some((r) => {
+              const cooling = r.devices
+                .filter((d) => isPowered(r, d.id))
+                .reduce((t, d) => t + (DEVICE_COOLING_C[d.kind] ?? 0), 0);
+              return cooling >= needC && connectedLoadWatts(r, infra.nodes) > 0;
+            }) && infra.datacenter.racks.every((r) => rackThermal(r, infra.nodes).state !== "critical"),
         },
       );
     },
@@ -1007,13 +1020,270 @@ const FAMILIES: Family[] = [
             `Objective:\n` +
             `• Procure and cut over to the 208V/30A high-density feed\n` +
             `• Confirm the rack is energised and inside its new envelope`,
-          win: (infra) => {
-            const r = infra.rack;
-            return r.pduId === "pdu-30a" && !r.breakerTripped && !rackPower(r).overloaded;
+          win: (infra) =>
+            infra.datacenter.racks.some(
+              (r) => r.pduId === "pdu-30a" && !r.breakerTripped && !rackPower(r, infra.nodes).overloaded,
+            ),
+        },
+      );
+    },
+  },
+
+  // ── The unified estate (v0.4.0) ──────────────────────────────────────────
+  //
+  // These are the families the Grand Unification exists for. Each one can only
+  // be resolved by crossing the physical/logical boundary in BOTH directions:
+  // read a fault in the Server Manager, act on it in the rack, and prove it in
+  // the Server Manager again. None of them can be closed from one app.
+  {
+    id: "gen-thermal-remediation",
+    category: "System & Web Services",
+    track: "sysadmin",
+    tags: ["rack", "thermal", "migration", "hardware", "procurement"],
+    tiers: ["Tier_3_Hard", "Tier_4_Expert"],
+    variants: 2,
+    build: ({ rng, tier, id }) => {
+      const subject = pick(rng, ["database", "virtualisation", "storage", "directory"]);
+      return base(
+        { category: "System & Web Services", track: "sysadmin", tags: ["rack", "thermal", "migration", "hardware", "procurement"] },
+        tier,
+        id,
+        {
+          personaId: pick(rng, VOICES).persona,
+          severity: "high",
+          priority: "P2",
+          summary: `A ${subject} host is running hot and needs a liquid loop fitted.`,
+          hints: [
+            "Server Manager tells you which host it is and which rack and U it sits in",
+            "You cannot open a live chassis — Maintenance Mode, then live-migrate its workloads to a host with headroom",
+            "Once it is drained you can power it down; then fit the Liquid Cooling Kit on the Datacenter Floor",
+            "Bring it back up afterwards. A host left powered down is still an outage",
+          ],
+          makeContext: (infra, r) => {
+            const racked = Object.values(infra.nodes).filter(
+              (n) => isRackable(n.role) && !!locationOf(infra.datacenter, n.nodeId),
+            );
+            if (racked.length < 2) return null; // nowhere to migrate to
+            const target = pick(r, racked);
+            return { targetNodeId: target.nodeId, targetHostname: target.hostname };
+          },
+          title: (ctx) => `Overheating host ${ctx.targetHostname} — fit liquid cooling without dropping service`,
+          description: (ctx, org) =>
+            `Change request:\n**${ctx.targetHostname}** is the hottest box on the floor and Capacity want a liquid ` +
+            `loop on it before the summer peak. ${org.name} does not accept unplanned downtime on it.\n\n` +
+            `What we found:\n` +
+            `• The chassis runs above its neighbours under sustained load\n` +
+            `• It is carrying live workloads, so it cannot simply be switched off\n\n` +
+            `Objective:\n` +
+            `• Put the host into a change window and live-migrate its workloads elsewhere\n` +
+            `• Power it down cleanly, fit a **Liquid Cooling Kit**, then bring it back online\n\n` +
+            `> Yanking a live host is recorded as an unplanned outage and scored as one.`,
+          win: (infra, ctx) => {
+            const at = locationOf(infra.datacenter, String(ctx.targetNodeId));
+            const node = infra.nodes[String(ctx.targetNodeId)];
+            if (!at || !node) return false;
+            // Fitted, and the host is back in service. Half a job is not a job.
+            return !!at.device.liquidCooled && node.connection.online;
           },
         },
       );
     },
+  },
+  {
+    id: "gen-capacity-upgrade",
+    category: "System & Web Services",
+    track: "sysadmin",
+    tags: ["rack", "capacity-plan", "migration", "ram", "hardware", "procurement"],
+    tiers: ["Tier_3_Hard", "Tier_4_Expert"],
+    variants: 2,
+    build: ({ rng, tier, id }) => {
+      const addGb = pick(rng, [32, 64]);
+      return base(
+        { category: "System & Web Services", track: "sysadmin", tags: ["rack", "capacity-plan", "migration", "ram", "hardware", "procurement"] },
+        tier,
+        id,
+        {
+          personaId: pick(rng, VOICES).persona,
+          summary: `A host is out of memory headroom and needs another ${addGb} GB fitted.`,
+          hints: [
+            "Server Manager shows committed memory against what is physically fitted",
+            "Match the generation — a DDR4 module will not seat in a DDR5 board, and the app will say so",
+            "Drain and power down before opening the chassis; fitting a part into a live host is refused",
+            "Capacity updates the moment the DIMM is in — there is no separate sync step",
+          ],
+          makeContext: (infra, r) => {
+            const racked = Object.values(infra.nodes).filter(
+              (n) => isRackable(n.role) && n.workloads.length > 0 && !!locationOf(infra.datacenter, n.nodeId),
+            );
+            if (racked.length < 2) return null;
+            const target = pick(r, racked);
+            const at = locationOf(infra.datacenter, target.nodeId)!;
+            return {
+              targetNodeId: target.nodeId,
+              targetHostname: target.hostname,
+              rackName: at.rack.name,
+            };
+          },
+          title: (ctx) => `${ctx.targetHostname} is short on memory — fit another ${addGb} GB`,
+          description: (ctx) =>
+            `Capacity request:\n**${ctx.targetHostname}** (${ctx.rackName}) is running close to its committed ` +
+            `memory ceiling and the next workload will not fit.\n\nWhat we found:\n` +
+            `• Committed memory is at or near what is physically installed\n` +
+            `• There are free DIMM slots in the chassis\n\n` +
+            `Objective:\n` +
+            `• Order matching memory from Procurement\n` +
+            `• Drain the host, power it down, and fit at least **${addGb} GB** more\n` +
+            `• Bring it back online and confirm the new capacity in the Server Manager`,
+          win: (infra, ctx) => {
+            const at = locationOf(infra.datacenter, String(ctx.targetNodeId));
+            const node = infra.nodes[String(ctx.targetNodeId)];
+            if (!at || !node || !at.device.hardware) return false;
+            const baseline = baseHardwareFor(at.device.assetItemId);
+            return at.device.hardware.ramGb >= baseline.ramGb + addGb && node.connection.online;
+          },
+        },
+      );
+    },
+  },
+  {
+    id: "gen-missing-uplink",
+    category: "Network & Routing",
+    track: "netops",
+    tags: ["rack", "cabling", "provisioning"],
+    tiers: ["Tier_2_Medium", "Tier_3_Hard"],
+    variants: 2,
+    build: ({ rng, tier, id }) => {
+      const who = pick(rng, ["Capacity Planning", "the build team", "the previous shift", "a contractor"]);
+      return base(
+        { category: "Network & Routing", track: "netops", tags: ["rack", "cabling", "provisioning"] },
+        tier,
+        id,
+        {
+          personaId: pick(rng, VOICES).persona,
+          summary: "A chassis was racked and powered but never patched into the top-of-rack switch.",
+          hints: [
+            "The Datacenter Floor header counts chassis with no uplink",
+            "Select the chassis; if the ToR switch has a free port, Connect uplink provisions it",
+            "No free ports means fitting a bigger switch, not forcing it",
+          ],
+          makeContext: () => ({ department: "IT" }),
+          title: () => `Racked server is unreachable — no top-of-rack uplink`,
+          description: () =>
+            `Handover note:\n${who} racked and powered a server but the build was never finished. It does not ` +
+            `answer, and it is not in the Server Manager at all.\n\nWhat we found:\n` +
+            `• The chassis is mounted and drawing power\n` +
+            `• Nothing is patched from it into the rack's ToR switch, so it has no address\n\n` +
+            `Objective:\n` +
+            `• Patch the uplink and provision the host\n` +
+            `• Confirm it appears in the Server Manager with an IP`,
+          injectFault: (draft) => {
+            // Rack a bare chassis with power but deliberately no uplink. This
+            // is the single most confusing state in the app, so the ticket
+            // that teaches it hands the player the exact symptom.
+            //
+            // ONE orphan, however many variants of this family spawn. God Mode
+            // mints every template at once; without this guard the floor would
+            // grow four unpatched servers and 1kW of phantom load before the
+            // player had touched anything.
+            const alreadyOrphaned = draft.datacenter.racks.some((r) =>
+              r.devices.some(
+                (d) =>
+                  d.kind === "server" &&
+                  !r.cables.some(
+                    (c) => c.kind === "patch" && (c.fromDeviceId === d.id || c.toDeviceId === d.id),
+                  ),
+              ),
+            );
+            if (alreadyOrphaned) return;
+
+            const rack = draft.datacenter.racks.find((r) =>
+              r.devices.some((d) => d.kind === "switch"),
+            );
+            if (!rack) return;
+            const occupied = new Set<number>();
+            for (const d of rack.devices) {
+              for (let u = d.uStart; u < d.uStart + d.uSize; u++) occupied.add(u);
+            }
+            let slot = 0;
+            for (let u = 3; u <= rack.sizeU; u++) {
+              if (!occupied.has(u)) { slot = u; break; }
+            }
+            if (!slot) return;
+            const pdu = rack.devices.find((d) => d.kind === "pdu");
+            const id = `rd-orphan-${draft.org.seed}`;
+            rack.devices.push({
+              id,
+              kind: "server",
+              name: `SRV-NEW-${String(draft.org.seed % 90 + 10)}`,
+              assetItemId: "sku-srv-1u",
+              watts: 250,
+              uStart: slot,
+              uSize: 1,
+              ports: ["eth0", "eth1", "psu"],
+              // Give it real parts: a chassis with no hardware would report
+              // capacity from a fallback and read as "—" in every panel.
+              hardware: baseHardwareFor("sku-srv-1u"),
+            });
+            if (pdu) {
+              const used = new Set(rack.cables.filter((c) => c.toDeviceId === pdu.id).map((c) => c.toPort));
+              const outlet = pdu.ports.find((o) => !used.has(o));
+              if (outlet) {
+                rack.cables.push({
+                  id: `cb-orphan-${draft.org.seed}`,
+                  kind: "power",
+                  fromDeviceId: id,
+                  fromPort: "psu",
+                  toDeviceId: pdu.id,
+                  toPort: outlet,
+                });
+              }
+            }
+          },
+          win: (infra) =>
+            // Nothing on the floor is racked-but-unreachable any more.
+            floorSummary(infra.datacenter, infra.nodes).unlinkedCount === 0,
+        },
+      );
+    },
+  },
+  {
+    id: "gen-unplanned-outage",
+    category: "System & Web Services",
+    track: "sysadmin",
+    tags: ["migration", "outage", "change-control"],
+    tiers: ["Tier_3_Hard"],
+    variants: 1,
+    build: ({ rng, tier, id }) =>
+      base(
+        { category: "System & Web Services", track: "sysadmin", tags: ["migration", "outage", "change-control"] },
+        tier,
+        id,
+        {
+          personaId: pick(rng, VOICES).persona,
+          severity: "critical",
+          priority: "P1",
+          summary: "A host was powered down while it was still carrying live services.",
+          hints: [
+            "Bring every host back online first — the services are down until their host is up",
+            "Next time: Maintenance Mode, then live-migrate, and only then cut power",
+          ],
+          makeContext: () => ({ department: "IT" }),
+          title: () => `Service outage — a live host was powered down without draining it`,
+          description: (_ctx, org) =>
+            `Major incident:\nServices went dark across ${org.name} with no change record. The host carrying them ` +
+            `was powered off while it was still running them.\n\nWhat we found:\n` +
+            `• The workloads did not migrate — they stopped\n` +
+            `• No change window had been declared for the host\n\n` +
+            `Objective:\n` +
+            `• Restore service: every racked host back online\n\n` +
+            `> Change control exists so that this costs a change window instead of an incident.`,
+          // Grades the RECOVERY, not the mistake: bring the estate back up.
+          win: (infra) =>
+            Object.values(infra.nodes)
+              .filter((n) => isRackable(n.role) && !!locationOf(infra.datacenter, n.nodeId))
+              .every((n) => n.connection.online),
+        },
+      ),
   },
 ];
 

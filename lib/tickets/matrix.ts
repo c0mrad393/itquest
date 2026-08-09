@@ -945,13 +945,17 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     win: (infra, ctx) => {
       const vlan = Number(ctx.rackVlanId);
       const port = String(ctx.rackPort);
-      return infra.rack.devices.some((d) => {
-        if (d.kind !== "switch" && d.kind !== "router") return false;
-        if (!d.switchConfig || !isPowered(infra.rack, d.id)) return false;
-        if (!d.switchConfig.vlans.includes(vlan)) return false;
-        const i = d.switchConfig.interfaces.find((x) => x.name === port);
-        return !!i && i.accessVlan === vlan && i.up;
-      });
+      // Any switch on the floor will do — the operator was asked to trunk the
+      // VLAN, not to guess which rack we meant.
+      return infra.datacenter.racks.some((rack) =>
+        rack.devices.some((d) => {
+          if (d.kind !== "switch" && d.kind !== "router") return false;
+          if (!d.switchConfig || !isPowered(rack, d.id)) return false;
+          if (!d.switchConfig.vlans.includes(vlan)) return false;
+          const i = d.switchConfig.interfaces.find((x) => x.name === port);
+          return !!i && i.accessVlan === vlan && i.up;
+        }),
+      );
     },
   },
 
@@ -977,21 +981,22 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     ],
     playable: true,
     makeContext: () => ({ rackIpv4: "10.20.30.10", rackNetmask: "255.255.255.0" }),
-    title: (ctx) => `Provision the new web server in Rack A (${ctx.rackIpv4})`,
+    title: (ctx) => `Provision the new web server (${ctx.rackIpv4})`,
     description: (ctx) =>
-      `Project request:\nBuild out the **new customer-facing web server** in Rack A, end to end.\n\nHardware:\n• Rack a **UPS or PDU**, a **switch**, and **two servers** (the web host plus the app host it talks to)\n• Power every device from the UPS/PDU\n• Patch both servers into the switch\n\nConfiguration:\n• Address the web server as **${ctx.rackIpv4} / ${ctx.rackNetmask}**\n• Give the second server another address **in the same subnet**\n• Start the **web service** on the new host\n\nSign-off:\n• Prove it with the **Ping tool** — the ticket only closes on a successful test`,
+      `Project request:\nBuild out the **new customer-facing web server**, end to end, in any rack with the space.\n\nHardware:\n• Rack a **UPS or PDU**, a **switch**, and **two servers** (the web host plus the app host it talks to)\n• Power every device from the UPS/PDU\n• Patch both servers into the switch\n\nConfiguration:\n• Address the web server as **${ctx.rackIpv4} / ${ctx.rackNetmask}**\n• Give the second server another address **in the same subnet**\n• Start the **web service** on the new host\n\nSign-off:\n• Prove it with the **Ping tool** — the ticket only closes on a successful test`,
     requester: (_ctx, org) => ({ name: "Marcus Feld", role: "Site Reliability Engineer", email: `marcus.feld@${mailDomain(org)}`, department: "IT" }),
     win: (infra, ctx) => {
-      const rack = infra.rack;
-      const web = rack.devices.find(
-        (d) => d.kind === "server" && d.serverConfig?.ipv4.trim() === String(ctx.rackIpv4),
-      );
-      if (!web || !web.serverConfig) return false;
-      if (!web.serverConfig.services.web) return false;
-      if (!isPowered(rack, web.id) || !uplinkOf(rack, web.id)) return false;
-      // A recorded, successful ping involving the new host proves the whole
-      // chain end to end (power + patching + VLAN + addressing).
-      return rack.tests.some((t) => t.ok && (t.fromName === web.name || t.toName === web.name));
+      return infra.datacenter.racks.some((rack) => {
+        const web = rack.devices.find(
+          (d) => d.kind === "server" && d.serverConfig?.ipv4.trim() === String(ctx.rackIpv4),
+        );
+        if (!web || !web.serverConfig) return false;
+        if (!web.serverConfig.services.web) return false;
+        if (!isPowered(rack, web.id) || !uplinkOf(rack, web.id)) return false;
+        // A recorded, successful ping involving the new host proves the whole
+        // chain end to end (power + patching + VLAN + addressing).
+        return rack.tests.some((t) => t.ok && (t.fromName === web.name || t.toName === web.name));
+      });
     },
   },
 
