@@ -21,7 +21,15 @@ import type {
 } from "@/lib/core";
 import { availableOf, canMount, pingCheck, sizeSpec, shippingOption, ADMIN_PORTS, PUBLIC_CIDR, CLOUD_AUDIT_CAP } from "@/lib/core";
 import { connectedLoadWatts, deviceWatts, isPowered, pduSpec, rackThermal } from "@/lib/core";
-import type { InventoryState, RackState } from "@/lib/core";
+import {
+  baseHardwareFor, freeTorPorts, locationOf, migrationBlocker, rackById,
+  shutdownBlocker, torSwitch, uplinkBlocker, uplinkCable,
+} from "@/lib/core";
+import type {
+  DatacenterState, InventoryState, RackNodeMap, RackState, ServerHardware, Workload,
+} from "@/lib/core";
+import { emptyRack } from "@/lib/core";
+import { nextFreeIp, nextRackName, provisionNode } from "@/lib/datacenter/seed";
 import type { ShippingMethod } from "@/lib/core";
 import type { AetherVNode, AuditEvent, ShieldRule, VNodeSize, VNodeStatus } from "@/lib/core";
 import type { CommandResult, NodeId } from "@/lib/core";
@@ -194,29 +202,62 @@ interface InfraStore {
 
   // ── Rack simulator ──
   /** Mount an inventory asset into the rack at `uStart` (consumes 1 unit). */
-  rackMountDevice: (assetItemId: string, uStart: number) => void;
+  rackMountDevice: (rackId: string, assetItemId: string, uStart: number) => void;
   /** Unmount a device, returning it (and its cables) to stock. */
-  rackRemoveDevice: (deviceId: string) => void;
+  rackRemoveDevice: (rackId: string, deviceId: string) => void;
   /** Patch or power a cable between two device ports (consumes a cable). */
-  rackConnectCable: (cable: { kind: CableKind; fromDeviceId: string; fromPort: string; toDeviceId: string; toPort: string }) => void;
-  rackDisconnectCable: (cableId: string) => void;
+  rackConnectCable: (rackId: string, cable: { kind: CableKind; fromDeviceId: string; fromPort: string; toDeviceId: string; toPort: string }) => void;
+  rackDisconnectCable: (rackId: string, cableId: string) => void;
   /** Apply switch CLI results (VLAN db + per-interface access VLAN / shutdown). */
-  rackUpdateSwitch: (deviceId: string, patch: Partial<SwitchConfig>) => void;
+  rackUpdateSwitch: (rackId: string, deviceId: string, patch: Partial<SwitchConfig>) => void;
   /** Apply the server config modal (addressing + services). */
-  rackUpdateServer: (deviceId: string, patch: Partial<ServerConfig>) => void;
+  rackUpdateServer: (rackId: string, deviceId: string, patch: Partial<ServerConfig>) => void;
   /** Run the ping tool and record the result. */
-  rackRunPing: (fromId: string, toId: string) => NetworkTestResult;
+  rackRunPing: (rackId: string, fromId: string, toId: string) => NetworkTestResult;
   /**
    * Re-close the PDU breaker. Refuses while the cabled load still exceeds the
    * ceiling — you have to shed load first, exactly like the real thing.
    */
-  rackResetBreaker: () => boolean;
+  rackResetBreaker: (rackId: string) => boolean;
   /** Swap the rack's PDU (consumes/returns nothing — it is the rack feed). */
-  rackSetPdu: (pduId: string) => void;
+  rackSetPdu: (rackId: string, pduId: string) => void;
   /** Fit or remove a liquid cooling loop on one device (consumes a kit). */
-  rackSetLiquidCooling: (deviceId: string, on: boolean) => void;
+  rackSetLiquidCooling: (rackId: string, deviceId: string, on: boolean) => void;
   /** QA only: suspend the power/thermal physics from `sudo elevate debug`. */
   rackSetOverrides: (patch: { unlimitedPower?: boolean; unlimitedCooling?: boolean }) => void;
+
+  // ── The datacenter floor (v0.4.0) ────────────────────────────────────────
+  /** Roll a new empty rack onto the floor (consumes a rack from stock). */
+  dcAddRack: () => string | null;
+  /**
+   * Patch a racked chassis into its rack's ToR switch and PROVISION it: this
+   * is the moment a lump of metal becomes a server with an IP, a gateway entry
+   * and a row in the Server Manager. Returns the new nodeId, or null with the
+   * reason surfaced by `uplinkBlocker`.
+   */
+  dcConnectUplink: (rackId: string, deviceId: string) => NodeId | null;
+  /** Pull the uplink. The node stays racked but drops off the network. */
+  dcDisconnectUplink: (rackId: string, deviceId: string) => void;
+  /**
+   * Fit a part from stock into a racked chassis. Capacity in the Server
+   * Manager moves the instant this lands — same numbers, no sync step.
+   * Returns null on success, or why it was refused.
+   */
+  dcFitPart: (rackId: string, deviceId: string, skuId: string) => string | null;
+
+  // ── Change control ───────────────────────────────────────────────────────
+  setMaintenanceMode: (nodeId: NodeId, on: boolean) => void;
+  /**
+   * Live-migrate workloads between hosts. Pass `workloadIds` to move a subset,
+   * or omit it to drain the source entirely. Returns null on success, or the
+   * blocking reason.
+   */
+  migrateWorkloads: (fromNodeId: NodeId, toNodeId: NodeId, workloadIds?: string[]) => string | null;
+  /**
+   * Power a node on or off. Cutting power to a host that is not drained is an
+   * unplanned outage: it is recorded so the reconciler can bill for it.
+   */
+  setNodePower: (nodeId: NodeId, on: boolean) => string | null;
   /** Field dispatch complete: mark hardware replaced + bring the node online/healthy. */
   completeHardwareReplacement: (nodeId: NodeId) => void;
   /** Replace the whole infrastructure (used by factory fault injection). */
@@ -244,7 +285,8 @@ function settleRack(
   rack: RackState,
   inventory: InventoryState,
   before: RackState,
-): { rack: RackState; inventory: InventoryState } {
+  nodes: RackNodeMap,
+): { rack: RackState; inventory: InventoryState; cookedNodeId?: string } {
   let next = rack;
   let items = inventory.items;
 
@@ -256,8 +298,9 @@ function settleRack(
   }
 
   // 2) Thermal runaway, on the transition only.
-  const wasCritical = rackThermal(before).state === "critical";
-  if (!wasCritical && rackThermal(next).state === "critical") {
+  const wasCritical = rackThermal(before, nodes).state === "critical";
+  let cookedNodeId: string | undefined;
+  if (!wasCritical && rackThermal(next, nodes).state === "critical") {
     // Hottest = topmost powered box that is not itself cooling gear; heat
     // rises, and killing the fan tray would be a death spiral.
     const victim = next.devices
@@ -265,6 +308,8 @@ function settleRack(
       .filter((d) => d.kind !== "fan-tray" && d.kind !== "crac")
       .sort((a, b) => a.uStart - b.uStart)[0];
     if (victim) {
+      // If the cooked chassis was a live server, its logical half dies with it.
+      cookedNodeId = victim.nodeId;
       items = items.map((i) =>
         i.id === victim.assetItemId
           ? { ...i, deployed: Math.max(0, i.deployed - 1), faulty: i.faulty + 1 }
@@ -280,7 +325,52 @@ function settleRack(
     }
   }
 
-  return { rack: next, inventory: items === inventory.items ? inventory : { ...inventory, items } };
+  return {
+    rack: next,
+    inventory: items === inventory.items ? inventory : { ...inventory, items },
+    cookedNodeId,
+  };
+}
+
+/**
+ * Fold a settled rack (and its inventory) back into the floor.
+ *
+ * A chassis that cooked takes its logical node down with it and drops the
+ * workloads it was carrying — they did not migrate, they died. That is the
+ * whole argument for the maintenance loop, delivered as a consequence rather
+ * than as a warning.
+ */
+function foldRack(
+  infra: InfrastructureState,
+  settled: { rack: RackState; inventory: InventoryState; cookedNodeId?: string },
+): InfrastructureState {
+  let nodes = infra.nodes;
+  if (settled.cookedNodeId && nodes[settled.cookedNodeId]) {
+    const dead = nodes[settled.cookedNodeId];
+    nodes = {
+      ...nodes,
+      [settled.cookedNodeId]: {
+        ...dead,
+        workloads: [],
+        health: { ...dead.health, status: "offline" },
+        connection: { ...dead.connection, online: false, reachable: false, authenticated: false },
+      } as typeof dead,
+    };
+  }
+  return {
+    ...infra,
+    nodes,
+    inventory: settled.inventory,
+    datacenter: {
+      ...infra.datacenter,
+      racks: infra.datacenter.racks.map((r) => (r.id === settled.rack.id ? settled.rack : r)),
+    },
+  };
+}
+
+/** The map the physics reads. Nodes already have the shape it needs. */
+function nodeView(infra: InfrastructureState): RackNodeMap {
+  return infra.nodes as unknown as RackNodeMap;
 }
 
 function patchSecurity(
@@ -981,10 +1071,11 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
 
   // ── Rack simulator ─────────────────────────────────────────────────────────
 
-  rackMountDevice: (assetItemId, uStart) =>
+  rackMountDevice: (rackId, assetItemId, uStart) =>
     set((s) => {
       const inv = s.infra.inventory;
-      const rack = s.infra.rack;
+      const rack = rackById(s.infra.datacenter, rackId);
+      if (!rack) return s;
       const item = inv.items.find((i) => i.id === assetItemId);
       if (!item || !item.deviceKind || availableOf(item) < 1) return s;
       const uSize = item.uSize ?? 1;
@@ -1042,13 +1133,15 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
           ),
         },
         rack,
+        nodeView(s.infra),
       );
-      return { infra: { ...s.infra, inventory: settled.inventory, rack: settled.rack } };
+      return { infra: foldRack(s.infra, settled) };
     }),
 
-  rackRemoveDevice: (deviceId) =>
+  rackRemoveDevice: (rackId, deviceId) =>
     set((s) => {
-      const rack = s.infra.rack;
+      const rack = rackById(s.infra.datacenter, rackId);
+      if (!rack) return s;
       const dev = rack.devices.find((d) => d.id === deviceId);
       if (!dev) return s;
       // Returning a device also reclaims every cable attached to it.
@@ -1072,13 +1165,15 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
         },
         { ...s.infra.inventory, items },
         rack,
+        nodeView(s.infra),
       );
-      return { infra: { ...s.infra, inventory: settled.inventory, rack: settled.rack } };
+      return { infra: foldRack(s.infra, settled) };
     }),
 
-  rackConnectCable: (cable) =>
+  rackConnectCable: (rackId, cable) =>
     set((s) => {
-      const rack = s.infra.rack;
+      const rack = rackById(s.infra.datacenter, rackId);
+      if (!rack) return s;
       const inv = s.infra.inventory;
       if (cable.fromDeviceId === cable.toDeviceId) return s;
       // A port can only carry one cable of a given kind.
@@ -1110,13 +1205,15 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
           ),
         },
         rack,
+        nodeView(s.infra),
       );
-      return { infra: { ...s.infra, inventory: settled.inventory, rack: settled.rack } };
+      return { infra: foldRack(s.infra, settled) };
     }),
 
-  rackDisconnectCable: (cableId) =>
+  rackDisconnectCable: (rackId, cableId) =>
     set((s) => {
-      const rack = s.infra.rack;
+      const rack = rackById(s.infra.datacenter, rackId);
+      if (!rack) return s;
       const cable = rack.cables.find((c) => c.id === cableId);
       if (!cable) return s;
       const sku = cable.kind === "power" ? "sku-power-c13" : "sku-rj45-3m";
@@ -1129,27 +1226,38 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
           ),
         },
         rack,
+        nodeView(s.infra),
       );
-      return { infra: { ...s.infra, inventory: settled.inventory, rack: settled.rack } };
+      return { infra: foldRack(s.infra, settled) };
     }),
 
-  rackResetBreaker: () => {
-    const rack = get().infra.rack;
+  rackResetBreaker: (rackId) => {
+    const infra = get().infra;
+    const rack = rackById(infra.datacenter, rackId);
+    if (!rack) return false;
     if (!rack.breakerTripped) return true;
     // Refuse while the fault is still present. Resetting into an overload is
     // how you weld a breaker shut; here it simply does nothing and the UI says
     // how many watts have to come off first.
-    if (connectedLoadWatts(rack) > pduSpec(rack.pduId).maxWatts) return false;
+    if (connectedLoadWatts(rack, nodeView(infra)) > pduSpec(rack.pduId).maxWatts) return false;
     set((s) => ({
-      infra: { ...s.infra, rack: { ...s.infra.rack, breakerTripped: false, trippedAt: null } },
+      infra: {
+        ...s.infra,
+        datacenter: {
+          ...s.infra.datacenter,
+          racks: s.infra.datacenter.racks.map((r) =>
+            r.id === rackId ? { ...r, breakerTripped: false, trippedAt: null } : r,
+          ),
+        },
+      },
     }));
     return true;
   },
 
-  rackSetPdu: (pduId) =>
+  rackSetPdu: (rackId, pduId) =>
     set((s) => {
-      const rack = s.infra.rack;
-      if (rack.pduId === pduId) return s;
+      const rack = rackById(s.infra.datacenter, rackId);
+      if (!rack || rack.pduId === pduId) return s;
       // The feed is a real unit off the shelf, so a capacity upgrade is a
       // procurement decision rather than a free dropdown.
       const sku = (id: string) => (id === "pdu-30a" ? "sku-pdu-30a" : "sku-pdu-1u");
@@ -1161,13 +1269,14 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
         if (i.id === sku(rack.pduId)) return { ...i, spare: i.spare + 1, deployed: Math.max(0, i.deployed - 1) };
         return i;
       });
-      const settled = settleRack({ ...rack, pduId }, { ...s.infra.inventory, items }, rack);
-      return { infra: { ...s.infra, inventory: settled.inventory, rack: settled.rack } };
+      const settled = settleRack({ ...rack, pduId }, { ...s.infra.inventory, items }, rack, nodeView(s.infra));
+      return { infra: foldRack(s.infra, settled) };
     }),
 
-  rackSetLiquidCooling: (deviceId, on) =>
+  rackSetLiquidCooling: (rackId, deviceId, on) =>
     set((s) => {
-      const rack = s.infra.rack;
+      const rack = rackById(s.infra.datacenter, rackId);
+      if (!rack) return s;
       const dev = rack.devices.find((d) => d.id === deviceId);
       if (!dev || !!dev.liquidCooled === on) return s;
       const kit = s.infra.inventory.items.find((i) => i.id === "sku-liquid-kit");
@@ -1184,26 +1293,354 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
         { ...rack, devices: rack.devices.map((d) => (d.id === deviceId ? { ...d, liquidCooled: on } : d)) },
         { ...s.infra.inventory, items },
         rack,
+        nodeView(s.infra),
       );
-      return { infra: { ...s.infra, inventory: settled.inventory, rack: settled.rack } };
+      return { infra: foldRack(s.infra, settled) };
     }),
 
   rackSetOverrides: (patch) =>
     set((s) => ({
       infra: {
         ...s.infra,
-        rack: { ...s.infra.rack, overrides: { ...s.infra.rack.overrides, ...patch } },
+        // A QA switch is a property of the SIMULATION, not of one rack, so it
+        // lands on every rack on the floor at once.
+        datacenter: {
+          ...s.infra.datacenter,
+          racks: s.infra.datacenter.racks.map((r) => ({
+            ...r,
+            overrides: { ...r.overrides, ...patch },
+          })),
+        },
       },
     })),
 
-  rackUpdateSwitch: (deviceId, patch) =>
+  // ── The datacenter floor (v0.4.0) ────────────────────────────────────────
+
+  dcAddRack: () => {
+    const infra = get().infra;
+    const stock = infra.inventory.items.find((i) => i.id === "sku-rack-24u");
+    if (!stock || availableOf(stock) < 1) return null;
+    const { id, name } = nextRackName(infra.datacenter);
     set((s) => ({
       infra: {
         ...s.infra,
-        rack: {
-          ...s.infra.rack,
-          devices: s.infra.rack.devices.map((d) =>
-            d.id === deviceId && d.switchConfig ? { ...d, switchConfig: { ...d.switchConfig, ...patch } } : d,
+        inventory: {
+          ...s.infra.inventory,
+          items: s.infra.inventory.items.map((i) =>
+            i.id === "sku-rack-24u" ? { ...i, spare: i.spare - 1, deployed: i.deployed + 1 } : i,
+          ),
+        },
+        datacenter: { ...s.infra.datacenter, racks: [...s.infra.datacenter.racks, emptyRack(id, name)] },
+      },
+    }));
+    return id;
+  },
+
+  dcConnectUplink: (rackId, deviceId) => {
+    const infra = get().infra;
+    const rack = rackById(infra.datacenter, deviceId ? rackId : rackId);
+    if (!rack) return null;
+    if (uplinkBlocker(rack, deviceId)) return null;
+
+    const device = rack.devices.find((d) => d.id === deviceId)!;
+    const tor = torSwitch(rack)!;
+    const port = freeTorPorts(rack)[0];
+
+    // The uplink consumes a patch lead like any other cable.
+    const patchStock = infra.inventory.items.find((i) => i.id === "sku-rj45-3m");
+    if (!patchStock || availableOf(patchStock) < 1) return null;
+
+    // Already bound? Then this is a re-patch, not a provision.
+    let node = device.nodeId ? infra.nodes[device.nodeId] : undefined;
+    let nodes = infra.nodes;
+    let gateway = infra.gateway;
+
+    if (!node) {
+      const taken = new Set(Object.values(infra.nodes).map((n) => n.connection.ip));
+      const subnet = infra.subnets.find((sn) => sn.label.startsWith("Core")) ?? infra.subnets[0];
+      const ip = nextFreeIp(taken, subnet.cidr);
+      node = provisionNode(device, rack, infra.org, ip);
+      nodes = { ...nodes, [node.nodeId]: node };
+      gateway = [
+        ...gateway,
+        { nodeId: node.nodeId, label: node.displayName, protocol: node.connection.protocol, ip, reachable: true },
+      ];
+    }
+
+    const bound = node;
+    set((st) => {
+      const live = rackById(st.infra.datacenter, rackId);
+      if (!live) return st;
+      const settled = settleRack(
+        {
+          ...live,
+          devices: live.devices.map((d) => (d.id === deviceId ? { ...d, nodeId: bound.nodeId } : d)),
+          cables: [
+            ...live.cables,
+            {
+              id: `cb-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              kind: "patch" as const,
+              fromDeviceId: deviceId,
+              fromPort: "eth0",
+              toDeviceId: tor.id,
+              toPort: port,
+            },
+          ],
+        },
+        {
+          ...st.infra.inventory,
+          items: st.infra.inventory.items.map((i) =>
+            i.id === "sku-rj45-3m" ? { ...i, spare: Math.max(0, i.spare - 1), deployed: i.deployed + 1 } : i,
+          ),
+        },
+        live,
+        nodeView(st.infra),
+      );
+      return { infra: foldRack({ ...st.infra, nodes, gateway }, settled) };
+    });
+    return bound.nodeId;
+  },
+
+  dcDisconnectUplink: (rackId, deviceId) =>
+    set((s) => {
+      const rack = rackById(s.infra.datacenter, rackId);
+      if (!rack) return s;
+      const cable = uplinkCable(rack, deviceId);
+      if (!cable) return s;
+      const device = rack.devices.find((d) => d.id === deviceId);
+
+      // Pulling the uplink does NOT delete the server — the box and its data
+      // are still there. It drops off the network, which is exactly the state
+      // the "no port, no network" incident describes.
+      let nodes = s.infra.nodes;
+      if (device?.nodeId && nodes[device.nodeId]) {
+        const n = nodes[device.nodeId];
+        nodes = {
+          ...nodes,
+          [device.nodeId]: {
+            ...n,
+            connection: { ...n.connection, reachable: false, authenticated: false },
+            health: { ...n.health, status: "offline" },
+          } as typeof n,
+        };
+      }
+      const settled = settleRack(
+        { ...rack, cables: rack.cables.filter((c) => c.id !== cable.id) },
+        {
+          ...s.infra.inventory,
+          items: s.infra.inventory.items.map((i) =>
+            i.id === "sku-rj45-3m" ? { ...i, spare: i.spare + 1, deployed: Math.max(0, i.deployed - 1) } : i,
+          ),
+        },
+        rack,
+        nodeView(s.infra),
+      );
+      return { infra: foldRack({ ...s.infra, nodes }, settled) };
+    }),
+
+  dcFitPart: (rackId, deviceId, skuId) => {
+    const infra = get().infra;
+    const rack = rackById(infra.datacenter, rackId);
+    const device = rack?.devices.find((d) => d.id === deviceId);
+    if (!rack || !device) return "That chassis is not in this rack.";
+    if (device.kind !== "server") return "Only servers take internal parts.";
+
+    const part = infra.inventory.items.find((i) => i.id === skuId);
+    if (!part || availableOf(part) < 1) return `No ${part?.name ?? "part"} on the shelf. Order one from Procurement.`;
+
+    const node = device.nodeId ? infra.nodes[device.nodeId] : undefined;
+    // THE MAINTENANCE CONTRACT. You cannot open a live chassis. This is the
+    // rule that makes migration matter — without it every upgrade is free.
+    if (node) {
+      if (node.connection.online) return "The host is still running. Power it down before opening the chassis.";
+      if (!node.maintenance?.mode) return "Declare a change window first — put the host into Maintenance Mode.";
+    }
+
+    const hw = device.hardware ?? baseHardwareFor(device.assetItemId);
+    const traits = part.traits ?? {};
+    const next: ServerHardware = { ...hw };
+
+    if (part.category === "memory") {
+      if (traits.memoryType && traits.memoryType !== hw.ramType) {
+        return `This board takes ${hw.ramType}; that module is ${traits.memoryType}. The slots are keyed differently.`;
+      }
+      if (hw.dimmsUsed >= hw.dimmSlots) return "Every DIMM slot is populated. Pull a smaller module first.";
+      next.ramGb = hw.ramGb + (traits.capacityGb ?? 0);
+      next.dimmsUsed = hw.dimmsUsed + 1;
+    } else if (part.category === "storage") {
+      next.storageGb = hw.storageGb + (traits.capacityGb ?? 0);
+    } else {
+      return "That part does not go inside a server chassis.";
+    }
+
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        inventory: {
+          ...s.infra.inventory,
+          items: s.infra.inventory.items.map((i) =>
+            i.id === skuId ? { ...i, spare: Math.max(0, i.spare - 1), deployed: i.deployed + 1 } : i,
+          ),
+        },
+        datacenter: {
+          ...s.infra.datacenter,
+          racks: s.infra.datacenter.racks.map((r) =>
+            r.id !== rackId
+              ? r
+              : { ...r, devices: r.devices.map((d) => (d.id === deviceId ? { ...d, hardware: next } : d)) },
+          ),
+        },
+      },
+    }));
+    return null;
+  },
+
+  // ── Change control ───────────────────────────────────────────────────────
+
+  setMaintenanceMode: (nodeId, on) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node) return s;
+      return {
+        infra: {
+          ...s.infra,
+          nodes: {
+            ...s.infra.nodes,
+            [nodeId]: {
+              ...node,
+              maintenance: {
+                mode: on,
+                drainedAt: on && node.workloads.length === 0 ? Date.now() : null,
+              },
+            } as typeof node,
+          },
+        },
+      };
+    }),
+
+  migrateWorkloads: (fromNodeId, toNodeId, workloadIds) => {
+    const infra = get().infra;
+    const from = infra.nodes[fromNodeId];
+    const to = infra.nodes[toNodeId];
+    if (!from || !to) return "Unknown host.";
+    if (fromNodeId === toNodeId) return "That is the same host.";
+
+    const moving = workloadIds
+      ? from.workloads.filter((w) => workloadIds.includes(w.id))
+      : from.workloads;
+    if (moving.length === 0) return "Nothing to migrate — the source is already drained.";
+
+    const at = locationOf(infra.datacenter, toNodeId);
+    if (!at) return `${to.hostname} is not racked, so it cannot take a workload.`;
+
+    const blocker = migrationBlocker(
+      {
+        device: at.device,
+        rack: at.rack,
+        workloads: to.workloads,
+        online: to.connection.online,
+        inMaintenance: !!to.maintenance?.mode,
+      },
+      moving,
+      nodeView(infra),
+    );
+    if (blocker) return blocker;
+
+    const movingIds = new Set(moving.map((w) => w.id));
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        nodes: {
+          ...s.infra.nodes,
+          [fromNodeId]: {
+            ...s.infra.nodes[fromNodeId],
+            workloads: s.infra.nodes[fromNodeId].workloads.filter((w) => !movingIds.has(w.id)),
+            // Draining a host inside a change window stamps the moment it
+            // became safe to touch — the Server Manager shows it as the
+            // green light for pulling power.
+            maintenance: s.infra.nodes[fromNodeId].maintenance
+              ? {
+                  mode: s.infra.nodes[fromNodeId].maintenance!.mode,
+                  drainedAt:
+                    s.infra.nodes[fromNodeId].workloads.filter((w) => !movingIds.has(w.id)).length === 0
+                      ? Date.now()
+                      : null,
+                }
+              : undefined,
+          } as TargetNode,
+          [toNodeId]: {
+            ...s.infra.nodes[toNodeId],
+            workloads: [...s.infra.nodes[toNodeId].workloads, ...moving],
+          } as TargetNode,
+        },
+      },
+    }));
+    return null;
+  },
+
+  setNodePower: (nodeId, on) => {
+    const infra = get().infra;
+    const node = infra.nodes[nodeId];
+    if (!node) return "Unknown host.";
+    if (node.connection.online === on) return null;
+
+    // Powering ON is always allowed. Powering OFF is the dangerous half.
+    let unplanned = false;
+    if (!on) {
+      const blocker = shutdownBlocker(node);
+      if (blocker) {
+        // The operator is allowed to do it anyway — an engineer CAN yank a
+        // live box. The simulation just records that they did, and the
+        // reconciler turns that into the outage it really is.
+        unplanned = true;
+      }
+    }
+
+    set((s) => {
+      const n = s.infra.nodes[nodeId];
+      return {
+        infra: {
+          ...s.infra,
+          nodes: {
+            ...s.infra.nodes,
+            [nodeId]: {
+              ...n,
+              connection: { ...n.connection, online: on, authenticated: on && n.connection.authenticated },
+              health: { ...n.health, status: on ? "healthy" : "offline" },
+              // Workloads on a host that is yanked do not survive it.
+              workloads: on ? n.workloads : unplanned ? [] : n.workloads,
+            } as TargetNode,
+          },
+          security: unplanned
+            ? {
+                ...s.infra.security,
+                unplannedOutages: [
+                  ...s.infra.security.unplannedOutages,
+                  { nodeId, hostname: n.hostname, at: Date.now(), workloadCount: n.workloads.length },
+                ],
+              }
+            : s.infra.security,
+        },
+      };
+    });
+    return unplanned ? shutdownBlocker(node) : null;
+  },
+
+  rackUpdateSwitch: (rackId, deviceId, patch) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        datacenter: {
+          ...s.infra.datacenter,
+          racks: s.infra.datacenter.racks.map((r) =>
+            r.id !== rackId
+              ? r
+              : {
+                  ...r,
+                  devices: r.devices.map((d) =>
+                    d.id === deviceId && d.switchConfig ? { ...d, switchConfig: { ...d.switchConfig, ...patch } } : d,
+                  ),
+                },
           ),
         },
       },
@@ -1315,21 +1752,31 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
     return true;
   },
 
-  rackUpdateServer: (deviceId, patch) =>
+  rackUpdateServer: (rackId, deviceId, patch) =>
     set((s) => ({
       infra: {
         ...s.infra,
-        rack: {
-          ...s.infra.rack,
-          devices: s.infra.rack.devices.map((d) =>
-            d.id === deviceId && d.serverConfig ? { ...d, serverConfig: { ...d.serverConfig, ...patch } } : d,
+        datacenter: {
+          ...s.infra.datacenter,
+          racks: s.infra.datacenter.racks.map((r) =>
+            r.id !== rackId
+              ? r
+              : {
+                  ...r,
+                  devices: r.devices.map((d) =>
+                    d.id === deviceId && d.serverConfig ? { ...d, serverConfig: { ...d.serverConfig, ...patch } } : d,
+                  ),
+                },
           ),
         },
       },
     })),
 
-  rackRunPing: (fromId, toId) => {
-    const rack = get().infra.rack;
+  rackRunPing: (rackId, fromId, toId) => {
+    const rack = rackById(get().infra.datacenter, rackId);
+    if (!rack) {
+      return { id: `t-${Date.now()}`, at: Date.now(), fromName: fromId, toName: toId, ok: false, detail: "That rack is not on the floor." };
+    }
     const a = rack.devices.find((d) => d.id === fromId);
     const b = rack.devices.find((d) => d.id === toId);
     const res = pingCheck(rack, fromId, toId);
@@ -1342,7 +1789,15 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       detail: res.detail,
     };
     set((s) => ({
-      infra: { ...s.infra, rack: { ...s.infra.rack, tests: [entry, ...s.infra.rack.tests].slice(0, 25) } },
+      infra: {
+        ...s.infra,
+        datacenter: {
+          ...s.infra.datacenter,
+          racks: s.infra.datacenter.racks.map((r) =>
+            r.id === rackId ? { ...r, tests: [entry, ...r.tests].slice(0, 25) } : r,
+          ),
+        },
+      },
     }));
     return entry;
   },
