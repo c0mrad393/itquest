@@ -176,5 +176,11 @@ export interface Ticket {
    * the first hint is spent — after that `hintsRevealed` already stands.
    */
   hardMode: boolean;
+  /**
+   * A company project rather than a service request (v0.6.0). Cannot be
+   * outsourced or escalated away — the milestone that created it is the
+   * business deciding, not the service desk being asked.
+   */
+  mandatory?: boolean;
   escalationCount: number;
 }

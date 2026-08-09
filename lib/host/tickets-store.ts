@@ -174,7 +174,8 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
   outsource: (id) =>
     set((s) => ({
       tickets: s.tickets.map((t) =>
-        t.id === id
+        // A mandatory project is not something a contractor can be handed.
+        t.id === id && !t.mandatory
           ? {
               ...t,
               status: "resolved",

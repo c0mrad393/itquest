@@ -80,6 +80,7 @@ export function buildTicket(
     hints: template.hints,
     hintsRevealed: 0,
     hardMode: false,
+    mandatory: template.mandatory,
     escalationCount: 0,
   };
 

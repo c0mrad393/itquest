@@ -34,7 +34,7 @@ import type {
 import {
   availableOf, baseHardwareFor, connectedLoadWatts, DEVICE_COOLING_C, floorSummary,
   isPowered, isRackable, locationOf, pduSpec, rackPower, rackThermal,
-  effectiveGroups, hasAccess,
+  effectiveGroups, hasAccess, phaseSpec, poolExhausted, storageDemandGb,
 } from "@/lib/core";
 import type { ShareAccess } from "@/lib/core";
 import { int, pick, sample, type Rng } from "@/lib/org/rng";
@@ -1528,6 +1528,196 @@ const FAMILIES: Family[] = [
         },
       );
     },
+  },
+
+  // ── Growing pains (v0.6.0) ───────────────────────────────────────────────
+  //
+  // These arrive BECAUSE the company grew. Each one is the bill for a milestone
+  // the operator has already banked: more staff means more addresses, more
+  // home-drive data and more watts, and the estate that carried 35 people does
+  // not carry 300. They grade the infrastructure fix, never the headcount.
+  {
+    id: "gen-scaling-project",
+    category: "System & Web Services",
+    track: "sysadmin",
+    tags: ["rack", "capacity-plan", "shares", "onboarding", "growth"],
+    tiers: ["Tier_3_Hard"],
+    variants: 1,
+    build: ({ rng, tier, id }) =>
+      base(
+        { category: "System & Web Services", track: "sysadmin", tags: ["rack", "capacity-plan", "shares", "onboarding", "growth"] },
+        tier,
+        id,
+        {
+          personaId: pick(rng, VOICES).persona,
+          severity: "high",
+          priority: "P2",
+          // A milestone project is the company's decision, not a request the
+          // service desk gets to decline.
+          mandatory: true,
+          summary: "The company has grown. The infrastructure has not.",
+          hints: [
+            "Active Directory already has the new starters — the organizational units and groups came with them",
+            "Check the file server has storage for their home drives and the shares to put them in",
+            "Check every rack is still inside its power and thermal envelope",
+          ],
+          makeContext: (infra) => {
+            const spec = phaseSpec(infra.growth.phase);
+            return {
+              department: "IT",
+              serviceName: spec.label,
+              accessLevel: "change" as const,
+            };
+          },
+          title: (_ctx, org) => `Scale-up project — ${org.name} has grown`,
+          description: (_ctx, org) => {
+            return (
+              `Project brief:\n**${org.name}** now employs ${org.employeeCount} people. The accounts exist; ` +
+              `the infrastructure to serve them does not yet.\n\nWhat we found:\n` +
+              `• Headcount has outgrown what the current estate was sized for\n` +
+              `• Addressing, storage and power all need a look before something breaks\n\n` +
+              `Objective:\n` +
+              `• Bring the estate back inside its limits — every rack under its PDU ceiling, ` +
+              `thermally optimal, and with room for what comes next\n\n` +
+              `> This one cannot be declined. It is the company's project, not a service request.`
+            );
+          },
+          requester: (_ctx, org) => ({
+            name: "Programme Office",
+            role: "Head of IT",
+            email: `it-programme@${mailDomain(org)}`,
+            department: "IT",
+          }),
+          win: (infra) =>
+            // The estate is healthy at the CURRENT size: no dark racks, no rack
+            // cooking, nothing over its feed. Deliberately broad — the project
+            // is "make it work at this scale", not a checklist.
+            infra.datacenter.racks.every(
+              (r) =>
+                !r.breakerTripped &&
+                !rackPower(r, infra.nodes).overloaded &&
+                rackThermal(r, infra.nodes).state !== "critical",
+            ) &&
+            Object.values(infra.nodes)
+              .filter((n) => isRackable(n.role) && !!locationOf(infra.datacenter, n.nodeId))
+              .every((n) => n.connection.online),
+        },
+      ),
+  },
+  {
+    id: "gen-dhcp-exhaustion",
+    category: "Network & Routing",
+    track: "netops",
+    tags: ["network", "dhcp", "capacity", "growth"],
+    tiers: ["Tier_2_Medium", "Tier_3_Hard"],
+    variants: 2,
+    build: ({ rng, tier, id }) => {
+      const voice = pick(rng, VOICES);
+      return base(
+        { category: "Network & Routing", track: "netops", tags: ["network", "dhcp", "capacity", "growth"] },
+        tier,
+        id,
+        {
+          personaId: voice.persona,
+          summary: "New starters cannot get an address — the user pool is full.",
+          hints: [
+            "Count the staff against what a /24 can actually hand out: 254 usable addresses",
+            "NetOps Console — re-route the user link onto a subnet with room",
+            "A wider prefix is the fix; handing out static addresses is not",
+          ],
+          makeContext: (infra, r) => {
+            // Only real once the company is big enough to have filled a /24.
+            const infraNodes = Object.values(infra.nodes).filter((n) => isRackable(n.role)).length;
+            if (!poolExhausted(infra.growth.employees, infraNodes)) return null;
+            const link = pick(r, infra.links.filter((l) => l.to !== "internet"));
+            if (!link) return null;
+            const roomy = infra.subnets.find((sn) => sn.cidr !== link.via);
+            if (!roomy) return null;
+            return {
+              linkId: link.id,
+              affectedVlan: link.via,
+              rackIpv4: roomy.cidr,
+              department: pick(r, DEPARTMENTS),
+            };
+          },
+          title: () => `DHCP pool exhausted — new starters cannot get on the network`,
+          description: (ctx, org) =>
+            `Service desk:\nFour of this week's starters in ${ctx.department} have no network. Their machines ` +
+            `pull an APIPA address and give up.\n\nWhat we found:\n` +
+            `• ${org.name} now employs ${org.employeeCount} people\n` +
+            `• The user subnet **${ctx.affectedVlan}** is a /24 — 254 usable addresses, and the estate needs more\n\n` +
+            `Objective:\n` +
+            `• Move the user segment onto a subnet with room\n\n` +
+            `> Static addresses for four people is not a fix, it is four more tickets next month.`,
+          requester: (_ctx, org) => ({
+            name: "Service Desk",
+            role: "Team Lead",
+            email: `servicedesk@${mailDomain(org)}`,
+            department: "IT",
+          }),
+          // Grades the ACTION: the link is off the exhausted subnet.
+          win: (infra, ctx) => {
+            const l = infra.links.find((x) => x.id === ctx.linkId);
+            return !!l && l.via !== ctx.affectedVlan;
+          },
+        },
+      );
+    },
+  },
+  {
+    id: "gen-storage-exhaustion",
+    category: "System & Web Services",
+    track: "sysadmin",
+    tags: ["rack", "storage", "hardware", "capacity-plan", "migration", "growth"],
+    tiers: ["Tier_3_Hard", "Tier_4_Expert"],
+    variants: 2,
+    build: ({ rng, tier, id }) =>
+      base(
+        { category: "System & Web Services", track: "sysadmin", tags: ["rack", "storage", "hardware", "capacity-plan", "migration", "growth"] },
+        tier,
+        id,
+        {
+          personaId: pick(rng, VOICES).persona,
+          summary: "The file server is out of disk — home drives have outgrown the array.",
+          hints: [
+            "Work out what the headcount needs: roughly 12 GB of home drive each",
+            "Order enterprise disks from Procurement",
+            "You cannot open a live chassis — drain it in the Server Manager first, then fit the array",
+          ],
+          makeContext: (infra) => {
+            const fs = fileServerOf(infra);
+            const at = fs ? locationOf(infra.datacenter, fs.nodeId) : undefined;
+            if (!fs || !at) return null;
+            const needGb = storageDemandGb(infra.growth.employees);
+            // Only fires when the fitted array genuinely cannot carry the staff.
+            if (at.device.hardware && at.device.hardware.storageGb >= needGb) return null;
+            return {
+              targetNodeId: fs.nodeId,
+              targetHostname: fs.hostname,
+              rackName: at.rack.name,
+              serviceName: `${needGb} GB`,
+            };
+          },
+          title: (ctx) => `${ctx.targetHostname} is out of storage — home drives will not fit`,
+          description: (ctx, org) =>
+            `Capacity alert:\n**${ctx.targetHostname}** (${ctx.rackName}) has no room left. Home drives for ` +
+            `${org.employeeCount} staff need about **${ctx.serviceName}** and the fitted array is smaller than that.` +
+            `\n\nWhat we found:\n` +
+            `• Shares are refusing writes as the volume fills\n` +
+            `• The chassis has bays free\n\nObjective:\n` +
+            `• Fit enough enterprise storage to carry the current headcount\n` +
+            `• Do it inside a change window — this host serves every department`,
+          win: (infra, ctx) => {
+            const at = locationOf(infra.datacenter, String(ctx.targetNodeId));
+            const node = infra.nodes[String(ctx.targetNodeId)];
+            if (!at?.device.hardware || !node) return false;
+            return (
+              at.device.hardware.storageGb >= storageDemandGb(infra.growth.employees) &&
+              node.connection.online
+            );
+          },
+        },
+      ),
   },
 ];
 

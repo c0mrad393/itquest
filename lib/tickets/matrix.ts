@@ -56,6 +56,8 @@ export interface TicketTemplate {
   origin: TicketOrigin;
   summary: string; // Toolbox runbook summary
   hints: string[];
+  /** Company project: cannot be declined or outsourced. */
+  mandatory?: boolean;
   /** Whether this template's win-condition is fully interactive this build. */
   playable: boolean;
 

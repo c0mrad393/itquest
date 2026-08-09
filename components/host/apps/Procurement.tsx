@@ -566,7 +566,9 @@ function Emergency() {
   const [confirming, setConfirming] = useState<string | null>(null);
 
   const open = tickets.filter(
-    (t) => !t.mailOnly && t.status !== "resolved" && t.status !== "closed",
+    // Company projects are excluded: a milestone is the business deciding what
+    // gets built, not a request the desk can buy its way out of.
+    (t) => !t.mailOnly && !t.mandatory && t.status !== "resolved" && t.status !== "closed",
   );
 
   function hire(ticket: Ticket) {
