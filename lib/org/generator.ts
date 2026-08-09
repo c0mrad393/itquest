@@ -48,6 +48,7 @@ import { chance, int, mulberry32, pick, sample, shuffle, type Rng } from "./rng"
 import { COMPANY_PARTS, DEPARTMENTS, FIRST_NAMES, LAST_NAMES } from "./namegen";
 import { createInventory } from "@/lib/inventory/seed";
 import { buildDatacenter } from "@/lib/datacenter/seed";
+import { seedShares } from "@/lib/directory/seed";
 import { createCloudState } from "@/lib/cloud/seed";
 
 const now = Date.now();
@@ -851,9 +852,18 @@ export function generateWorld(seed: number): InfrastructureState {
     ),
   );
 
+  // Every estate has a file server from v0.5.0 — the share layer is core, not
+  // a scale perk, and an org with no shares has no access requests to work.
+  const fs = makeWindowsNode(
+    rng, org,
+    { role: "file-server", os: "windows", hostname: `${org.netbios.slice(0, 4)}-FS-${suffix()}`, ip: ipIn(rng, sub("Storage"), 30), subnet: sub("Storage").cidr },
+    "File Server",
+  );
+  fs.shares = seedShares(directory, fs, rng);
+  add(fs);
+
   if (org.scale !== "small") {
     add(makeLinuxNode(rng, org, { role: "database", os: "linux", hostname: `sql-${suffix()}`, ip: ipIn(rng, sub("Storage"), 21), subnet: sub("Storage").cidr }, "Database · PostgreSQL"));
-    add(makeWindowsNode(rng, org, { role: "file-server", os: "windows", hostname: `${org.netbios.slice(0, 4)}-FS-${suffix()}`, ip: ipIn(rng, sub("Storage"), 30), subnet: sub("Storage").cidr }, "File Server"));
     if (org.scale === "midmarket" && chance(rng, 0.5)) {
       add(makeWindowsNode(rng, org, { role: "workstation", os: "windows", hostname: `WS-${int(rng, 500, 899)}`, ip: ipIn(rng, sub("User"), int(rng, 20, 240)), subnet: sub("User").cidr }, "Staff Workstation"));
     }
