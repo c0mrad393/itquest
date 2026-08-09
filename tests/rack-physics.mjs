@@ -40,6 +40,13 @@ import {
   uplinkBlocker,
   workloadDemand,
 } from "../.test-build/core/datacenter.js";
+import {
+  accessBlocker,
+  accessForGroups,
+  accessForUser,
+  hasAccess,
+} from "../.test-build/core/fileshares.js";
+import { effectiveGroups, gatewayTargets, reachNode } from "../.test-build/core/directory.js";
 
 let pass = 0;
 let fail = 0;
@@ -378,6 +385,218 @@ group("Live migration");
 
   const dark = { ...healthy, rack: { ...rack, breakerTripped: true } };
   eq("nor can one behind an open breaker", migrationBlocker(dark, [wl("web", 65, 4)]), "Rack 01 has an open breaker.");
+}
+
+
+// ── The software topology (v0.5.0) ──────────────────────────────────────────
+//
+// Same discipline as the physical layer: the apps and the ticket
+// win-conditions call these, so a regression here changes what the game asks
+// of the player without anything else looking different.
+
+const share = (acl) => ({
+  id: "sh1",
+  name: "Board_Reports",
+  path: "\\\\fs01\\Board_Reports",
+  serverNodeId: "fs01",
+  description: "",
+  acl,
+  sizeGb: 20,
+  owner: "Finance",
+});
+
+/** A directory with one nested group, because nesting is where audits go wrong. */
+const dir = {
+  domainDns: "corp.internal",
+  netbios: "CORP",
+  functionalLevel: "2016",
+  ous: [{ dn: "OU=Finance", name: "Finance" }],
+  computers: [],
+  users: [
+    { samAccountName: "j.doe", displayName: "Jane Doe", department: "Finance", memberOf: ["Domain Users"], enabled: true },
+    { samAccountName: "m.ray", displayName: "Mo Ray", department: "Marketing", memberOf: ["Domain Users"], enabled: true },
+  ],
+  groups: [
+    { sid: "1", name: "Domain Users", scope: "Global", category: "Security", members: [] },
+    { sid: "2", name: "Finance_RW", scope: "DomainLocal", category: "Security", members: ["j.doe"] },
+    // Finance_RW is itself a member of Leadership: j.doe inherits it.
+    { sid: "3", name: "Leadership", scope: "DomainLocal", category: "Security", members: ["Finance_RW"] },
+  ],
+};
+
+group("Share access resolution");
+{
+  const s = share([{ groupName: "Finance_RW", access: "change" }]);
+  eq("a matching grant is honoured", accessForGroups(s, ["Finance_RW"]), "change");
+  eq("a non-member gets nothing", accessForGroups(s, ["Marketing_RW"]), null);
+
+  const multi = share([
+    { groupName: "Domain Users", access: "read" },
+    { groupName: "Finance_RW", access: "full" },
+  ]);
+  eq("the most permissive grant wins", accessForGroups(multi, ["Domain Users", "Finance_RW"]), "full");
+
+  // Windows semantics, and the reason "but they ARE in the group" is so common.
+  const denied = share([
+    { groupName: "Finance_RW", access: "full" },
+    { groupName: "Contractors", access: "read", deny: true },
+  ]);
+  eq("an explicit deny beats full control", accessForGroups(denied, ["Finance_RW", "Contractors"]), null);
+  eq("...and only bites members of the denied group", accessForGroups(denied, ["Finance_RW"]), "full");
+
+  eq("hasAccess compares levels, not equality", hasAccess(dir, multi, "j.doe", "read"), true);
+  eq("...and refuses when the level is short", hasAccess(dir, share([{ groupName: "Finance_RW", access: "read" }]), "j.doe", "change"), false);
+}
+
+group("Nested group membership");
+{
+  eq("direct membership resolves", effectiveGroups(dir, "j.doe").includes("Finance_RW"), true);
+  eq("nested membership resolves too", effectiveGroups(dir, "j.doe").includes("Leadership"), true);
+  eq("memberOf on the user counts", effectiveGroups(dir, "m.ray").includes("Domain Users"), true);
+  eq("and nothing else does", effectiveGroups(dir, "m.ray").includes("Finance_RW"), false);
+
+  // The whole point of the cross-team share: access through a nested group.
+  const viaNesting = share([{ groupName: "Leadership", access: "change" }]);
+  eq("a nested group grants access", accessForUser(dir, viaNesting, "j.doe"), "change");
+  eq("...and does not leak to outsiders", accessForUser(dir, viaNesting, "m.ray"), null);
+}
+
+group("Access diagnosis");
+{
+  const s = share([{ groupName: "Finance_RW", access: "change" }]);
+  eq("a satisfied request has no blocker", accessBlocker(dir, s, "j.doe", "read"), null);
+  eq(
+    "a non-member is told which group to join",
+    accessBlocker(dir, s, "m.ray", "read"),
+    "Not a member of any group with rights here (Finance_RW). Add them in Active Directory, or grant their group access on this share.",
+  );
+  eq(
+    "an under-granted user is told to raise the level",
+    accessBlocker(dir, share([{ groupName: "Finance_RW", access: "read" }]), "j.doe", "change"),
+    "Only Read through their groups; this needs Change. Raise the group's entry on the share.",
+  );
+  const denied = share([
+    { groupName: "Finance_RW", access: "full" },
+    { groupName: "Leadership", access: "read", deny: true },
+  ]);
+  eq(
+    "a deny is named as the cause, not the missing grant",
+    accessBlocker(dir, denied, "j.doe", "read"),
+    "An explicit Deny on Leadership is blocking access. Deny beats every grant — remove it, or take the user out of that group.",
+  );
+  eq(
+    "an empty access list says so",
+    accessBlocker(dir, share([]), "j.doe", "read"),
+    "No group has been granted anything on this share yet. Add an entry to its access list.",
+  );
+}
+
+group("Service reachability");
+{
+  const tor = dev("switch", 1, 1, 180);
+  const box = chassis(4, "dc01");
+  const mkInfra = (rackOverrides = {}, nodeOverrides = {}) => {
+    const rack = {
+      ...mk([tor, box]),
+      cables: [
+        { id: "p1", kind: "power", fromDeviceId: box.id, fromPort: "psu", toDeviceId: pdu.id, toPort: "out1" },
+        { id: "u1", kind: "patch", fromDeviceId: box.id, fromPort: "eth0", toDeviceId: tor.id, toPort: "gi0/1" },
+      ],
+      devices: [pdu, tor, box],
+      ...rackOverrides,
+    };
+    const node = {
+      nodeId: "dc01",
+      hostname: "dc01",
+      os: "windows",
+      role: "domain-controller",
+      tags: [],
+      workloads: [],
+      connection: { online: true, reachable: true, ip: "10.0.0.10", protocol: "rdp" },
+      services: { NTDS: { status: "Running" } },
+      ...nodeOverrides,
+    };
+    return {
+      nodes: { dc01: node },
+      datacenter: { racks: [rack] },
+      security: { isolatedNodeIds: [] },
+      gateway: [],
+      node,
+    };
+  };
+
+  const up = mkInfra();
+  eq("a healthy host is reachable", reachNode(up, up.node, ["NTDS"]).reachable, true);
+
+  eq("a missing host is 'missing'", reachNode(up, undefined).layer, "missing");
+
+  const dark = mkInfra({ breakerTripped: true });
+  eq("an open breaker fails at the physical layer", reachNode(dark, dark.node, ["NTDS"]).layer, "physical");
+  eq("...and points at the Datacenter Floor", reachNode(dark, dark.node, ["NTDS"]).remedy.includes("Datacenter Floor"), true);
+
+  const off = mkInfra({}, { connection: { online: false, reachable: true, ip: "10.0.0.10", protocol: "rdp" } });
+  eq("a powered-down host fails at the power layer", reachNode(off, off.node, ["NTDS"]).layer, "power");
+  eq("...and points at the Server Manager", reachNode(off, off.node, ["NTDS"]).remedy.includes("Server Manager"), true);
+
+  const stopped = mkInfra({}, { services: { NTDS: { status: "Stopped" } } });
+  eq("a stopped service fails at the service layer", reachNode(stopped, stopped.node, ["NTDS"]).layer, "service");
+  eq("...and a host that is merely up still passes without the check", reachNode(stopped, stopped.node).reachable, true);
+
+  const isolated = mkInfra();
+  isolated.security.isolatedNodeIds = ["dc01"];
+  eq("containment isolation fails at the network layer", reachNode(isolated, isolated.node).layer, "network");
+}
+
+group("Gateway binding");
+{
+  const tor = dev("switch", 1, 1, 180);
+  const box = chassis(4, "srv01");
+  const rack = {
+    ...mk([tor, box]),
+    cables: [
+      { id: "p1", kind: "power", fromDeviceId: box.id, fromPort: "psu", toDeviceId: pdu.id, toPort: "out1" },
+      { id: "u1", kind: "patch", fromDeviceId: box.id, fromPort: "eth0", toDeviceId: tor.id, toPort: "gi0/1" },
+    ],
+    devices: [pdu, tor, box],
+  };
+  const srv = {
+    nodeId: "srv01", hostname: "srv01", os: "linux", role: "web-server", tags: [], workloads: [],
+    connection: { online: true, reachable: true, ip: "10.0.0.20", protocol: "ssh" },
+  };
+  const laptop = {
+    nodeId: "ws01", hostname: "ws01", os: "windows", role: "workstation", tags: [], workloads: [],
+    connection: { online: true, reachable: true, ip: "10.0.1.20", protocol: "rdp" },
+  };
+  const fleet = { ...laptop, nodeId: "ws2000", hostname: "ws2000", tags: ["fleet-endpoint"] };
+
+  const infra = {
+    nodes: { srv01: srv, ws01: laptop, ws2000: fleet },
+    datacenter: { racks: [rack] },
+    security: { isolatedNodeIds: [] },
+    gateway: [{ nodeId: "ws01" }],
+  };
+
+  const targets = gatewayTargets(infra);
+  eq("racked servers and listed endpoints appear", targets.map((t) => t.nodeId), ["srv01", "ws01"]);
+  eq("the fleet stays out — that is ADUC's job", targets.some((t) => t.nodeId === "ws2000"), false);
+  eq("a live racked server is connectable", targets[0].connectable, true);
+  eq("...and reports where it lives", targets[0].location, "Rack 01 · U4");
+
+  // THE RULE THE UPDATE EXISTS FOR: trip the rack, lose the connection.
+  const trippedInfra = { ...infra, datacenter: { racks: [{ ...rack, breakerTripped: true }] } };
+  const tripped = gatewayTargets(trippedInfra).find((t) => t.nodeId === "srv01");
+  eq("tripping the PDU drops the server", tripped.connectable, false);
+  eq("...and says why", tripped.reason, "Rack 01 breaker open");
+
+  const unpatched = {
+    ...infra,
+    datacenter: { racks: [{ ...rack, cables: rack.cables.filter((c) => c.kind !== "patch") }] },
+  };
+  eq(
+    "pulling the uplink drops it too",
+    gatewayTargets(unpatched).find((t) => t.nodeId === "srv01").reason,
+    "no uplink",
+  );
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
