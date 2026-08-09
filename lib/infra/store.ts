@@ -28,7 +28,8 @@ import {
 import type {
   DatacenterState, InventoryState, RackNodeMap, RackState, ServerHardware, Workload,
 } from "@/lib/core";
-import { emptyRack } from "@/lib/core";
+import { emptyRack, directoryReach, fileServiceReach } from "@/lib/core";
+import type { ShareAccess } from "@/lib/core";
 import { nextFreeIp, nextRackName, provisionNode } from "@/lib/datacenter/seed";
 import type { ShippingMethod } from "@/lib/core";
 import type { AetherVNode, AuditEvent, ShieldRule, VNodeSize, VNodeStatus } from "@/lib/core";
@@ -80,6 +81,22 @@ interface InfraStore {
   /** ADUC → Reset Password (also clears lockout, like the real console). */
   resetADUserPassword: (nodeId: NodeId, samAccountName: string, password: string, mustChange: boolean) => void;
   /** ADUC → New User wizard. Returns nothing; no-op if the sam already exists. */
+  /**
+   * Group membership (v0.5.0). Addressed by DOMAIN rather than by node — the
+   * operator works against "the directory", and which DC answers is the
+   * simulation's problem, not theirs. Returns null on success or the reason
+   * it was refused (including an unreachable domain controller).
+   */
+  adSetGroupMembership: (sam: string, groupName: string, member: boolean) => string | null;
+  /** Create a security group in the directory. */
+  adCreateGroup: (name: string, description?: string) => string | null;
+
+  // ── File shares ──────────────────────────────────────────────────────────
+  /** Grant a group an access level on a share (replaces any existing entry). */
+  shareSetAce: (shareId: string, groupName: string, access: ShareAccess, deny?: boolean) => string | null;
+  /** Remove a group's entry from a share's access list. */
+  shareRemoveAce: (shareId: string, groupName: string) => string | null;
+
   createADUser: (nodeId: NodeId, spec: NewADUserSpec) => void;
   /** ADUC → Properties: edit profile fields (title / department / description). */
   updateADUserProfile: (nodeId: NodeId, samAccountName: string, patch: ADUserProfilePatch) => void;
@@ -491,6 +508,121 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       user.badPwdCount = 0;
       return withNode(s, nodeId, clone);
     }),
+
+  adSetGroupMembership: (sam, groupName, member) => {
+    const infra = get().infra;
+    const reach = directoryReach(infra);
+    if (!reach.reachable || !reach.node) return reach.reason ?? "Domain controller unreachable.";
+    const dcId = reach.node.nodeId;
+    const node = infra.nodes[dcId];
+    if (!node || node.os !== "windows" || !node.activeDirectory) return "That host is not a domain controller.";
+    if (!node.activeDirectory.groups.some((g) => g.name === groupName)) return `No group named ${groupName}.`;
+    if (!node.activeDirectory.users.some((u) => u.samAccountName === sam)) return `No account named ${sam}.`;
+
+    set((st) => {
+      const dc = st.infra.nodes[dcId];
+      if (!dc || dc.os !== "windows" || !dc.activeDirectory) return st;
+      const clone = structuredClone(dc);
+      const ad = clone.activeDirectory!;
+      const group = ad.groups.find((g) => g.name === groupName)!;
+      const user = ad.users.find((u) => u.samAccountName === sam)!;
+
+      // Membership is recorded on BOTH sides because the generator seeds it
+      // on the user and the console edits it on the group; leaving one stale
+      // would make `effectiveGroups` disagree with what the UI just showed.
+      if (member) {
+        if (!group.members.includes(sam)) group.members.push(sam);
+        if (!user.memberOf.includes(groupName)) user.memberOf.push(groupName);
+      } else {
+        group.members = group.members.filter((m) => m !== sam);
+        user.memberOf = user.memberOf.filter((g) => g !== groupName);
+      }
+      return withNode(st, dcId, clone);
+    });
+    return null;
+  },
+
+  adCreateGroup: (name, description) => {
+    const infra = get().infra;
+    const reach = directoryReach(infra);
+    if (!reach.reachable || !reach.node) return reach.reason ?? "Domain controller unreachable.";
+    const trimmed = name.trim();
+    if (!trimmed) return "A group needs a name.";
+    const dcId = reach.node.nodeId;
+    const dc = infra.nodes[dcId];
+    if (!dc || dc.os !== "windows" || !dc.activeDirectory) return "That host is not a domain controller.";
+    if (dc.activeDirectory.groups.some((g) => g.name.toLowerCase() === trimmed.toLowerCase())) {
+      return `${trimmed} already exists.`;
+    }
+
+    set((st) => {
+      const node = st.infra.nodes[dcId];
+      if (!node || node.os !== "windows" || !node.activeDirectory) return st;
+      const clone = structuredClone(node);
+      clone.activeDirectory!.groups.push({
+        sid: `S-1-5-21-...-${2000 + clone.activeDirectory!.groups.length}`,
+        name: trimmed,
+        scope: "DomainLocal",
+        category: "Security",
+        members: [],
+        description,
+      });
+      return withNode(st, dcId, clone);
+    });
+    return null;
+  },
+
+  shareSetAce: (shareId, groupName, access, deny) => {
+    const infra = get().infra;
+    const reach = fileServiceReach(infra);
+    if (!reach.reachable || !reach.node) return reach.reason ?? "File server unreachable.";
+    const host = reach.node;
+    const share = (host.shares ?? []).find((sh) => sh.id === shareId);
+    if (!share) return "No such share on this server.";
+
+    // ACLs name GROUPS, so the group has to exist in the directory. This is
+    // also why the DC being down blocks share work: you cannot verify a
+    // principal you cannot look up.
+    const dirReach = directoryReach(infra);
+    if (!dirReach.reachable) return `Cannot resolve ${groupName}: ${dirReach.reason}`;
+    const ad = dirReach.node && "activeDirectory" in dirReach.node ? dirReach.node.activeDirectory : undefined;
+    if (ad && !ad.groups.some((g) => g.name === groupName)) return `No group named ${groupName} in the directory.`;
+
+    set((st) => {
+      const node = st.infra.nodes[host.nodeId];
+      if (!node) return st;
+      const clone = structuredClone(node);
+      const target = (clone.shares ?? []).find((sh) => sh.id === shareId);
+      if (!target) return st;
+      const existing = target.acl.find((a) => a.groupName === groupName);
+      if (existing) {
+        existing.access = access;
+        if (deny) existing.deny = true;
+        else delete existing.deny;
+      } else {
+        target.acl.push({ groupName, access, ...(deny ? { deny: true } : {}) });
+      }
+      return withNode(st, host.nodeId, clone);
+    });
+    return null;
+  },
+
+  shareRemoveAce: (shareId, groupName) => {
+    const infra = get().infra;
+    const reach = fileServiceReach(infra);
+    if (!reach.reachable || !reach.node) return reach.reason ?? "File server unreachable.";
+    const hostId = reach.node.nodeId;
+    set((st) => {
+      const node = st.infra.nodes[hostId];
+      if (!node) return st;
+      const clone = structuredClone(node);
+      const target = (clone.shares ?? []).find((sh) => sh.id === shareId);
+      if (!target) return st;
+      target.acl = target.acl.filter((a) => a.groupName !== groupName);
+      return withNode(st, hostId, clone);
+    });
+    return null;
+  },
 
   createADUser: (nodeId, spec) =>
     set((s) => {
