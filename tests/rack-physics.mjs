@@ -47,6 +47,17 @@ import {
   hasAccess,
 } from "../.test-build/core/fileshares.js";
 import { effectiveGroups, gatewayTargets, reachNode } from "../.test-build/core/directory.js";
+import {
+  GROWTH_PHASES,
+  addressDemand,
+  initialGrowth,
+  nextPhase,
+  phaseForLevel,
+  phaseSpec,
+  poolExhausted,
+  poolSize,
+  storageDemandGb,
+} from "../.test-build/core/growth.js";
 
 let pass = 0;
 let fail = 0;
@@ -597,6 +608,63 @@ group("Gateway binding");
     gatewayTargets(unpatched).find((t) => t.nodeId === "srv01").reason,
     "no uplink",
   );
+}
+
+
+// ── Company growth (v0.6.0) ─────────────────────────────────────────────────
+//
+// The milestone ladder is what turns the game from "here is an enterprise" into
+// "build one". Getting a threshold wrong would silently strand a player at the
+// wrong company size with tickets that cannot fire.
+
+group("Growth phases");
+{
+  eq("a new operator runs a startup", phaseForLevel(1), 1);
+  eq("...and still does at level 4", phaseForLevel(4), 1);
+  eq("level 5 is the small-business milestone", phaseForLevel(5), 2);
+  eq("level 10 is mid-market", phaseForLevel(10), 3);
+  eq("level 15 is enterprise", phaseForLevel(15), 4);
+  eq("and nothing beyond it", phaseForLevel(40), 4);
+
+  eq("the ladder climbs in headcount", GROWTH_PHASES.map((p) => p.employees), [35, 150, 300, 450]);
+  eq("...and in departments", GROWTH_PHASES.map((p) => p.departments), [3, 5, 7, 8]);
+  eq("...and in racks", GROWTH_PHASES.map((p) => p.racks), [1, 1, 2, 3]);
+
+  eq("a startup knows what comes next", nextPhase(1).label, "Small business");
+  eq("the enterprise is the end of the ladder", nextPhase(4), null);
+  eq("an unknown phase falls back to the startup", phaseSpec(9).phase, 1);
+}
+
+group("Growth bookkeeping");
+{
+  const fresh = initialGrowth(1);
+  eq("a career world starts at 35 staff", fresh.employees, 35);
+  // Everything up to the starting phase counts as applied: a sandbox world
+  // that BEGINS at enterprise scale has not grown into it, and re-running
+  // those milestones would hire 450 people onto a world that already has them.
+  eq("...with only phase 1 banked", fresh.applied, [1]);
+
+  const sandbox = initialGrowth(4);
+  eq("a sandbox world starts at full scale", sandbox.employees, 450);
+  eq("...with every milestone already banked", sandbox.applied, [1, 2, 3, 4]);
+  eq("...so nothing is left to fire", nextPhase(sandbox.phase), null);
+}
+
+group("What headcount does to the estate");
+{
+  eq("a /24 hands out 254 addresses", poolSize(24), 254);
+  eq("a /23 doubles that", poolSize(23), 510);
+
+  // The demand curve is what makes DHCP exhaustion arrive on its own, at the
+  // size where it really would.
+  eq("a 35-person startup needs about 46 addresses", addressDemand(35, 5), 46);
+  eq("...which a /24 carries easily", poolExhausted(35, 5), false);
+  eq("150 staff still fit", poolExhausted(150, 6), false);
+  eq("300 staff do not", poolExhausted(300, 8), true);
+  eq("...but they fit in a /23", poolExhausted(300, 8, 23), false);
+
+  eq("home drives scale with headcount", storageDemandGb(300), 3600);
+  eq("...so a startup needs far less", storageDemandGb(35), 420);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
