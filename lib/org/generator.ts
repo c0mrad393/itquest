@@ -14,7 +14,6 @@
  */
 
 import { createSeedVM } from "@/lib/vm/seed";
-import { isGodMode } from "@/lib/host/god-mode";
 import {
   SCALE_META,
   SECTOR_META,

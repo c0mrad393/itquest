@@ -20,17 +20,21 @@ import { useMailStore } from "@/lib/mail/store";
 import { useNotificationStore, unreadCount } from "@/lib/host/notifications-store";
 import { ActionCenter } from "./Notifications";
 import { AppIcon, APP_ICON_SIZE } from "@/components/ui/app-icons";
-import { useGodMode } from "@/lib/host/god-mode";
 import { useFullscreen } from "@/lib/host/fullscreen";
 import Clock from "./Clock";
 import { useState } from "react";
 
-export default function Taskbar() {
+export default function Taskbar({
+  devToolsOpen,
+  onToggleDevTools,
+}: {
+  devToolsOpen: boolean;
+  onToggleDevTools: () => void;
+}) {
   const [actionCenter, setActionCenter] = useState(false);
   const [full, toggleFull] = useFullscreen();
-  const godMode = useGodMode();
   const level = useHostStore((s) => s.host.user.level);
-  const pinned = taskbarPinned(godMode, level);
+  const pinned = taskbarPinned(level);
   const unread = useNotificationStore((s) => unreadCount(s.items));
   const windows = useHostStore((s) => s.windows);
   const startMenuOpen = useHostStore((s) => s.startMenuOpen);
@@ -128,6 +132,23 @@ export default function Taskbar() {
           <NetIcon on={host.tray.networkConnected} />
           <VolIcon />
         </div>
+
+        {/* DevTools — visible on purpose. v0.7.0 removed the Sandbox and God
+            Mode logins that used to gate it, and a shortcut nobody can find is
+            not a tool. */}
+        <button
+          onClick={onToggleDevTools}
+          aria-label="DevTools"
+          title="DevTools (Ctrl+Shift+D)"
+          className={`flex h-9 items-center gap-1.5 rounded-md px-2 text-[10px] font-semibold uppercase tracking-wider transition ${
+            devToolsOpen
+              ? "bg-amber-400/15 text-amber-200"
+              : "text-gray-500 hover:bg-white/10 hover:text-amber-200"
+          }`}
+        >
+          <AppIcon id="wrench" size={14} />
+          Dev
+        </button>
 
         {/* Fullscreen — makes the shell take over the monitor */}
         <button

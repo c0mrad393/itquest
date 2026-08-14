@@ -25,14 +25,11 @@ export type HostAppId =
   | "assetmanager" // Hardware inventory / store room
   | "racklab" // Datacenter floor — racks, cabling, power and heat
   | "serverman" // Server Manager — logical estate, maintenance and migration
-  | "directory" // Active Directory Users & Computers (host-level RSAT console)
-  | "shares" // Shared Drives — enterprise SMB shares and their access lists
   | "netops" // Network topology console (link optimization)
   | "monitor" // Infrastructure metrics dashboard (observability)
   | "aethercloud" // AetherCloud Engine — hybrid cloud console
   | "procurement" // Vendor storefront — spends IT Budget
   | "wiki" // Company Wiki / intranet documentation portal
-  | "toolbox" // Per-ticket runbooks — QA/debug only, see `godModeOnly`
   | "leaderboard" // Global ranking
   | "settings" // Host settings
   | "profile"; // Account & profile management (identity layer)
@@ -158,7 +155,6 @@ export interface HostAppDescriptor {
    * the QA "God Mode" profile is active. Used for tools that would spoil normal
    * play (per-ticket walkthroughs) but are needed to test scenarios.
    */
-  godModeOnly?: boolean;
 }
 
 export type HostAppRegistry = Record<HostAppId, HostAppDescriptor>;
@@ -291,32 +287,6 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     pinnedToTaskbar: true,
     showOnDesktop: true,
   },
-  directory: {
-    id: "directory",
-    title: "Active Directory",
-    iconId: "users",
-    category: "work",
-    description:
-      "Users, organizational units and security groups. Talks to the domain controller over the network, so it fails when the DC does.",
-    defaultSize: { w: 1100, h: 660 },
-    minSize: { w: 860, h: 500 },
-    singleton: true,
-    pinnedToTaskbar: true,
-    showOnDesktop: true,
-  },
-  shares: {
-    id: "shares",
-    title: "Shared Drives",
-    iconId: "folder",
-    category: "work",
-    description:
-      "Enterprise file shares and their access control lists, bound to Active Directory security groups.",
-    defaultSize: { w: 1000, h: 640 },
-    minSize: { w: 780, h: 480 },
-    singleton: true,
-    pinnedToTaskbar: true,
-    showOnDesktop: true,
-  },
   serverman: {
     id: "serverman",
     title: "Server Manager",
@@ -353,19 +323,6 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     singleton: true,
     pinnedToTaskbar: true,
     showOnDesktop: true,
-  },
-  toolbox: {
-    id: "toolbox",
-    title: "Tech Toolbox (debug)",
-    iconId: "toolbox",
-    category: "system",
-    description: "Per-ticket walkthroughs and the live CLI registry. QA builds only.",
-    defaultSize: { w: 900, h: 620 },
-    minSize: { w: 600, h: 420 },
-    singleton: true,
-    pinnedToTaskbar: true,
-    showOnDesktop: true,
-    godModeOnly: true,
   },
   leaderboard: {
     id: "leaderboard",
@@ -406,21 +363,19 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
 };
 
 /**
- * Apps the operator may see. `godMode` unlocks the debug-only tools; everything
- * else is always visible. Every surface that lists apps (desktop, Start menu,
- * taskbar) must go through this so a debug tool cannot leak into normal play.
+ * Apps the operator may see at this level. Every surface that lists apps
+ * (desktop, Start menu, taskbar) goes through this so progression gating is
+ * decided in exactly one place.
  */
-export function visibleApps(godMode: boolean, level = 99): HostAppDescriptor[] {
-  return (Object.values(HOST_APP_REGISTRY) as HostAppDescriptor[]).filter((a) => {
-    if (a.godModeOnly && !godMode) return false;
-    // God Mode ignores progression gates — that is the point of the QA profile.
-    return godMode || isAppUnlocked(a.id, level);
-  });
+export function visibleApps(level = 99): HostAppDescriptor[] {
+  return (Object.values(HOST_APP_REGISTRY) as HostAppDescriptor[]).filter((a) =>
+    isAppUnlocked(a.id, level),
+  );
 }
 
 /** Ordered list of app ids pinned to the taskbar (left → right). */
-export function taskbarPinned(godMode: boolean, level = 99): HostAppId[] {
-  return visibleApps(godMode, level)
+export function taskbarPinned(level = 99): HostAppId[] {
+  return visibleApps(level)
     .filter((a) => a.pinnedToTaskbar)
     .map((a) => a.id);
 }

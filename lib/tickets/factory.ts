@@ -15,7 +15,6 @@
 import type { InfrastructureState, Ticket } from "@/lib/core";
 import { mulberry32, shuffle, type Rng } from "@/lib/org/rng";
 import { TICKET_TEMPLATES, type EmailBeat, type TicketTemplate } from "./matrix";
-import { isGodMode } from "@/lib/host/god-mode";
 import { generateProceduralTemplates } from "./procedural";
 import { unlockedTiers, templateMinLevel } from "@/lib/progression/unlocks";
 
@@ -49,7 +48,7 @@ export function buildTicket(
   const org = infra.org;
   const code = `TCK-${ticketSeq++}`;
   // God Mode surfaces mail-only tickets straight onto the ITSM board.
-  const mailOnly = template.origin === "mail" && !isGodMode();
+  const mailOnly = template.origin === "mail";
 
   const ticket: Ticket = {
     id: `t-${template.id}-${code}`,
@@ -117,21 +116,17 @@ export function generateTicketQueue(infra: InfrastructureState, level = 1): Gene
       (t) => t.difficulty === tier && templateMinLevel(t.tags) <= level,
     );
 
-  // God Mode (QA): every template at once so any scenario can be tested
-  // without playing through the tiers.
-  //
-  // Normal play opens with a SMALL intern queue drawn only from the tiers the
-  // operator has unlocked. More arrives on promotion (see `spawnForTiers`) —
-  // a level-1 player facing 100 tickets would learn nothing from any of them.
+  // A SMALL starter queue drawn only from the tiers the operator has
+  // unlocked. More arrives on promotion (see `spawnForTiers`) — a level-1
+  // player facing 100 tickets would learn nothing from any of them. Testing
+  // no longer needs a second code path: DevTools spawns any family on demand.
   const open = unlockedTiers(level);
-  const chosen: TicketTemplate[] = isGodMode()
-    ? Object.values(library)
-    : [
-        ...shuffle(rng, byTier("Tier_1_Easy")).slice(0, 5),
-        ...(open.includes("Tier_2_Medium") ? shuffle(rng, byTier("Tier_2_Medium")).slice(0, 2) : []),
-        ...(open.includes("Tier_3_Hard") ? shuffle(rng, byTier("Tier_3_Hard")).slice(0, 2) : []),
-        ...(open.includes("Tier_4_Expert") ? shuffle(rng, byTier("Tier_4_Expert")).slice(0, 1) : []),
-      ];
+  const chosen: TicketTemplate[] = [
+    ...shuffle(rng, byTier("Tier_1_Easy")).slice(0, 5),
+    ...(open.includes("Tier_2_Medium") ? shuffle(rng, byTier("Tier_2_Medium")).slice(0, 2) : []),
+    ...(open.includes("Tier_3_Hard") ? shuffle(rng, byTier("Tier_3_Hard")).slice(0, 2) : []),
+    ...(open.includes("Tier_4_Expert") ? shuffle(rng, byTier("Tier_4_Expert")).slice(0, 1) : []),
+  ];
 
   const tickets: Ticket[] = [];
   const emailThreads: Record<string, EmailBeat[]> = {};

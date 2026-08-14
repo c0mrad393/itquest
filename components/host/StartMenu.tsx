@@ -12,7 +12,6 @@ import { useState } from "react";
 import { visibleApps, type HostAppId } from "@/lib/core";
 import { useHostStore } from "@/lib/host/store";
 import Avatar from "./Avatar";
-import { useGodMode } from "@/lib/host/god-mode";
 import { AppIcon, APP_ICON_SIZE } from "@/components/ui/app-icons";
 import { jobTitle } from "@/lib/progression/tracks";
 
@@ -22,11 +21,10 @@ export default function StartMenu() {
   const openApp = useHostStore((s) => s.openApp);
   const host = useHostStore((s) => s.host);
   const [query, setQuery] = useState("");
-  const godMode = useGodMode();
 
   if (!open) return null;
 
-  const apps = visibleApps(godMode, host.user.level).filter((a) =>
+  const apps = visibleApps(host.user.level).filter((a) =>
     a.title.toLowerCase().includes(query.trim().toLowerCase()),
   );
 

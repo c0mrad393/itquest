@@ -14,7 +14,6 @@ import { useInfraStore } from "@/lib/infra/store";
 import { generateTicketQueue, generateTierBatch, applyQueueFaults, buildTicket, ticketLibrary } from "@/lib/tickets/factory";
 import { mulberry32 } from "@/lib/org/rng";
 import type { EmailBeat } from "@/lib/tickets/matrix";
-import { isGodMode } from "@/lib/host/god-mode";
 
 export interface TicketFilters {
   track: TicketTrack | "all";
@@ -75,7 +74,7 @@ interface TicketStore {
  * must not import the host store's live state (that would be a cycle).
  */
 function startingLevel(): number {
-  return isGodMode() ? 99 : 1;
+  return 1;
 }
 
 function initQueue() {

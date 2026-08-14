@@ -37,7 +37,6 @@ import type { CommandResult, NodeId } from "@/lib/core";
 import { generateWorld } from "@/lib/org/generator";
 import { freshSeed, mulberry32 } from "@/lib/org/rng";
 import { applyGrowth, type GrowthSummary } from "@/lib/org/growth";
-import { startingPhase } from "@/lib/host/session-mode";
 import { linuxInterpreter, nodeToVM, writeVMToNode } from "./terminal";
 
 type WinServiceAction = "start" | "stop" | "restart";
@@ -440,7 +439,7 @@ function withNode(
 export const useInfraStore = create<InfraStore>((set, get) => ({
   // A brand-new world is generated from a fresh seed; hydration replaces it
   // when a per-account save exists (the org persists inside `infra`).
-  infra: generateWorld(freshSeed(), startingPhase()),
+  infra: generateWorld(freshSeed(), 1),
 
   authenticate: (nodeId, value) =>
     set((s) => {
@@ -1974,7 +1973,7 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
 
   setInfra: (infra) => set({ infra }),
 
-  reset: () => set({ infra: generateWorld(freshSeed(), startingPhase()) }),
+  reset: () => set({ infra: generateWorld(freshSeed(), 1) }),
 }));
 
 /** Convenience hook: subscribe to a single node by id. */

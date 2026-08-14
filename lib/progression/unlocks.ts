@@ -20,8 +20,6 @@ import type { HostAppId, TicketDifficulty } from "@/lib/core";
 export const APP_UNLOCK_LEVEL: Partial<Record<HostAppId, number>> = {
   // Remoting into a machine IS entry-level helpdesk work, so the gateway ships
   // with the intern kit — without it there is nothing an intern can action.
-  directory: 2, // manage the directory
-  shares: 3, // and what it grants access to
   monitor: 2, // watch the estate
   leaderboard: 2,
   netops: 2, // touch the network
@@ -46,8 +44,8 @@ const TAG_APP: [string, HostAppId][] = [
   // console. Lockouts and password resets are Tier-1 intern work and stay
   // reachable the original way — Remote Gateway, RDP into the DC, ADUC. The
   // host-level console is a convenience, not a new gate on old tickets.
-  ["shares", "shares"],
-  ["acl", "shares"],
+  ["shares", "gateway"],
+  ["acl", "gateway"],
   ["migration", "serverman"],
   ["capacity-plan", "serverman"],
   ["rack", "racklab"],
