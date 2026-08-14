@@ -19,7 +19,6 @@ import type { ManagedWindow, WindowRect } from "./windows";
 import { createHostWorkstation } from "./seed";
 import type { HostWorkstationState } from "@/lib/core";
 import { levelForXp } from "@/lib/scenario/scoring";
-import { reportProgress } from "@/lib/auth/store";
 import { playCue, setAudioEnabled } from "@/lib/audio/engine";
 
 const DESKTOP_MARGIN = 16;
@@ -55,6 +54,8 @@ interface HostStore {
    * unlocked tiers.
    */
   awardXp: (amount: number) => { from: number; to: number };
+  /** Edit the operator's own name/avatar (Profile app). */
+  setUserProfile: (patch: { displayName?: string; avatar?: string }) => void;
   /** Credit experience to one discipline — drives the dynamic job title. */
   awardSkillXp: (track: string, amount: number) => void;
   /** Personalization: set the desktop wallpaper (persisted with the save). */
@@ -240,6 +241,9 @@ export const useHostStore = create<HostStore>((set, get) => ({
   setStartMenu: (open) => set({ startMenuOpen: open }),
   toggleStartMenu: () => set((s) => ({ startMenuOpen: !s.startMenuOpen })),
 
+  setUserProfile: (patch) =>
+    set((s) => ({ host: { ...s.host, user: { ...s.host.user, ...patch } } })),
+
   awardXp: (amount) => {
     const before = get().host.user.level;
     set((s) => {
@@ -247,10 +251,9 @@ export const useHostStore = create<HostStore>((set, get) => ({
       const level = levelForXp(xp);
       return { host: { ...s.host, user: { ...s.host.user, xp, level } } };
     });
-    // Persist progression to the account profile (no-op for guests).
-    const { xp, level } = get().host.user;
-    reportProgress(xp, level);
-    return { from: before, to: level };
+    // Progression lives in the save slot, written by PersistenceManager. There
+    // is no account to sync it to any more.
+    return { from: before, to: get().host.user.level };
   },
 
   awardSkillXp: (track, amount) =>

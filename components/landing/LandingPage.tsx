@@ -10,8 +10,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuthStore } from "@/lib/auth/store";
-import AuthModal from "./AuthModal";
+import { hasSavedGame, savedProfile, useSessionStore } from "@/lib/host/session";
 import { AppIcon } from "@/components/ui/app-icons";
 
 const FEATURES = [
@@ -49,19 +48,31 @@ const FEATURES = [
 
 export default function LandingPage() {
   const router = useRouter();
-  const status = useAuthStore((s) => s.status);
-  const init = useAuthStore((s) => s.init);
-  const [authOpen, setAuthOpen] = useState(false);
+  const startNewGame = useSessionStore((s) => s.startNewGame);
+  const [saved, setSaved] = useState<{ level: number; username: string } | null>(null);
 
+  // Read after mount — the save lives in localStorage, which does not exist
+  // during SSR.
   useEffect(() => {
-    void init();
-  }, [init]);
+    if (!hasSavedGame()) return;
+    const p = savedProfile();
+    setSaved({ level: p.level, username: p.username });
+  }, []);
 
-  const hasSession = status === "signedIn" || status === "guest";
+  /**
+   * A new game wipes the slot and does a REAL page load.
+   *
+   * `generateWorld` runs in the infra store's initializer, which already ran
+   * on this landing page. A client-side push would carry that world into the
+   * desktop; only a document load rebuilds it.
+   */
+  function startGame() {
+    startNewGame();
+    window.location.assign("/desktop");
+  }
 
-  function launch() {
-    if (hasSession) router.push("/desktop");
-    else setAuthOpen(true);
+  function continueGame() {
+    router.push("/desktop");
   }
 
   return (
@@ -77,10 +88,10 @@ export default function LandingPage() {
         <nav className="ml-auto flex items-center gap-4 text-xs text-gray-400">
           <a href="#features" className="hover:text-gray-100">Features</a>
           <button
-            onClick={launch}
+            onClick={saved ? continueGame : startGame}
             className="rounded-md border border-edge px-3 py-1.5 text-gray-200 transition hover:border-info/60 hover:text-info"
           >
-            {hasSession ? "Enter Simulator" : "Sign in"}
+            {saved ? "Continue" : "Start Game"}
           </button>
         </nav>
       </header>
@@ -103,18 +114,30 @@ export default function LandingPage() {
           faults against the clock — scored on speed, skill, and how you treat people.
         </p>
         <div className="mt-8 flex items-center justify-center gap-3">
+          {/* Two buttons, no modal, no account. The old flow put a sign-in
+              form between the player and a single-player browser game. */}
           <button
-            onClick={launch}
+            onClick={startGame}
             className="rounded-xl bg-info px-7 py-3 text-sm font-bold text-black shadow-lg shadow-info/25 transition hover:brightness-110"
           >
-            ▶ Launch Simulator
+            Start Game
           </button>
-          <a
-            href="#features"
-            className="rounded-xl border border-edge px-6 py-3 text-sm text-gray-300 transition hover:border-gray-500"
-          >
-            See what&apos;s inside
-          </a>
+          {saved ? (
+            <button
+              onClick={continueGame}
+              className="rounded-xl border border-edge px-6 py-3 text-sm text-gray-200 transition hover:border-info/60"
+            >
+              Continue as {saved.username}
+              <span className="ml-2 font-mono text-[11px] text-gray-500">level {saved.level}</span>
+            </button>
+          ) : (
+            <a
+              href="#features"
+              className="rounded-xl border border-edge px-6 py-3 text-sm text-gray-300 transition hover:border-gray-500"
+            >
+              See what&apos;s inside
+            </a>
+          )}
         </div>
 
         {/* Terminal teaser */}
@@ -160,10 +183,10 @@ export default function LandingPage() {
 
         <div className="mt-14 text-center">
           <button
-            onClick={launch}
+            onClick={startGame}
             className="rounded-xl bg-info px-7 py-3 text-sm font-bold text-black shadow-lg shadow-info/25 transition hover:brightness-110"
           >
-            ▶ Launch Simulator — it&apos;s free
+            Start Game — no account needed
           </button>
         </div>
       </section>
@@ -172,7 +195,6 @@ export default function LandingPage() {
         TriageOS — training simulation. All infrastructure is simulated in your browser.
       </footer>
 
-      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
     </div>
   );
 }

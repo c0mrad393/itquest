@@ -11,7 +11,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuthStore } from "@/lib/auth/store";
+import { useSessionStore } from "@/lib/host/session";
 import { useHostStore } from "@/lib/host/store";
 import { useTicketStore } from "@/lib/host/tickets-store";
 import { useSlaStore } from "@/lib/sla/store";
@@ -22,35 +22,19 @@ import Avatar from "../Avatar";
 import { AppIcon } from "@/components/ui/app-icons";
 import { TRACK_META, SPECIALISATION_THRESHOLD, dominantTrack, jobTitle, trackShares } from "@/lib/progression/tracks";
 
-const PROVIDER_META = {
-  google: { label: "Google account", color: "bg-sky-500/15 text-sky-300" },
-  password: { label: "Email account", color: "bg-violet-500/15 text-violet-300" },
-  guest: { label: "Guest session", color: "bg-gray-500/20 text-gray-400" },
-} as const;
-
 export default function ProfileApp() {
   const router = useRouter();
-  const profile = useAuthStore((s) => s.profile);
-  const updateProfile = useAuthStore((s) => s.updateProfile);
-  const signOut = useAuthStore((s) => s.signOut);
+  // v0.7.0: one local operator, no account. The profile IS the host user.
+  const updateProfile = useSessionStore((s) => s.updateProfile);
+  const setHostUser = useHostStore((s) => s.setUserProfile);
 
   const hostUser = useHostStore((s) => s.host.user);
   const tickets = useTicketStore((s) => s.tickets);
   const breached = useSlaStore((s) => s.breached);
 
-  const [username, setUsername] = useState(profile?.username ?? hostUser.displayName);
+  const [username, setUsername] = useState(hostUser.displayName);
   const [customUrl, setCustomUrl] = useState("");
   const [savedFlash, setSavedFlash] = useState(false);
-
-  if (!profile) {
-    return (
-      <div className="flex h-full items-center justify-center bg-panel text-xs text-gray-600">
-        No active session.
-      </div>
-    );
-  }
-
-  const provider = PROVIDER_META[profile.provider];
 
   // ── Gamification stats (live sim state; XP mirrors the synced profile) ──
   const xp = hostUser.xp;
@@ -64,15 +48,17 @@ export default function ProfileApp() {
       : Math.round(((resolved.length - Math.min(breachCount, resolved.length)) / resolved.length) * 100);
   const rank = rankForXp(xp);
 
-  async function saveUsername() {
+  function saveUsername() {
     const clean = username.trim();
-    if (!clean || clean === profile!.username) return;
-    await updateProfile({ username: clean });
+    if (!clean || clean === hostUser.displayName) return;
+    updateProfile({ username: clean });
+    setHostUser({ displayName: clean });
     flash();
   }
 
-  async function pickAvatar(avatar: string) {
-    await updateProfile({ avatar });
+  function pickAvatar(avatar: string) {
+    updateProfile({ avatar });
+    setHostUser({ avatar });
     flash();
   }
 
@@ -81,22 +67,14 @@ export default function ProfileApp() {
     setTimeout(() => setSavedFlash(false), 1500);
   }
 
-  async function logout() {
-    await signOut();
-    router.replace("/");
-  }
-
   return (
     <div className="h-full space-y-4 overflow-y-auto term-scroll bg-panel p-5 text-sm text-gray-200">
       {/* Identity header */}
       <div className="flex items-center gap-4 rounded-xl border border-edge bg-panelalt p-4">
-        <Avatar value={profile.avatar} name={profile.username} className="h-16 w-16" />
+        <Avatar value={hostUser.avatar} name={hostUser.displayName} className="h-16 w-16" />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-lg font-bold text-gray-50">{profile.username}</div>
-          <div className="truncate text-[11px] text-gray-500">{profile.email ?? "no email (guest)"}</div>
-          <span className={`mt-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${provider.color}`}>
-            {provider.label}
-          </span>
+          <div className="truncate text-lg font-bold text-gray-50">{hostUser.displayName}</div>
+          <div className="truncate text-[11px] text-gray-500">{hostUser.role}</div>
         </div>
         {savedFlash && (
           <span className="rounded-full bg-accent/20 px-2.5 py-1 text-[10px] font-semibold text-accent">
@@ -196,7 +174,7 @@ export default function ProfileApp() {
             />
             <button
               onClick={() => void saveUsername()}
-              disabled={!username.trim() || username.trim() === profile.username}
+              disabled={!username.trim() || username.trim() === hostUser.displayName}
               className="rounded-lg bg-info px-4 py-2 text-xs font-bold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Save
@@ -213,12 +191,12 @@ export default function ProfileApp() {
               title={pal.label}
               aria-label={pal.label}
               className={`rounded-full p-0.5 transition ${
-                profile.avatar === pal.id
+                hostUser.avatar === pal.id
                   ? "ring-2 ring-info ring-offset-2 ring-offset-panelalt"
                   : "ring-1 ring-edge hover:ring-gray-500"
               }`}
             >
-              <Avatar value={pal.id} name={profile.username} className="h-8 w-8" />
+              <Avatar value={pal.id} name={hostUser.displayName} className="h-8 w-8" />
             </button>
           ))}
         </div>
@@ -242,20 +220,19 @@ export default function ProfileApp() {
         </div>
       </section>
 
-      {/* Account actions */}
+      {/* Save */}
       <section className="flex items-center justify-between rounded-xl border border-edge bg-panelalt p-4">
         <div>
-          <div className="text-xs font-semibold text-gray-200">Sign out of TriageOS</div>
+          <div className="text-xs font-semibold text-gray-200">Return to the title screen</div>
           <div className="text-[10px] text-gray-500">
-            Ends this session and returns to the landing page. Your save stays on this device
-            {profile.provider !== "guest" ? "; your XP is synced to your account." : "."}
+            Your progress is saved on this device and will be waiting under Continue.
           </div>
         </div>
         <button
-          onClick={() => void logout()}
-          className="rounded-lg border border-danger/50 px-4 py-2 text-xs font-bold text-danger transition hover:bg-danger hover:text-white"
+          onClick={() => router.push("/")}
+          className="rounded-lg border border-edge px-4 py-2 text-xs font-semibold text-gray-200 transition hover:border-info/60 hover:text-info"
         >
-          Log out
+          Title screen
         </button>
       </section>
     </div>
