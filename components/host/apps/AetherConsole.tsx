@@ -99,7 +99,7 @@ function BurnMeter({ burn }: { burn: number }) {
       </span>
       <span className="font-mono text-[11px] font-semibold text-gray-100">{burn.toFixed(2)}</span>
       <span className="text-[9px] uppercase tracking-wider text-gray-600">cr/h</span>
-      <span className="h-1 w-12 overflow-hidden rounded-full bg-black/40">
+      <span className="h-1 w-12 overflow-hidden rounded-full bg-gray-500/25">
         <span
           className={`block h-full rounded-full ${over ? "bg-amber-400" : "bg-emerald-400"}`}
           style={{ width: `${pct}%` }}
@@ -792,7 +792,7 @@ function Trace() {
         {rows.map((e) => (
           <div
             key={e.id}
-            className="grid grid-cols-[92px_110px_1fr_92px] gap-2 border-b border-edge/40 px-3 py-1.5 text-[11px] last:border-0 hover:bg-white/[0.02]"
+            className="grid grid-cols-[92px_110px_1fr_92px] gap-2 border-b border-edge/40 px-3 py-1.5 text-[11px] last:border-0 hover:bg-gray-500/[0.07]"
           >
             <span className="font-mono text-[10px] text-gray-600">
               {new Date(e.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}

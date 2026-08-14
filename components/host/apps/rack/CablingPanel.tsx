@@ -90,7 +90,7 @@ export default function CablingPanel() {
           {err && <div className="mt-2 flex items-center gap-1.5 text-[10px] text-danger"><IconAlert size={11} /> {err}</div>}
 
           <button onClick={add} disabled={cableStock < 1}
-            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded bg-info px-2 py-1.5 text-[11px] font-semibold text-black hover:brightness-110 disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500">
+            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded bg-brand-fill px-2 py-1.5 text-[11px] font-semibold text-brand-on hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500">
             <IconPlus size={12} /> Connect cable
           </button>
         </>
@@ -119,7 +119,7 @@ export default function CablingPanel() {
 
 function KindTab({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} className={`flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 text-[11px] ${active ? "bg-info font-semibold text-black" : "text-gray-300 hover:bg-panelalt"}`}>
+    <button onClick={onClick} className={`flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 text-[11px] ${active ? "bg-brand-fill font-semibold text-brand-on" : "text-gray-300 hover:bg-panelalt"}`}>
       {icon} {children}
     </button>
   );

@@ -34,6 +34,8 @@ import {
   type PolicyValue,
 } from "@/lib/core";
 import { IconAlert, IconCheck, IconLock, IconPlus, IconX } from "@/components/ui/icons";
+import { Term } from "@/components/ui/Tooltip";
+import Disclosure from "@/components/ui/Disclosure";
 
 export default function FleetPolicies() {
   const infra = useInfraStore((s) => s.infra);
@@ -138,7 +140,7 @@ export default function FleetPolicies() {
         {/* ── Links on this container + resulting settings ───────────────── */}
         <div className="flex w-[20rem] shrink-0 flex-col border-r border-edge">
           <div className="flex items-center gap-1.5 border-b border-edge px-2 py-1">
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-gray-500">Linked here</span>
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-gray-500"><Term k="policylink">Linked</Term> here</span>
             {container !== DOMAIN_ROOT && (
               <label className="ml-auto flex cursor-pointer items-center gap-1 text-[9px] text-gray-400">
                 <input
@@ -147,7 +149,7 @@ export default function FleetPolicies() {
                   onChange={(e) => setBlock(container, e.target.checked)}
                   className="h-2.5 w-2.5 accent-amber-500"
                 />
-                Block inheritance
+                <Term k="blockinheritance">Block inheritance</Term>
               </label>
             )}
           </div>
@@ -194,7 +196,7 @@ export default function FleetPolicies() {
           {/* THE panel: what is actually in force here, and who won. */}
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="border-b border-edge px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-gray-500">
-              Resulting settings
+              Resulting settings <Term k="precedence" withIcon>precedence</Term>
             </div>
             {resolved.size === 0 && (
               <p className="px-2 py-2 text-[10px] text-gray-600">Nothing applies to this container.</p>
@@ -276,20 +278,20 @@ function PolicyDetail({
           {!linkedHere && (
             <button
               onClick={onLink}
-              className="border border-edge bg-surface-3 px-2 py-0.5 text-[10px] text-gray-100 hover:bg-surface-3"
+              className="btn-primary btn-sm"
             >
               Link here
             </button>
           )}
           <button
             onClick={onToggleEnabled}
-            className="border border-edge bg-surface-3 px-2 py-0.5 text-[10px] text-gray-100 hover:bg-surface-3"
+            className="btn-secondary btn-sm"
           >
             {policy.enabled ? "Disable" : "Enable"}
           </button>
           <button
             onClick={onDelete}
-            className="border border-danger/40 px-2 py-0.5 text-[10px] text-danger hover:bg-danger/10"
+            className="btn-ghost btn-sm text-danger hover:bg-danger/10 hover:text-danger"
           >
             Delete
           </button>
@@ -300,12 +302,63 @@ function PolicyDetail({
         <p className="border-b border-edge/60 px-3 py-1.5 text-[10px] text-gray-500">{policy.description}</p>
       )}
 
-      {categories.map((cat) => (
-        <div key={cat}>
-          <div className="border-b border-edge/60 bg-surface-2/60 px-3 py-1 text-[9px] font-semibold uppercase tracking-wider text-gray-500">
-            {cat}
+      {/*
+        PROGRESSIVE DISCLOSURE OVER CATEGORIES. Ten settings in four groups is
+        a wall to someone whose ticket concerns exactly one of them. "Account"
+        stays open because it is what the overwhelming majority of policy
+        tickets touch; the rest collapse.
+        
+        THE RULE THAT MAKES THIS SAFE: a group auto-opens if it holds any
+        CONFIGURED setting. A collapsed section may hide options, never state —
+        an operator must be able to see everything a policy actually does
+        without hunting through toggles, or this pattern starts concealing the
+        cause of the bug they are chasing.
+      */}
+      {categories.map((cat) => {
+        const keys = POLICY_KEYS.filter((k) => k.category === cat);
+        const configuredCount = keys.filter((k) => policy.settings[k.key] !== undefined).length;
+        const body = renderKeys(keys);
+        if (cat === "Account" || configuredCount > 0) {
+          return (
+            <div key={cat}>
+              <div className="flex items-baseline gap-2 border-b border-edge/60 bg-surface-2/60 px-3 py-1">
+                <span className="text-[9px] font-semibold uppercase tracking-wider text-gray-500">{cat}</span>
+                {configuredCount > 0 && (
+                  <span className="font-mono text-[9px] text-brand-text">{configuredCount} set</span>
+                )}
+              </div>
+              {body}
+            </div>
+          );
+        }
+        return (
+          <div key={cat} className="border-b border-edge/60 px-3 py-2">
+            <Disclosure label={cat} summary={`${keys.length} settings, none configured`}>
+              <div className="-mx-3">{body}</div>
+            </Disclosure>
           </div>
-          {POLICY_KEYS.filter((k) => k.category === cat).map((meta) => {
+        );
+      })}
+
+      <p className="px-3 py-2 text-[9px] leading-relaxed text-gray-600">
+        Closest container wins, except where a link is enforced — an enforced link survives blocked
+        inheritance and beats anything nearer the account. Selected container:{" "}
+        {container === DOMAIN_ROOT ? "domain root" : container}.
+      </p>
+
+      {/* Every change above applies the moment it is made — this console has no
+          Save step, because a policy editor that batches edits invites the
+          operator to walk away believing a change landed when it did not. */}
+      <div className="form-footer">
+        <span className="footer-note">Changes apply immediately.</span>
+      </div>
+    </div>
+  );
+
+  function renderKeys(keys: typeof POLICY_KEYS) {
+    return (
+      <>
+        {keys.map((meta) => {
             const value = policy.settings[meta.key];
             const configured = value !== undefined;
             const why = configured ? absence(meta.key) : null;
@@ -357,14 +410,8 @@ function PolicyDetail({
                 {why && <p className="mt-0.5 pl-5 text-[9px] leading-relaxed text-amber-400">{why}</p>}
               </div>
             );
-          })}
-        </div>
-      ))}
-
-      <p className="px-3 py-2 text-[9px] leading-relaxed text-gray-600">
-        Closest container wins, except where a link is enforced — an enforced link survives blocked inheritance and
-        beats anything nearer the account. Selected container: {container === DOMAIN_ROOT ? "domain root" : container}.
-      </p>
-    </div>
-  );
+        })}
+      </>
+    );
+  }
 }

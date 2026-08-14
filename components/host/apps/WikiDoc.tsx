@@ -51,7 +51,7 @@ function inline(text: string, key: string): React.ReactNode[] {
       return (
         <code
           key={k}
-          className="rounded border border-edge bg-black/40 px-1 py-px font-mono text-[11px] text-info"
+          className="rounded border border-edge bg-gray-500/25 px-1 py-px font-mono text-[11px] text-info"
         >
           {chunk.slice(1, -1)}
         </code>
@@ -232,7 +232,7 @@ export default function WikiDoc({ markdown }: { markdown: string }) {
 
           case "code":
             return (
-              <div key={k} className="my-3 overflow-hidden rounded-lg border border-edge bg-black/45">
+              <div key={k} className="my-3 overflow-hidden rounded-lg border border-edge bg-gray-500/[0.12]">
                 {b.lang && (
                   <div className="border-b border-edge/70 px-3 py-1 font-mono text-[9px] uppercase tracking-wider text-gray-600">
                     {b.lang}
@@ -262,7 +262,7 @@ export default function WikiDoc({ markdown }: { markdown: string }) {
                   </thead>
                   <tbody>
                     {b.rows.map((r, j) => (
-                      <tr key={j} className="border-b border-edge/40 last:border-0 hover:bg-white/[0.02]">
+                      <tr key={j} className="border-b border-edge/40 last:border-0 hover:bg-gray-500/[0.07]">
                         {r.map((c, m) => (
                           <td key={m} className="px-3 py-1.5 align-top text-gray-300">
                             {inline(c, `${k}-${j}-${m}`)}

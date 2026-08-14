@@ -155,7 +155,7 @@ export default function AdvancedAssembly({
                 }
                 if (i <= installed && spec.count > 1) return <Slot key={i} state="filled" onExtract={() => {}} label={spec.replacementLabel} />;
                 if (i <= spec.count) return <div key={i} className="h-9 rounded-md border-2 border-dashed border-amber-400/40 text-center text-[10px] leading-8 text-amber-300/60">{extracted ? "install →" : "slot"}</div>;
-                return <div key={i} className="h-9 rounded-md border border-white/5 bg-white/[0.03] text-center text-[10px] leading-9 text-gray-600">OK</div>;
+                return <div key={i} className="h-9 rounded-md border border-edge/60 bg-gray-500/[0.08] text-center text-[10px] leading-9 text-gray-600">OK</div>;
               })}
             </div>
             <StatusLine>
@@ -353,7 +353,7 @@ function GateBtn({ done, label, onClick, disabled, danger }: { done: boolean; la
 }
 
 function ProceedInline({ enabled, label, onClick }: { enabled: boolean; label: string; onClick: () => void }) {
-  return <button onClick={onClick} disabled={!enabled} className="mt-3 rounded-md bg-info px-3 py-1.5 text-xs font-semibold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500">{label}</button>;
+  return <button onClick={onClick} disabled={!enabled} className="mt-3 rounded-md bg-brand-fill px-3 py-1.5 text-xs font-semibold text-brand-on transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500">{label}</button>;
 }
 
 function StatusLine({ children }: { children: React.ReactNode }) {

@@ -395,3 +395,55 @@ export function deviceIcon(kind: RackDeviceKind, props: IconProps = {}) {
     case "crac": return <IconSnowflake {...props} />;
   }
 }
+
+/* ── v0.9.1: remote-session chrome, tooltips and the command palette ─────── */
+
+/** Signal strength — the connection-quality readout on the RDP banner. */
+export const IconSignal = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 17v2" />
+    <path d="M8 13v6" />
+    <path d="M13 9v10" />
+    <path d="M18 5v14" />
+  </Svg>
+);
+
+/** Pin — keeps the connection banner from auto-hiding. */
+export const IconPin = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 17v5" />
+    <path d="M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6Z" />
+  </Svg>
+);
+
+/** Question mark in a circle — the affordance on a glossary term. */
+export const IconHelp = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.2-2.5 3.9" />
+    <path d="M12 17.5h.01" />
+  </Svg>
+);
+
+/** Keyboard command glyph — the shortcut hint in the palette. */
+export const IconCommand = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M6 3a3 3 0 1 1-3 3h12a3 3 0 1 1 3-3v12a3 3 0 1 1 3 3H9a3 3 0 1 1-3 3V3Z" />
+  </Svg>
+);
+
+/** Chevron pointing down — the Advanced Settings disclosure. */
+export const IconChevronDown = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="m6 9 6 6 6-6" />
+  </Svg>
+);
+
+/** Arrow entering a bracket — "you are inside another machine". */
+export const IconRemoteIn = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+    <path d="M10 17l5-5-5-5" />
+    <path d="M15 12H3" />
+  </Svg>
+);

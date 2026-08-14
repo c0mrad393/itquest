@@ -47,6 +47,7 @@ import {
   IconUsers,
   IconX,
 } from "@/components/ui/icons";
+import NewUserPanel from "@/components/host/remote/server/NewUserPanel";
 
 type Scope = { kind: "ou"; name: string } | { kind: "group"; name: string } | { kind: "all" };
 
@@ -65,6 +66,7 @@ export default function DirectoryConsole({ embedded = false }: { embedded?: bool
   const [query, setQuery] = useState("");
   const [selectedSam, setSelectedSam] = useState<string | null>(null);
   const [newGroup, setNewGroup] = useState("");
+  const [creatingUser, setCreatingUser] = useState(false);
   const [notice, setNotice] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   // The gate. Subscribed to the whole estate, so tripping the DC's PDU on the
@@ -103,7 +105,10 @@ export default function DirectoryConsole({ embedded = false }: { embedded?: bool
   }
 
   return (
-    <div className="flex h-full flex-col bg-panel text-gray-200">
+    // `relative` so the new-account dialog can cover this console and nothing
+    // else — a modal that escapes to the whole screen would also cover the
+    // ServerOS desktop this console is running inside.
+    <div className="relative flex h-full flex-col bg-panel text-gray-200">
       {!embedded && (
         <AppHeader iconId="users" title={EDS} subtitle={ad.domainDns}>
           <CountPill label="accounts" value={ad.users.length} />
@@ -129,6 +134,10 @@ export default function DirectoryConsole({ embedded = false }: { embedded?: bool
             <IconX size={11} />
           </button>
         </div>
+      )}
+
+      {creatingUser && (
+        <NewUserPanel onDone={() => setCreatingUser(false)} />
       )}
 
       <div className="flex min-h-0 flex-1">
@@ -198,6 +207,16 @@ export default function DirectoryConsole({ embedded = false }: { embedded?: bool
               className="min-w-0 flex-1 bg-transparent text-[11px] outline-none placeholder:text-gray-600"
             />
             <span className="shrink-0 font-mono text-[9px] text-gray-500">{users.length}</span>
+            {/* Onboarding is the most common directory ticket there is; before
+                v0.9.1 the only way to serve one was to edit somebody else. */}
+            <button
+              onClick={() => setCreatingUser(true)}
+              title="Create an account"
+              aria-label="Create an account"
+              className="btn-primary btn-sm shrink-0"
+            >
+              <IconPlus size={11} /> New
+            </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
             {users.length === 0 && (

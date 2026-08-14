@@ -41,7 +41,7 @@ export default function PingTool() {
             {hosts.filter((d) => d.id !== from).map((d) => <option key={d.id} value={d.id}>{d.name}{d.serverConfig?.ipv4 ? ` (${d.serverConfig.ipv4})` : ""}</option>)}
           </select>
           <button onClick={() => from && to && runPing(rackId, from, to)} disabled={!from || !to}
-            className="flex w-full items-center justify-center gap-1.5 rounded bg-info px-2 py-1.5 text-[11px] font-semibold text-black hover:brightness-110 disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500">
+            className="flex w-full items-center justify-center gap-1.5 rounded bg-brand-fill px-2 py-1.5 text-[11px] font-semibold text-brand-on hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500">
             <IconActivity size={12} /> Run ping test
           </button>
         </>

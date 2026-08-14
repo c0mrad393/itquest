@@ -206,7 +206,7 @@ function Register({ totals }: { totals: Record<AssetStatus, number> }) {
               </tr>
             )}
             {rows.map((i) => (
-              <tr key={i.id} className="border-b border-edge/40 hover:bg-white/[0.02]">
+              <tr key={i.id} className="border-b border-edge/40 hover:bg-gray-500/[0.07]">
                 <td className="w-[42%] min-w-[240px] py-2 pl-3.5 pr-2">
                   <div className="flex items-center gap-2">
                     <span className="shrink-0 text-gray-500">{categoryIcon(i.category, { size: 15 })}</span>

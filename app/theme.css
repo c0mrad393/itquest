@@ -1,5 +1,5 @@
 /**
- * TriageOS — Theme tokens (v0.9.0)
+ * TriageOS — Theme tokens (v0.9.1)
  * ================================
  * THE ARCHITECTURAL TRICK, because it is worth understanding before editing
  * anything below:
@@ -13,7 +13,51 @@
  * and in LIGHT MODE THE RAMP IS INVERTED: `gray-100` resolves to near-black,
  * `gray-600` to a mid grey that still reads on white. Every existing utility
  * keeps its INTENT — bright stays prominent, dim stays secondary — and simply
- * lands the right way up in both themes. One definition, not a thousand edits.
+ * lands the right way up in both themes.
+ *
+ * ── WHAT v0.9.1 FIXES ─────────────────────────────────────────────────────
+ *
+ * v0.9.0 applied that trick to `gray` and to SOME shades of emerald, amber,
+ * red, sky and violet. Everything it missed — `emerald-200`, `sky-100`,
+ * `cyan-300`, `rose-300`, `orange-300`, `fuchsia-300`, `slate-*`,
+ * `emerald-900/950` and a dozen more — silently fell through to stock
+ * Tailwind, whose pale tints are built to sit on DARK grounds. On the new
+ * white panels `text-emerald-200` is #a7f3d0 against #ffffff: a contrast ratio
+ * of about 1.3:1. Not "hard to read" — invisible. That single gap is the whole
+ * bug report.
+ *
+ * The fix is structural rather than a hunt for offenders: EVERY shade of every
+ * accent family now resolves to a token, so there is no fallthrough left to
+ * find. Adding `text-rose-800` tomorrow lands on a themed value automatically.
+ *
+ * Each family carries three roles instead of a ramp, because a ramp would be
+ * a lie — the shades are not evenly spaced perceptual steps here, they are
+ * three JOBS the code actually asks for:
+ *
+ *   --x-text  shades 50–300, written as "the light tint" for dark mode.
+ *             Must be READABLE on a panel: light in dark mode, dark ink in
+ *             light mode. Every one of these is AA on both surface and sunken.
+ *   --x-base  shades 400–600. Dots, bars, strokes, small solid fills. Held to
+ *             text-safe contrast in light mode too, since a third of these
+ *             call sites are actually text.
+ *   --x-deep  shades 700–950, written as "the dark wash" for dark mode.
+ *             INVERTS to a pale wash in light mode, exactly like the greys.
+ *
+ * ── THE BRAND COLOUR ──────────────────────────────────────────────────────
+ *
+ * The palette read clinical because its only strong colour was a status
+ * colour: everything vivid on screen meant healthy, degraded or broken, so
+ * the chrome itself had nothing left but grey. `--brand-*` is a colour with no
+ * status meaning at all — an electric indigo that says "this is the action" —
+ * and it is split by JOB rather than by shade:
+ *
+ *   --brand-fill  a ground that white text sits on at AA (5.0:1 dark, 8.3:1
+ *                 light). Primary buttons.
+ *   --brand-text  the same hue as TEXT on a panel. A fill dark enough for
+ *                 white text is always too dark to read as text itself; one
+ *                 token cannot do both jobs, and pretending otherwise is how
+ *                 vibrant palettes end up illegible.
+ *   --brand-soft  a tint for active tabs and selected rows.
  *
  * Channels are space-separated RGB triples rather than hex so Tailwind's
  * opacity modifiers keep working: `bg-info/15`, `text-gray-500/60` and friends
@@ -35,12 +79,25 @@
   --g-100: 233 239 247;
   --g-200: 205 215 227;
   --g-300: 167 180 196;
-  --g-400: 128 143 163;
-  --g-500: 100 114 133;
-  --g-600: 79 92 110;
-  --g-700: 58 69 84;
-  --g-800: 39 47 59;
-  --g-900: 24 30 39;
+  /*
+   * THE DIM END, RAISED (v0.9.1). Auditing computed colours against their real
+   * grounds turned up 95 AA failures in DARK mode — more than in light, which
+   * was the surprise of this pass. `gray-500` and `gray-600` carry most of the
+   * app's captions, hints and metadata, and at the old values they sat at
+   * 3.5:1 and 2.5:1 on --surface-2. They read as "subtle" on a good monitor
+   * and as "missing" on a bad one.
+   *
+   * Both now clear 4.5:1 on the darkest ground they are ever used over, and
+   * 400/500/600 stay visibly separated so the three tiers of emphasis survive.
+   * 700 and below are structural — borders, disabled fills, dividers — and are
+   * deliberately NOT text-safe; nothing should set type in them.
+   */
+  --g-400: 152 166 185;
+  --g-500: 130 145 166;   /* 5.2:1 on --surface-2 */
+  --g-600: 122 137 158;   /* 4.7:1 on --surface-2 */
+  --g-700: 96 109 128;
+  --g-800: 52 62 77;
+  --g-900: 30 37 48;
 
   /* Surfaces, back to front. */
   --surface-sunken: 6 10 16;    /* the page behind everything */
@@ -48,23 +105,58 @@
   --surface-2: 22 28 38;        /* raised rows, headers */
   --surface-3: 31 39 51;        /* controls, hovers */
   --edge: 45 55 70;
+  --edge-strong: 66 79 98;      /* dividers that must survive a busy table */
 
-  /* Accents. Vibrant enough to lead the eye, calm enough to sit in a
-     professional tool for an hour. */
-  --info: 82 154 255;           /* primary actions, links, selection */
-  --info-strong: 130 183 255;   /* on-dark text over info surfaces */
-  --accent: 52 211 153;         /* healthy, resolved, online */
-  --accent-strong: 110 231 183;
-  --warn: 245 176 65;           /* attention, throttling, warnings */
-  --warn-strong: 252 200 110;
-  --danger: 248 96 92;          /* offline, breached, destructive */
-  --danger-strong: 252 145 141;
+  /* ── Brand: electric indigo. Carries no status meaning. ─────────────── */
+  --brand-fill: 79 87 246;         /* #4f57f6 — white text on it: 5.0:1 */
+  --brand-fill-hover: 104 111 250;
+  --brand-on: 255 255 255;         /* text/icons ON a brand fill */
+  --brand-text: 147 165 255;       /* the hue as text on a panel: 8.0:1 */
+  --brand-soft: 79 87 246;         /* tinted via alpha at the call site */
+
+  /* ── Status families, three roles each ──────────────────────────────── */
+  --accent-text: 110 231 183;   /* 12.0:1 on --surface */
+  --accent-base: 52 211 153;
+  --accent-deep: 5 46 34;
+
+  --warn-text: 252 200 110;     /* 11.8:1 */
+  --warn-base: 245 176 65;
+  --warn-deep: 58 36 8;
+
+  --danger-text: 252 145 141;   /* 8.1:1 */
+  --danger-base: 248 96 92;
+  --danger-deep: 61 18 17;
+
+  --info-text: 130 183 255;     /* 9.0:1 */
+  --info-base: 82 154 255;
+  --info-deep: 10 39 72;
+
+  --violet-text: 216 180 254;
+  --violet-base: 168 85 247;
+  --violet-deep: 46 16 101;
+
+  /* Back-compat aliases: v0.9.0 markup uses these names directly. */
+  --info: var(--info-base);
+  --info-strong: var(--info-text);
+  --accent: var(--accent-base);
+  --accent-strong: var(--accent-text);
+  --warn: var(--warn-base);
+  --warn-strong: var(--warn-text);
+  --danger: var(--danger-base);
+  --danger-strong: var(--danger-text);
 
   /* Terminals stay near-black in both themes: a console is a console. */
   --term: 8 11 16;
   --term-fg: 210 220 232;
 
-  --ring: 82 154 255;
+  /* Remote sessions get their own ground so "another machine" is visible
+     before you read a single label. See RemoteChrome. */
+  --remote-tint: 16 30 52;
+  --remote-edge: 60 96 150;
+  --remote-bar: 12 38 74;
+  --remote-bar-fg: 198 220 248;
+
+  --ring: 147 165 255;
   --shadow-strength: 0.5;
 }
 
@@ -84,7 +176,11 @@
   --g-300: 66 78 98;
   --g-400: 82 95 116;
   --g-500: 92 103 121;
-  --g-600: 116 127 145;
+  /* Measured, not guessed: at #6e798b this was 4.17:1 on --surface-2 and the
+     single most common failure in the whole light theme — `text-gray-600` is
+     the app's default caption colour. #626d7e clears AA on all three grounds
+     (5.20 white · 4.97 surface-2 · 4.80 sunken). */
+  --g-600: 98 109 126;
   --g-700: 158 168 183;
   --g-800: 202 210 221;
   --g-900: 232 237 243;
@@ -92,25 +188,66 @@
   --surface-sunken: 240 243 248;
   --surface: 255 255 255;
   --surface-2: 247 249 252;
-  --surface-3: 237 241 247;
-  --edge: 216 222 232;
+  --surface-3: 236 240 246;
+  --edge: 214 221 232;
+  --edge-strong: 184 194 209;
 
-  /* Darkened accents: the dark-mode blues and greens are too light to carry
-     text or thin strokes on white. */
-  --info: 29 108 227;
-  --info-strong: 21 84 184;
-  --accent: 13 148 100;
-  --accent-strong: 8 118 79;
-  --warn: 181 111 8;
-  --warn-strong: 146 88 4;
-  --danger: 211 47 47;
-  --danger-strong: 176 36 36;
+  --brand-fill: 79 70 229;         /* #4f46e5 — white text on it: 8.3:1 */
+  --brand-fill-hover: 67 56 202;
+  --brand-on: 255 255 255;
+  --brand-text: 67 56 202;         /* 7.9:1 on white, 7.1:1 on sunken */
+  --brand-soft: 79 70 229;
 
+  /*
+   * The `-text` tokens are held to AA against --surface-sunken (#f0f3f8), not
+   * just against white. Panels sit on the sunken ground and chips sit on
+   * surface-3; passing only against pure white is how a palette ends up
+   * "technically compliant" and still unreadable in half the app.
+   */
+  --accent-text: 11 122 85;     /* 5.3:1 white · 4.8:1 sunken */
+  --accent-base: 10 125 85;
+  --accent-deep: 231 247 239;
+
+  --warn-text: 138 90 5;        /* 5.9:1 · 5.2:1 */
+  --warn-base: 150 96 6;
+  --warn-deep: 253 243 226;
+
+  --danger-text: 179 35 31;     /* 6.8:1 · 6.1:1 */
+  --danger-base: 197 40 36;
+  --danger-deep: 253 236 236;
+
+  --info-text: 19 88 184;       /* 6.8:1 · 6.1:1 */
+  --info-base: 24 96 200;
+  --info-deep: 232 241 253;
+
+  --violet-text: 109 40 217;
+  --violet-base: 118 47 226;
+  --violet-deep: 242 233 254;
+
+  --info: var(--info-base);
+  --info-strong: var(--info-text);
+  --accent: var(--accent-base);
+  --accent-strong: var(--accent-text);
+  --warn: var(--warn-base);
+  --warn-strong: var(--warn-text);
+  --danger: var(--danger-base);
+  --danger-strong: var(--danger-text);
+
+  /* A console stays a console, but not pure black on a white desktop —
+     that much local contrast is fatiguing next to a pale panel. */
   --term: 24 28 36;
   --term-fg: 226 232 240;
 
-  --ring: 29 108 227;
-  --shadow-strength: 0.12;
+  --remote-tint: 232 238 248;
+  --remote-edge: 148 173 214;
+  --remote-bar: 30 64 124;      /* the connection bar stays dark in BOTH
+                                   themes: it is the one element whose whole
+                                   job is to look like it belongs to another
+                                   computer. */
+  --remote-bar-fg: 232 240 252;
+
+  --ring: 67 56 202;
+  --shadow-strength: 0.14;
 }
 
 /* The page itself, so there is no flash of the wrong ground on load. */

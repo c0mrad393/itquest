@@ -112,7 +112,7 @@ export default function Wiki() {
                     className={`block w-full border-l-2 px-3 py-1.5 text-left transition ${
                       open?.id === a.id
                         ? "border-info bg-info/10"
-                        : "border-transparent hover:bg-white/[0.03]"
+                        : "border-transparent hover:bg-gray-500/[0.08]"
                     }`}
                   >
                     <div

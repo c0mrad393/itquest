@@ -282,7 +282,7 @@ function ActionToggle({
 function Kpi({ label, value, tone = "ok" }: { label: string; value: string; tone?: "ok" | "warn" | "bad" }) {
   const c = tone === "bad" ? "text-danger" : tone === "warn" ? "text-warn" : "text-gray-200";
   return (
-    <div className="rounded-md bg-black/20 px-2.5 py-1">
+    <div className="rounded-md bg-gray-500/15 px-2.5 py-1">
       <div className="text-[9px] uppercase tracking-wider text-gray-500">{label}</div>
       <div className={`font-mono text-sm font-bold ${c}`}>{value}</div>
     </div>

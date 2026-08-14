@@ -74,7 +74,7 @@ export default function Taskbar({
   }
 
   return (
-    <div className="pointer-events-auto absolute bottom-0 left-0 right-0 z-[9999] flex h-12 items-center border-t border-white/10 bg-sunken/70 px-3 backdrop-blur-xl">
+    <div className="pointer-events-auto absolute bottom-0 left-0 right-0 z-[9999] flex h-12 items-center border-t border-edge bg-sunken/70 px-3 backdrop-blur-xl">
       {/* Left spacer to keep the cluster centered */}
       <div className="flex-1" />
 
@@ -109,7 +109,7 @@ export default function Taskbar({
               }
               title={meta.title}
               className={`relative flex h-9 w-9 items-center justify-center rounded-md transition hover:bg-gray-500/15 ${
-                active ? "bg-white/15 text-white" : "text-gray-300"
+                active ? "bg-brand-soft/15 text-brand-text" : "text-gray-300"
               }`}
             >
               <AppIcon id={meta.iconId} size={APP_ICON_SIZE.taskbar} />
@@ -198,7 +198,7 @@ export default function Taskbar({
         >
           <BellIcon />
           {unread > 0 && (
-            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-info px-1 text-[9px] font-bold text-black">
+            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-fill px-1 text-[9px] font-bold text-brand-on">
               {unread}
             </span>
           )}

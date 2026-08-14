@@ -649,7 +649,7 @@ function Emergency() {
                   <div className="flex shrink-0 gap-1.5">
                     <button
                       onClick={() => hire(t)}
-                      className="rounded-md bg-amber-500/90 px-3 py-1.5 text-[11px] font-semibold text-black hover:brightness-110"
+                      className="rounded-md bg-brand-fill px-3 py-1.5 text-[11px] font-semibold text-brand-on hover:bg-brand-hover"
                     >
                       Confirm
                     </button>

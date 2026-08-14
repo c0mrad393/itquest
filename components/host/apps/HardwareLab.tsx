@@ -135,11 +135,11 @@ function DeploymentDetail({ ticket, job, done, provisioned, dispatch, onGoToWork
         ) : dispatch?.status === "in_progress" ? (
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-xs text-gray-200"><span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />{dispatch.note}</div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-black/40"><div className="h-full rounded-full bg-info transition-all duration-1000 ease-linear" style={{ width: `${((dispatch.total - dispatch.timeLeft) / dispatch.total) * 100}%` }} /></div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-500/25"><div className="h-full rounded-full bg-info transition-all duration-1000 ease-linear" style={{ width: `${((dispatch.total - dispatch.timeLeft) / dispatch.total) * 100}%` }} /></div>
             <div className="text-right font-mono text-[10px] text-gray-500">ETA {dispatch.timeLeft}s · rack 4B</div>
           </div>
         ) : (
-          <button onClick={onDispatch} disabled={!provisioned} className="w-full rounded-md bg-info px-3 py-2 text-xs font-semibold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500"><span className="inline-flex items-center justify-center gap-1.5"><AppIcon id="truck" size={14} /> Dispatch Field Team for Physical Swap</span></button>
+          <button onClick={onDispatch} disabled={!provisioned} className="w-full rounded-md bg-brand-fill px-3 py-2 text-xs font-semibold text-brand-on transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500"><span className="inline-flex items-center justify-center gap-1.5"><AppIcon id="truck" size={14} /> Dispatch Field Team for Physical Swap</span></button>
         )}
         {!provisioned && !dispatch && <div className="mt-2 text-[10px] text-gray-500">Complete provisioning in the Workshop to unlock dispatch.</div>}
       </div>
@@ -210,7 +210,7 @@ function Workshop({ ticket, job, done, onProvisioned }: { ticket: Ticket; job: H
       {allDone && (
         <div className="flex items-center gap-3 rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3 text-xs text-emerald-300">
           <span className="inline-flex items-center gap-1.5"><AppIcon id="check" size={13} /> Device fully provisioned.</span>
-          <button onClick={onProvisioned} className="ml-auto rounded-md bg-emerald-500/80 px-3 py-1.5 font-semibold text-black hover:brightness-110">Go to dispatch →</button>
+          <button onClick={onProvisioned} className="ml-auto rounded-md bg-brand-fill px-3 py-1.5 font-semibold text-brand-on hover:bg-brand-hover">Go to dispatch →</button>
         </div>
       )}
     </div>
@@ -220,7 +220,7 @@ function Workshop({ ticket, job, done, onProvisioned }: { ticket: Ticket; job: H
 // ── atoms ────────────────────────────────────────────────────────────────────
 
 function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button onClick={onClick} className={`rounded-md px-3 py-1 ${active ? "bg-info text-black font-semibold" : "text-gray-300 hover:bg-panel"}`}>{children}</button>;
+  return <button onClick={onClick} className={`rounded-md px-3 py-1 ${active ? "bg-brand-fill text-brand-on font-semibold" : "text-gray-300 hover:bg-panel"}`}>{children}</button>;
 }
 
 function statusChip(status: string | undefined, provisioned: boolean) {

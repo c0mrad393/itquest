@@ -156,7 +156,10 @@ export default function ServerOsDesktop({ nodeId }: { nodeId: string }) {
       {/* Desktop watermark — every server build has one. */}
       <div className="pointer-events-none absolute bottom-14 right-4 text-right">
         <div className="text-[13px] font-semibold text-gray-500">{SERVER_OS_FULL}</div>
-        <div className="font-mono text-[10px] text-gray-600">
+        {/* gray-400, not gray-600: this sits on the server WALLPAPER rather
+            than on a panel, and the light wallpaper (#dce6f2) is darker than
+            any surface, which pulled gray-600 down to 4.15:1. Measured. */}
+        <div className="font-mono text-[10px] text-gray-400">
           {node.hostname} · {node.connection.ip}
         </div>
       </div>

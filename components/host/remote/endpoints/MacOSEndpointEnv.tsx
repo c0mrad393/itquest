@@ -100,7 +100,7 @@ export default function MacOSEndpointEnv({ nodeId }: { nodeId: string }) {
 
       {/* Dock */}
       <div className="relative z-30 flex shrink-0 justify-center pb-2">
-        <div className="flex items-end gap-2 rounded-2xl border border-white/20 bg-white/15 px-3 py-1.5 shadow-2xl backdrop-blur-md">
+        <div className="flex items-end gap-2 rounded-2xl border border-edge-strong bg-gray-500/20 px-3 py-1.5 shadow-2xl backdrop-blur-md">
           {DOCK.map((d) => {
             const winId = d.id === "finder" ? "system" : `tool-${d.id}`;
             const isOpen = wm.windows.some((w) => w.id === winId);
@@ -187,12 +187,12 @@ function MenuBar({
   };
   const labels = ["", "app", "File", "Edit", "View", "Go"];
   return (
-    <div className="relative z-40 flex h-6 shrink-0 items-center gap-1 bg-black/40 px-2 text-[11px] text-gray-100 backdrop-blur-md">
+    <div className="relative z-40 flex h-6 shrink-0 items-center gap-1 bg-gray-500/25 px-2 text-[11px] text-gray-100 backdrop-blur-md">
       {labels.map((l) => (
         <div key={l} className="relative" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={() => setMenu(openMenu === l ? null : l)}
-            className={`rounded px-2 py-0.5 ${openMenu === l ? "bg-white/25" : "hover:bg-white/15"} ${l === "" ? "text-sm" : ""} ${l === "app" ? "font-semibold" : ""}`}
+            className={`rounded px-2 py-0.5 ${openMenu === l ? "bg-gray-400/50" : "hover:bg-gray-500/20"} ${l === "" ? "text-sm" : ""} ${l === "app" ? "font-semibold" : ""}`}
           >
             {l === "" ? "" : l === "app" ? appName : l}
           </button>
@@ -234,7 +234,7 @@ function Spotlight({ node, onClose, onOpen }: { node: MacNodeState; onClose: () 
   const results = q.trim() ? pool.filter((i) => i.name.toLowerCase().includes(q.toLowerCase())).slice(0, 8) : [];
   return (
     <div className="absolute inset-0 z-50 flex items-start justify-center bg-sunken/60 pt-16" onClick={onClose}>
-      <div className="w-[440px] overflow-hidden rounded-xl border border-white/20 bg-black/70 shadow-2xl backdrop-blur-md" onClick={(e) => e.stopPropagation()}>
+      <div className="w-[440px] overflow-hidden rounded-xl border border-edge-strong bg-black/70 shadow-2xl backdrop-blur-md" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 py-3">
           <span className="text-lg"><AppIcon id="search" size={16} /></span>
           <input
@@ -247,7 +247,7 @@ function Spotlight({ node, onClose, onOpen }: { node: MacNodeState; onClose: () 
           />
         </div>
         {results.length > 0 && (
-          <div className="border-t border-white/10 p-1">
+          <div className="border-t border-edge p-1">
             {results.map((r) => (
               <button key={r.id} onClick={() => onOpen(r)} className="flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-xs text-gray-100 hover:bg-info/70">
                 <span><AppIcon id={r.isFolder ? "folder" : "file-text"} size={16} /></span>
@@ -347,7 +347,7 @@ function SystemSettings({ nodeId }: { nodeId: string }) {
         <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">DNS servers</div>
         <div className="flex gap-1">
           <input value={dnsDraft} onChange={(e) => setDnsDraft(e.target.value)} className="flex-1 rounded border border-edge bg-panel px-2 py-1 font-mono text-[11px] text-gray-200 outline-none focus:border-info" />
-          <button onClick={() => setDns(node.nodeId, dnsDraft.split(",").map((d) => d.trim()).filter(Boolean))} className="rounded bg-info px-2 py-1 text-[11px] font-semibold text-black hover:brightness-110">Apply</button>
+          <button onClick={() => setDns(node.nodeId, dnsDraft.split(",").map((d) => d.trim()).filter(Boolean))} className="rounded bg-brand-fill px-2 py-1 text-[11px] font-semibold text-brand-on hover:bg-brand-hover">Apply</button>
         </div>
       </div>
       <div className="text-[10px] text-gray-600">{node.productName} · Build {node.build}</div>

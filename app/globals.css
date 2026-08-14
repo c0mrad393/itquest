@@ -6,6 +6,146 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * ── Semantic component classes (v0.9.1) ────────────────────────────────────
+ *
+ * Colour decisions live HERE, not in every component. Before this layer a
+ * button was eight utilities repeated at forty call sites, which is why light
+ * mode broke unevenly: each copy had drifted, and fixing one fixed only one.
+ *
+ * These are deliberately COLOUR AND STATE only — no width, no margin, no
+ * position. A component class that also lays things out is one that cannot be
+ * used in the next layout, and the codebase would go straight back to
+ * hand-rolled utilities. Compose: `class="btn-primary w-full"`.
+ *
+ * Every combination below is AA in both themes; the tokens are documented
+ * with their measured ratios in theme.css.
+ */
+@layer components {
+  /* ── Buttons ───────────────────────────────────────────────────────────
+     One visual weight per level of consequence: primary for the action the
+     screen exists to perform, secondary for everything else, ghost for
+     things that are barely actions at all, danger for the irreversible. */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5
+           text-[12px] font-medium leading-none transition
+           disabled:cursor-not-allowed disabled:opacity-45;
+  }
+  .btn-primary {
+    @apply btn bg-brand-fill text-brand-on hover:bg-brand-hover
+           active:brightness-95;
+  }
+  .btn-secondary {
+    @apply btn border border-edge bg-surface-3 text-gray-100
+           hover:border-edge-strong hover:bg-surface-2;
+  }
+  .btn-ghost {
+    @apply btn text-gray-300 hover:bg-gray-500/15 hover:text-gray-100;
+  }
+  .btn-danger {
+    @apply btn bg-danger text-white hover:brightness-110;
+  }
+  .btn-sm {
+    @apply px-2 py-1 text-[11px];
+  }
+
+  /* ── Inputs ────────────────────────────────────────────────────────────
+     The focus ring is brand, not status: focusing a field is not an alarm. */
+  .field {
+    @apply w-full rounded-md border border-edge bg-surface-2 px-2.5 py-1.5
+           text-[12px] text-gray-100 outline-none transition
+           placeholder:text-gray-600
+           focus:border-brand-text focus:ring-2 focus:ring-brand-text/30
+           disabled:opacity-50;
+  }
+  .field-label {
+    @apply mb-1 block text-[11px] font-medium text-gray-400;
+  }
+  .field-hint {
+    @apply mt-1 block text-[11px] leading-snug text-gray-500;
+  }
+
+  /* ── Containers ────────────────────────────────────────────────────── */
+  .card {
+    @apply rounded-lg border border-edge bg-surface;
+  }
+  .card-header {
+    @apply flex items-center gap-2 border-b border-edge bg-surface-2 px-3 py-2;
+  }
+
+  /* ── Tables ────────────────────────────────────────────────────────────
+     Zebra striping is an ALPHA of the ink, so it darkens a light theme and
+     lightens a dark one from a single rule. Hardcoded stripes were the other
+     place light mode fell apart. */
+  .table-head {
+    @apply border-b border-edge-strong bg-surface-2 text-[10px] font-semibold
+           uppercase tracking-wider text-gray-500;
+  }
+  .table-row {
+    @apply border-b border-edge/60 text-[12px] text-gray-200 transition;
+  }
+  .table-row:nth-child(even) {
+    background-color: rgb(var(--g-500) / 0.05);
+  }
+  .table-row:hover {
+    background-color: rgb(var(--brand-soft) / 0.09);
+  }
+  .table-row[data-selected="true"] {
+    background-color: rgb(var(--brand-soft) / 0.16);
+    @apply text-gray-100;
+  }
+
+  /* ── Tabs ──────────────────────────────────────────────────────────────
+     The active tab is the main place the brand colour earns its keep: it
+     tells you where you are without another grey box. */
+  .tab {
+    @apply relative px-3 py-1.5 text-[12px] font-medium text-gray-400 transition
+           hover:text-gray-100;
+  }
+  .tab[data-active="true"] {
+    @apply text-brand-text;
+  }
+  .tab[data-active="true"]::after {
+    content: "";
+    @apply absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-brand-fill;
+  }
+
+  /* ── Status chips ──────────────────────────────────────────────────────
+     Tint from the family's own token at low alpha, ink from its `-text`
+     token, which is the one guaranteed readable in both themes. */
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5
+           text-[10px] font-medium leading-none;
+  }
+  .chip-ok {
+    @apply chip bg-accent/15 text-accent-strong;
+  }
+  .chip-warn {
+    @apply chip bg-warn/15 text-warn-strong;
+  }
+  .chip-bad {
+    @apply chip bg-danger/15 text-danger-strong;
+  }
+  .chip-info {
+    @apply chip bg-info/15 text-info-strong;
+  }
+  .chip-neutral {
+    @apply chip bg-gray-500/15 text-gray-300;
+  }
+
+  /* ── Form footer ───────────────────────────────────────────────────────
+     Actions live bottom-right, in one place, in one order, everywhere:
+     cancel then confirm, so the destructive-by-accident click is never the
+     one under the cursor by default. */
+  .form-footer {
+    @apply flex items-center justify-end gap-2 border-t border-edge
+           bg-surface-2 px-3 py-2.5;
+  }
+  .form-footer > .footer-note {
+    @apply mr-auto text-[11px] text-gray-500;
+  }
+}
+
 /* ── Modern thin scrollbars (global — no default browser chrome) ──────────── */
 * {
   scrollbar-width: thin;
@@ -101,4 +241,12 @@
 .scroll-thin::-webkit-scrollbar {
   height: 0;
   display: none;
+}
+
+/* Tooltip entrance — a short fade-and-rise, so a definition appearing next to
+   the cursor reads as a response rather than as a layout jump. */
+@keyframes tooltipIn {
+  from {
+    opacity: 0;
+  }
 }

@@ -106,7 +106,7 @@ function ItemIcon({ item }: { item: DesktopItem }) {
   // File/folder: the stroke glyph sits on a translucent tile so it stays legible
   // over any wallpaper, matching how the app tiles above are drawn.
   return (
-    <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-white/15 text-white shadow-md shadow-black/30 ring-1 ring-white/15 backdrop-blur-sm">
+    <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-gray-500/20 text-white shadow-md shadow-black/30 ring-1 ring-white/15 backdrop-blur-sm">
       <AppIcon id={fileGlyph(item)} size={18} />
     </span>
   );
@@ -138,7 +138,7 @@ export function DesktopIconGrid({
           onDoubleClick={() => onOpen?.(item)}
           title={item.name}
           className={`group absolute flex w-[74px] flex-col items-center gap-1 rounded-md px-1 pb-1 pt-1.5 text-center transition ${
-            selected === item.id ? "bg-white/20 ring-1 ring-white/30" : "hover:bg-white/15"
+            selected === item.id ? "bg-gray-500/25 ring-1 ring-white/30" : "hover:bg-gray-500/20"
           }`}
           style={{ left: 10 + item.col * 80, top: 10 + item.row * 72 }}
         >
@@ -146,7 +146,7 @@ export function DesktopIconGrid({
             <span className="relative">
               <ItemIcon item={item} />
               {item.isLocked && (
-                <span className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-400 text-black shadow">
+                <span className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-brand-fill text-brand-on shadow">
                   <AppIcon id="lock" size={9} strokeWidth={2.4} />
                 </span>
               )}
@@ -165,7 +165,7 @@ export function DesktopIconGrid({
 function FilePreview({ item, user, onClose }: { item: DesktopItem; user: string; onClose: () => void }) {
   const isApp = item.kind === "app";
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-gray-500/25 p-4" onClick={onClose}>
       <div
         className="w-[min(360px,90%)] overflow-hidden rounded-xl border border-edge bg-panel shadow-2xl"
         onClick={(e) => e.stopPropagation()}

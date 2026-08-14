@@ -82,12 +82,12 @@ export default function WindowsEndpointEnv({ nodeId }: { nodeId: string }) {
       </div>
 
       {/* Taskbar (centered, Mica) */}
-      <div className="relative z-30 flex h-11 shrink-0 items-center border-t border-white/10 bg-black/45 px-3 backdrop-blur-md">
+      <div className="relative z-30 flex h-11 shrink-0 items-center border-t border-edge bg-gray-500/[0.12] px-3 backdrop-blur-md">
         <div className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1">
           <button
             onClick={(e) => { e.stopPropagation(); setQuickOpen(false); setStartOpen((v) => !v); }}
             title="Start"
-            className={`flex h-8 w-8 items-center justify-center rounded ${startOpen ? "bg-white/20" : "hover:bg-gray-500/15"}`}
+            className={`flex h-8 w-8 items-center justify-center rounded ${startOpen ? "bg-gray-500/25" : "hover:bg-gray-500/15"}`}
           >
             <svg width="16" height="16" viewBox="0 0 18 18">
               <rect x="0" y="0" width="8" height="8" fill="#4cc2ff" /><rect x="10" y="0" width="8" height="8" fill="#4cc2ff" />
@@ -102,7 +102,7 @@ export default function WindowsEndpointEnv({ nodeId }: { nodeId: string }) {
                 key={p.id}
                 onClick={(e) => { e.stopPropagation(); onPinned(p.id); }}
                 title={p.label}
-                className={`relative flex h-8 w-8 items-center justify-center rounded text-base ${isOpen ? "bg-white/15" : "hover:bg-gray-500/15"}`}
+                className={`relative flex h-8 w-8 items-center justify-center rounded text-base ${isOpen ? "bg-gray-500/20" : "hover:bg-gray-500/15"}`}
               >
                 <AppIcon id={p.icon} size={18} />
                 {isOpen && <span className="absolute bottom-0.5 left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full bg-info" />}
@@ -113,7 +113,7 @@ export default function WindowsEndpointEnv({ nodeId }: { nodeId: string }) {
 
         <button
           onClick={(e) => { e.stopPropagation(); setStartOpen(false); setQuickOpen((v) => !v); }}
-          className={`ml-auto flex items-center gap-2 rounded px-2 py-1 text-[11px] text-gray-200 ${quickOpen ? "bg-white/15" : "hover:bg-gray-500/15"}`}
+          className={`ml-auto flex items-center gap-2 rounded px-2 py-1 text-[11px] text-gray-200 ${quickOpen ? "bg-gray-500/20" : "hover:bg-gray-500/15"}`}
           title="Quick settings"
         >
           <span title={netUp(node) ? "Connected" : "No network"} className={netUp(node) ? "" : "text-danger"}>
@@ -201,7 +201,7 @@ function StartMenu({
       onClick={(e) => e.stopPropagation()}
       className="absolute bottom-14 left-1/2 z-40 w-[420px] -translate-x-1/2 rounded-xl border border-white/15 bg-sunken/70 p-4 shadow-2xl backdrop-blur-md"
     >
-      <input placeholder="Search for apps, settings, and documents" className="mb-4 w-full rounded-full border border-white/10 bg-gray-500/15 px-4 py-1.5 text-xs text-gray-100 outline-none placeholder:text-gray-400" />
+      <input placeholder="Search for apps, settings, and documents" className="mb-4 w-full rounded-full border border-edge bg-gray-500/15 px-4 py-1.5 text-xs text-gray-100 outline-none placeholder:text-gray-400" />
       <div className="mb-2 text-[11px] font-semibold text-gray-200">Pinned</div>
       <div className="mb-4 grid grid-cols-6 gap-2">
         {PINNED.map((p) => (
@@ -223,7 +223,7 @@ function StartMenu({
           </button>
         ))}
       </div>
-      <div className="mt-3 flex items-center gap-2 border-t border-white/10 pt-3 text-xs text-gray-200">
+      <div className="mt-3 flex items-center gap-2 border-t border-edge pt-3 text-xs text-gray-200">
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-info/30"><AppIcon id="user" size={15} /></span>
         <span className="truncate">{visual.loggedInUser}</span>
         <span className="ml-auto text-gray-400">⏻</span>
@@ -245,7 +245,7 @@ function QuickSettings({ nodeId }: { nodeId: string }) {
       <div className="mb-3 grid grid-cols-2 gap-2">
         <button
           onClick={() => nic && setUp(node.nodeId, nic.name, !wifiOn)}
-          className={`flex flex-col items-start gap-1 rounded-lg p-2 ${wifiOn ? "bg-info/70 text-black" : "bg-gray-500/15"}`}
+          className={`flex flex-col items-start gap-1 rounded-lg p-2 ${wifiOn ? "bg-brand-fill text-brand-on" : "bg-gray-500/15"}`}
         >
           <span className="text-base"><AppIcon id="globe" size={14} /></span>
           <span className="text-[10px] font-semibold">Wi-Fi</span>
@@ -319,7 +319,7 @@ function NetworkSettings({ nodeId }: { nodeId: string }) {
         <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">DNS servers</div>
         <div className="flex gap-1">
           <input value={dnsDraft} onChange={(e) => setDnsDraft(e.target.value)} className="flex-1 rounded border border-edge bg-panel px-2 py-1 font-mono text-[11px] text-gray-200 outline-none focus:border-info" />
-          <button onClick={() => setDns(node.nodeId, dnsDraft.split(",").map((d) => d.trim()).filter(Boolean))} className="rounded bg-info px-2 py-1 text-[11px] font-semibold text-black hover:brightness-110">Apply</button>
+          <button onClick={() => setDns(node.nodeId, dnsDraft.split(",").map((d) => d.trim()).filter(Boolean))} className="rounded bg-brand-fill px-2 py-1 text-[11px] font-semibold text-brand-on hover:bg-brand-hover">Apply</button>
         </div>
       </div>
     </div>

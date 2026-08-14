@@ -127,7 +127,7 @@ export default function SettingsApp() {
                     {w.label}
                   </span>
                   {wallpaper === w.id && (
-                    <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-info text-black">
+                    <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-brand-fill text-brand-on">
                       <AppIcon id="check" size={10} strokeWidth={3} />
                     </span>
                   )}

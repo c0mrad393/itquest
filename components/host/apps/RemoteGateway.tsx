@@ -111,7 +111,7 @@ export default function RemoteGateway() {
                     openRemote(node.nodeId, node.displayName, OS_ICON_ID[node.os], node.connection.protocol)
                   }
                   title={entry.reason ?? undefined}
-                  className="w-full rounded-md bg-info px-3 py-2 text-xs font-semibold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500"
+                  className="w-full rounded-md bg-brand-fill px-3 py-2 text-xs font-semibold text-brand-on transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500"
                 >
                   {canConnect
                     ? `Connect via ${node.connection.protocol.toUpperCase()}`
@@ -131,7 +131,7 @@ export default function RemoteGateway() {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-black/20 px-2 py-1">
+    <div className="rounded-md bg-gray-500/15 px-2 py-1">
       <div className="text-[9px] uppercase tracking-wider text-gray-500">{label}</div>
       <div className="font-mono text-gray-200">{value}</div>
     </div>

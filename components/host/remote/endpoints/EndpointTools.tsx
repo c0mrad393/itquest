@@ -130,7 +130,7 @@ export function EndpointTerminal({ nodeId, flavor }: { nodeId: string; flavor: "
           />
         </div>
       </div>
-      <div className="border-t border-white/5 px-2.5 py-1 text-[10px] text-gray-600">
+      <div className="border-t border-edge/60 px-2.5 py-1 text-[10px] text-gray-600">
         Try: <span className="text-gray-400">{flavor === "win" ? "ipconfig" : "ifconfig"}</span> ·{" "}
         <span className="text-gray-400">ping {node.hostname}</span>
       </div>

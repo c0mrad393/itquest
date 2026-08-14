@@ -15,6 +15,7 @@ import WindowsEndpointEnv from "./WindowsEndpointEnv";
 import MacOSEndpointEnv from "./MacOSEndpointEnv";
 import LinuxSSHEnv from "./LinuxSSHEnv";
 import { AppIcon } from "@/components/ui/app-icons";
+import { RemoteConnectionBanner, RemoteSurface } from "../RemoteChrome";
 
 const OS_META = {
   windows: { protocol: "RDP", icon: "os-windows" },
@@ -39,7 +40,7 @@ export default function EndpointSession({
 
   if (!node) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 bg-black text-center">
+      <div className="flex h-full flex-col items-center justify-center gap-2 bg-sunken text-center">
         <div className="text-3xl"><AppIcon id="plug" size={28} /></div>
         <div className="text-sm text-danger">Endpoint not found.</div>
         <button onClick={onDisconnect} className="rounded border border-edge px-3 py-1 text-xs text-gray-200 hover:bg-panelalt">Back</button>
@@ -50,23 +51,20 @@ export default function EndpointSession({
   const meta = OS_META[node.os];
 
   return (
-    <div className="flex h-full flex-col bg-black">
-      <div className="flex shrink-0 items-center gap-2 border-b border-white/10 bg-sunken/70 px-3 py-1 text-[11px] text-gray-300">
-        <span className="h-2 w-2 rounded-full bg-emerald-400" />
-        <span className="uppercase tracking-wider">{meta.protocol}</span>
-        <span className="text-gray-500">·</span>
-        <span className="font-mono">{node.connection.ip}:{node.connection.port}</span>
-        <span className="text-gray-500">·</span>
-        <span className="inline-flex items-center gap-1.5"><AppIcon id={meta.icon} size={12} /> {node.hostname}</span>
-        <span className="ml-auto text-gray-400">Connected</span>
-        <button
-          onClick={onDisconnect}
-          className="ml-2 rounded border border-white/10 px-2 py-0.5 text-[10px] text-gray-300 hover:bg-danger hover:text-white"
-        >
-          Disconnect
-        </button>
-      </div>
-      <div className="min-h-0 flex-1">
+    <div className="flex h-full flex-col bg-remote-tint">
+      {/* Same banner the server sessions use. A DeskOS session is every bit as
+          much "somebody else's computer" as a ServerOS one, and the whole point
+          of the marker is that it is identical wherever you cross the boundary. */}
+      <RemoteConnectionBanner
+        hostname={node.hostname}
+        ip={node.connection.ip}
+        port={node.connection.port}
+        protocol={meta.protocol}
+        latencyMs={node.connection.latencyMs}
+        kind="endpoint"
+        onDisconnect={onDisconnect}
+      />
+      <RemoteSurface>
         {node.os === "windows" ? (
           <WindowsEndpointEnv nodeId={nodeId} />
         ) : node.os === "macos" ? (
@@ -74,7 +72,7 @@ export default function EndpointSession({
         ) : (
           <LinuxSSHEnv nodeId={nodeId} />
         )}
-      </div>
+      </RemoteSurface>
     </div>
   );
 }

@@ -44,26 +44,43 @@ export default function WindowFrame({ win }: { win: ManagedWindow }) {
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
   }
 
+  /*
+   * REMOTE WINDOWS LOOK DIFFERENT (v0.9.1). A window onto another machine gets
+   * a cool blue frame and a deeper shadow, so it reads as sitting further away
+   * than the host's own windows — the recognition happens in peripheral vision,
+   * before any label is read. The connection banner inside says it in words;
+   * this says it in shape, and the two reinforce each other.
+   */
+  const remote = win.kind === "remote";
+
   return (
     <div
-      className="pointer-events-auto absolute flex flex-col overflow-hidden border border-edge bg-panel shadow-2xl shadow-black/60"
+      className={`pointer-events-auto absolute flex flex-col overflow-hidden border ${
+        remote
+          ? "border-remote-edge bg-remote-tint shadow-remote"
+          : "border-edge bg-panel shadow-2xl shadow-black/60"
+      }`}
       style={{ ...rect, zIndex: win.z, borderRadius: maximized ? 0 : 10 }}
       onMouseDown={() => focus(win.instanceId)}
     >
       {/* Title bar */}
       <div
-        className="flex h-9 shrink-0 cursor-grab items-center gap-2 border-b border-edge bg-panelalt px-3 active:cursor-grabbing"
+        className={`flex h-9 shrink-0 cursor-grab items-center gap-2 border-b px-3 active:cursor-grabbing ${
+          remote ? "border-remote-edge bg-remote-bar text-remote-bar-fg" : "border-edge bg-panelalt"
+        }`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onDoubleClick={() => toggleMaximize(win.instanceId)}
       >
-        <span className="flex items-center text-gray-400">
+        <span className={`flex items-center ${remote ? "opacity-90" : "text-gray-400"}`}>
           <AppIcon id={win.iconId} size={APP_ICON_SIZE.titlebar} />
         </span>
-        <span className="select-none text-xs font-medium text-gray-200">{win.title}</span>
-        {win.kind === "remote" && (
-          <span className="rounded bg-info/15 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-info">
+        <span className={`select-none text-xs font-medium ${remote ? "" : "text-gray-200"}`}>
+          {win.title}
+        </span>
+        {remote && (
+          <span className="rounded border border-remote-bar-fg/25 px-1.5 py-0.5 text-[9px] uppercase tracking-wider opacity-85">
             {win.protocol}
           </span>
         )}
@@ -104,8 +121,10 @@ function CtrlBtn({
     <button
       onClick={onClick}
       aria-label={label}
-      className={`flex h-9 w-11 items-center justify-center text-gray-400 transition ${
-        danger ? "hover:bg-danger hover:text-white" : "hover:bg-edge hover:text-gray-100"
+      // `text-current/70` rather than a fixed grey: on a remote title bar the
+      // controls inherit the banner's light-on-dark ink in BOTH themes.
+      className={`flex h-9 w-11 items-center justify-center opacity-70 transition hover:opacity-100 ${
+        danger ? "hover:bg-danger hover:text-white" : "hover:bg-gray-500/20"
       }`}
     >
       {children}

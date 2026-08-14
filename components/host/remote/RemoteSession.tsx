@@ -18,6 +18,7 @@ import { useHostStore } from "@/lib/host/store";
 import type { RemoteSessionWindow } from "@/lib/host/windows";
 import NodeEnvironment from "./NodeEnvironment";
 import { AppIcon } from "@/components/ui/app-icons";
+import { RemoteConnectionBanner, RemoteSurface } from "./RemoteChrome";
 
 type Phase = "connecting" | "authenticating" | "negotiating" | "connected" | "error";
 
@@ -112,32 +113,31 @@ export default function RemoteSession({ win }: { win: RemoteSessionWindow }) {
   }
 
   return (
-    <div className="flex h-full flex-col bg-black">
-      {/* Session bar */}
-      <div className="flex items-center gap-2 border-b border-white/10 bg-sunken/70 px-3 py-1 text-[11px] text-gray-300">
-        <span className={`h-2 w-2 rounded-full ${phase === "connected" ? "bg-emerald-400" : "bg-amber-400 animate-pulse"}`} />
-        <span className="uppercase tracking-wider">{win.protocol}</span>
-        <span className="text-gray-500">·</span>
-        <span className="font-mono">{node.connection.ip}:{node.connection.port}</span>
-        <span className="text-gray-500">·</span>
-        <span>{node.connection.latencyMs} ms</span>
-        <span className="ml-auto capitalize text-gray-400">{phase}</span>
-        <button
-          onClick={() => close(win.instanceId)}
-          className="ml-2 rounded border border-white/10 px-2 py-0.5 text-[10px] text-gray-300 hover:bg-danger hover:text-white"
-        >
-          Disconnect
-        </button>
-      </div>
+    <div className="flex h-full flex-col bg-remote-tint">
+      {/*
+        The old session bar read `RDP · 10.42.4.30:3389 · 2 ms · connected` in
+        eleven-pixel grey on a black strip — accurate, and invisible to the
+        person who most needed it. It also failed AA in light mode at 2.5:1,
+        since `bg-black` does not follow a theme.
+      */}
+      <RemoteConnectionBanner
+        hostname={node.hostname}
+        ip={node.connection.ip}
+        port={node.connection.port}
+        protocol={win.protocol}
+        latencyMs={node.connection.latencyMs}
+        status={phase}
+        kind={node.role === "workstation" ? "endpoint" : "server"}
+        onDisconnect={() => close(win.instanceId)}
+      />
 
-      {/* Body */}
-      <div className="min-h-0 flex-1">
+      <RemoteSurface>
         {phase === "connected" ? (
           <NodeEnvironment node={node} />
         ) : (
           <Handshake lines={lines.slice(0, logIndex)} />
         )}
-      </div>
+      </RemoteSurface>
     </div>
   );
 }
@@ -157,7 +157,7 @@ function Handshake({ lines }: { lines: string[] }) {
 
 function SessionError({ message, onClose }: { message: string; onClose: () => void }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 bg-black p-8 text-center">
+    <div className="flex h-full flex-col items-center justify-center gap-3 bg-sunken p-8 text-center">
       <div className="text-gray-500"><AppIcon id="plug" size={40} /></div>
       <div className="text-sm font-semibold text-danger">Connection failed</div>
       <p className="max-w-sm text-xs text-gray-400">{message}</p>

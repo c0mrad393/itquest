@@ -74,7 +74,7 @@ export default function ServerConfigModal({ deviceId }: { deviceId: string }) {
       {err && <div className="mt-2 flex items-center gap-1.5 text-[11px] text-danger"><IconAlert size={12} /> {err}</div>}
 
       <div className="mt-3 flex items-center gap-2">
-        <button onClick={apply} className="flex items-center gap-1 rounded bg-info px-3 py-1 text-[11px] font-semibold text-black hover:brightness-110">
+        <button onClick={apply} className="flex items-center gap-1 rounded bg-brand-fill px-3 py-1 text-[11px] font-semibold text-brand-on hover:bg-brand-hover">
           <IconCheck size={12} /> Apply configuration
         </button>
         {saved && <span className="text-[11px] text-emerald-300">Configuration applied</span>}
@@ -111,7 +111,10 @@ function ServiceRow({ label, desc, on, onToggle }: { label: string; desc: string
       <span className={`text-[10px] ${on ? "text-emerald-300" : "text-gray-500"}`}>{on ? "running" : "stopped"}</span>
       <button onClick={onToggle} aria-label={`Toggle ${label}`}
         className={`relative h-5 w-9 rounded-full transition ${on ? "bg-emerald-500/70" : "bg-edge"}`}>
-        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${on ? "left-[18px]" : "left-0.5"}`} />
+        {/* The knob is a SURFACE, not white: on a light theme a white knob on a
+            pale track disappears. `bg-surface` inverts with everything else and
+            the ring keeps it visible against the green "on" track too. */}
+        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-surface shadow ring-1 ring-black/10 transition-all ${on ? "left-[18px]" : "left-0.5"}`} />
       </button>
     </div>
   );

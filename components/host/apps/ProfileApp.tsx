@@ -110,7 +110,7 @@ export default function ProfileApp() {
                 <span className={`w-20 shrink-0 text-[11px] ${lead ? "font-semibold text-gray-100" : "text-gray-400"}`}>
                   {meta.label}
                 </span>
-                <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-black/40">
+                <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-gray-500/25">
                   <span
                     className={`block h-full rounded-full ${lead ? "bg-info" : "bg-gray-600"}`}
                     style={{ width: `${pct}%` }}
@@ -175,7 +175,7 @@ export default function ProfileApp() {
             <button
               onClick={() => void saveUsername()}
               disabled={!username.trim() || username.trim() === hostUser.displayName}
-              className="rounded-lg bg-info px-4 py-2 text-xs font-bold text-black transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg bg-brand-fill px-4 py-2 text-xs font-bold text-brand-on transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
             >
               Save
             </button>
@@ -241,7 +241,7 @@ export default function ProfileApp() {
 
 function Stat({ label, value, accent }: { label: string; value: string; accent: string }) {
   return (
-    <div className="rounded-lg bg-black/20 px-3 py-2.5">
+    <div className="rounded-lg bg-gray-500/15 px-3 py-2.5">
       <div className="text-[9px] uppercase tracking-wider text-gray-500">{label}</div>
       <div className={`mt-0.5 text-lg font-bold ${accent}`}>{value}</div>
     </div>

@@ -244,7 +244,7 @@ export default function RackSimulator() {
                       onMouseLeave={() => setStatU((cur) => (cur === u ? null : cur))}
                       onClick={() => armed && placeAt(u, armed)}
                       title={`U${u} — ${slotC.toFixed(1)}\u00b0C`}
-                      className={`absolute left-0 right-0 flex items-center border-b border-dashed border-white/5 ${
+                      className={`absolute left-0 right-0 flex items-center border-b border-dashed border-edge/60 ${
                         isHover ? (legal ? "bg-info/20" : "bg-danger/20") : ""
                       } ${armed && !occupied ? "cursor-pointer" : ""}`}
                       style={{ top: (u - 1) * ROW_H, height: ROW_H }}

@@ -25,6 +25,7 @@ import { wallpaperById } from "@/lib/host/wallpapers";
 import { applyProfileToHost, useSessionStore } from "@/lib/host/session";
 import { useThemeStore } from "@/lib/host/theme";
 import DebugPanel from "./DebugPanel";
+import CommandPalette from "./CommandPalette";
 
 export default function HostDesktop() {
   const windows = useHostStore((s) => s.windows);
@@ -41,6 +42,16 @@ export default function HostDesktop() {
   // Reads storage, applies the class, and follows the OS while set to system.
   const initTheme = useThemeStore((s) => s.init);
   const resolvedTheme = useThemeStore((s) => s.resolved);
+
+  /*
+   * A wallpaper's `css` is either a gradient/url (an IMAGE) or a bare hex (a
+   * COLOUR). Setting a hex as backgroundImage silently paints nothing, so the
+   * two land on different properties.
+   */
+  const paperCss = resolvedTheme === "light" ? paper.lightCss ?? paper.css : paper.css;
+  const paperStyle: React.CSSProperties = paperCss.trim().startsWith("#")
+    ? { backgroundColor: paperCss }
+    : { backgroundImage: paperCss, backgroundSize: paper.size ?? "cover" };
   useEffect(() => initTheme(), [initTheme]);
   useEffect(() => {
     if (ready) void applyProfileToHost(profile);
@@ -66,10 +77,12 @@ export default function HostDesktop() {
       {/* Wallpaper — chosen in Settings → Personalization, persisted with the save. */}
       <div
         className="absolute inset-0 transition-colors duration-200"
-        style={{
-          background: resolvedTheme === "light" ? paper.lightCss ?? paper.css : paper.css,
-          backgroundSize: paper.size,
-        }}
+        // `background` (shorthand) alongside `backgroundSize` (longhand) makes
+        // React warn on every re-render and can drop the size when the two are
+        // patched in different commits. Only longhands are set — and the
+        // `solid` family is a bare hex, which is a colour rather than an image,
+        // so it has to land on the right property or the desktop goes blank.
+        style={paperStyle}
       />
       {paper.overlay !== false && (
         <div
@@ -114,6 +127,10 @@ export default function HostDesktop() {
 
       {/* Start menu (renders above windows, below taskbar) */}
       <AppDrawer />
+
+      {/* Cmd/Ctrl+K. Mounted at the desktop root so it works from any app,
+          including inside a remote session. */}
+      <CommandPalette />
 
       {/* Toast stack (above the taskbar, below nothing) */}
       <ToastHost />

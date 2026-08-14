@@ -26,6 +26,7 @@ import { AppIcon } from "@/components/ui/app-icons";
 import { AppHeader, Chip, CountPill, FilterBar, SearchField, Segmented } from "./AppChrome";
 import EmptyState from "@/components/ui/EmptyState";
 import { IconInboxZero, IconSearch, IconTicket } from "@/components/ui/icons";
+import { Term } from "@/components/ui/Tooltip";
 
 const SEVERITIES: (TicketSeverity | "all")[] = ["all", "low", "medium", "high", "critical"];
 const CATEGORIES: (TicketCategory | "all")[] = [
@@ -234,7 +235,7 @@ function TicketDetail({ ticket }: { ticket: Ticket }) {
       {!closed && (
         <div className="rounded-lg border border-edge bg-panelalt p-3">
           <div className="flex items-center justify-between text-[11px]">
-            <span className="uppercase tracking-wider text-gray-500">Resolution SLA</span>
+            <span className="uppercase tracking-wider text-gray-500">Resolution <Term k="sla">SLA</Term></span>
             <span className={sla.breached ? "font-semibold text-danger" : "font-semibold text-gray-200"}>
               {sla.label}
             </span>
@@ -288,7 +289,7 @@ function TicketDetail({ ticket }: { ticket: Ticket }) {
         {ticket.status === "new" && (
           <button
             onClick={onAccept}
-            className="rounded-md bg-info px-3 py-1.5 text-xs font-semibold text-black hover:brightness-110"
+            className="rounded-md bg-brand-fill px-3 py-1.5 text-xs font-semibold text-brand-on hover:bg-brand-hover"
           >
             Accept ticket
           </button>

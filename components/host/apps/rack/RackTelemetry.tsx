@@ -106,7 +106,7 @@ export default function RackTelemetry() {
           </div>
           <div className="relative h-2 overflow-hidden rounded-full bg-sunken/70">
             {/* 80% marker — the point where a rack stops having headroom. */}
-            <span className="absolute inset-y-0 z-10 w-px bg-white/25" style={{ left: "80%" }} />
+            <span className="absolute inset-y-0 z-10 w-px bg-gray-400/50" style={{ left: "80%" }} />
             <div
               className={`h-full rounded-full transition-all ${loadTone.bg}`}
               style={{ width: `${Math.min(100, power.loadPct)}%` }}

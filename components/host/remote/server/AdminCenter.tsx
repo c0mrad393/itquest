@@ -37,6 +37,8 @@ import EventViewer from "../apps-windows/EventViewer";
 import { ADMIN_CENTER, CFP_SHORT, EDS_SHORT, FILE_SERVICE, SERVER_OS_FULL, osLabel } from "@/lib/core";
 import { AppIcon } from "@/components/ui/app-icons";
 import type { HostAppIconId } from "@/lib/core";
+import { Term } from "@/components/ui/Tooltip";
+import type { GlossaryKey } from "@/lib/core";
 
 type SectionId = "overview" | "directory" | "policies" | "shares" | "services" | "events";
 
@@ -160,8 +162,8 @@ function Overview({ nodeId }: { nodeId: string }) {
             <Fact label="Hostname" value={node.hostname} />
             <Fact label="Role" value={node.role.replace(/-/g, " ")} />
             <Fact label="Operating system" value={osLabel(node.os, node.role)} />
-            <Fact label="Domain" value={node.domain ?? "workgroup"} />
-            <Fact label="Location" value={at ? `${at.rack.name} · U${at.device.uStart}` : "not racked"} />
+            <Fact label="Domain" value={node.domain ?? "workgroup"} term="domainjoin" />
+            <Fact label="Location" value={at ? `${at.rack.name} · U${at.device.uStart}` : "not racked"} term="rackunit" />
           </dl>
         </section>
 
@@ -171,7 +173,8 @@ function Overview({ nodeId }: { nodeId: string }) {
           <Meter label="Memory" pct={node.health.memUsedPct} />
           <Meter label="Disk" pct={node.health.diskUsedPct} />
           <p className="mt-2 font-mono text-[10px] text-gray-500">
-            {running} of {services.length} services running · uptime{" "}
+            {running} of {services.length} <Term k="service">services</Term> running ·{" "}
+            <Term k="uptime">uptime</Term>{" "}
             {Math.round(node.health.uptimeSeconds / 86_400)} days
           </p>
         </section>
@@ -199,10 +202,17 @@ function Overview({ nodeId }: { nodeId: string }) {
   );
 }
 
-function Fact({ label, value }: { label: string; value: string }) {
+/**
+ * `term` turns the LABEL into a glossary term rather than adding a help icon
+ * beside the value. The label is the part a newcomer does not understand;
+ * "clara.internal" needs no gloss, "Domain" does.
+ */
+function Fact({ label, value, term }: { label: string; value: string; term?: GlossaryKey }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[9px] uppercase tracking-wider text-gray-600">{label}</dt>
+      <dt className="text-[9px] uppercase tracking-wider text-gray-600">
+        {term ? <Term k={term}>{label}</Term> : label}
+      </dt>
       <dd className="truncate text-gray-200">{value}</dd>
     </div>
   );

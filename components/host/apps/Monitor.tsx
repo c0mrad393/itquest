@@ -278,7 +278,7 @@ function Chart({
   const area = `${line} L100,100 L0,100 Z`;
 
   return (
-    <div className="relative w-full overflow-hidden rounded-md bg-black/25" style={{ height }}>
+    <div className="relative w-full overflow-hidden rounded-md bg-gray-500/20" style={{ height }}>
       {/* 25/50/75% guides */}
       <div className="absolute inset-0">
         {[25, 50, 75].map((y) => (

@@ -207,7 +207,7 @@ export function FileViewer({ item }: { item: EndpointFsItem }) {
   if (isSheet) {
     const rows = (item.content ?? "").trim().split(/\r?\n/).filter(Boolean).map((r) => r.split(/[,\t]/));
     return (
-      <div className="h-full overflow-auto bg-white text-black">
+      <div className="h-full overflow-auto bg-white text-brand-on">
         <div className="flex items-center gap-2 border-b border-gray-300 bg-[#217346] px-3 py-1.5 text-xs font-semibold text-white">
           <span><AppIcon id="file-sheet" size={13} /></span> {item.name}
         </div>
@@ -233,7 +233,7 @@ export function FileViewer({ item }: { item: EndpointFsItem }) {
 
   if (isText || item.content) {
     return (
-      <div className="flex h-full flex-col bg-white text-black">
+      <div className="flex h-full flex-col bg-white text-brand-on">
         <div className="flex items-center gap-2 border-b border-gray-200 bg-gray-100 px-3 py-1.5 text-xs text-gray-600">
           <span><AppIcon id="file-text" size={13} /></span> {item.name} — Text Editor
         </div>
@@ -280,7 +280,7 @@ export function CredentialPrompt({
         </div>
         <div className="space-y-3 p-4 text-xs">
           <div className="text-gray-300">Enter the password to unlock <span className="font-semibold">{item.name}</span>.</div>
-          {item.passwordHint && <div className="rounded bg-info/10 px-2 py-1 text-[11px] text-info">Hint: {item.passwordHint}</div>}
+          {item.passwordHint && <div className="rounded bg-brand-fill px-2 py-1 text-[11px] text-info">Hint: {item.passwordHint}</div>}
           <input
             type="password"
             autoFocus
@@ -293,7 +293,7 @@ export function CredentialPrompt({
           {error && <div className="text-[11px] text-danger">The password is incorrect. Try again.</div>}
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onCancel} className="rounded border border-edge px-3 py-1 text-gray-300 hover:bg-panelalt">Cancel</button>
-            <button onClick={submit} className="rounded bg-info px-3 py-1 font-semibold text-black hover:brightness-110">Unlock</button>
+            <button onClick={submit} className="rounded bg-brand-fill px-3 py-1 font-semibold text-brand-on hover:bg-brand-hover">Unlock</button>
           </div>
         </div>
       </div>
@@ -456,7 +456,7 @@ function DiskCard({ variant, disk }: { variant: OsVariant; disk: ReturnType<type
             {disk.critical ? "0 bytes free — drive full" : `${formatBytesFromGb(disk.freeGb)} free of ${disk.totalGb} GB`}
           </span>
         </div>
-        <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-black/40">
+        <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-gray-500/25">
           <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.min(100, disk.usedPct)}%` }} />
         </div>
         {disk.critical && (
