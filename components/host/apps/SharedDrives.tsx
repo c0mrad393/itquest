@@ -48,7 +48,7 @@ import {
 
 const LEVELS: ShareAccess[] = ["read", "change", "full"];
 
-export default function SharedDrives() {
+export default function SharedDrives({ embedded = false }: { embedded?: boolean } = {}) {
   const infra = useInfraStore((s) => s.infra);
   const setAce = useInfraStore((s) => s.shareSetAce);
   const removeAce = useInfraStore((s) => s.shareRemoveAce);
@@ -62,8 +62,9 @@ export default function SharedDrives() {
   const server = fsReach.node;
   const shares = useMemo(() => server?.shares ?? [], [server]);
 
+  // Embedded means we are already inside a session on this host.
   if (!fsReach.reachable || !server) {
-    return <ServiceDown title="File Server Unreachable" reach={fsReach} />;
+    return embedded ? null : <ServiceDown title="File Server Unreachable" reach={fsReach} />;
   }
 
   const ad = dirReach.node && "activeDirectory" in dirReach.node ? dirReach.node.activeDirectory : undefined;
@@ -75,13 +76,15 @@ export default function SharedDrives() {
 
   return (
     <div className="flex h-full flex-col bg-panel text-gray-200">
-      <AppHeader iconId="folder" title="Shared Drives" subtitle={`\\\\${server.hostname}`}>
-        <CountPill label="shares" value={shares.length} />
-        <span className="ml-2 flex items-center gap-1.5 text-[10px] text-emerald-300">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          SMB on {server.hostname}
-        </span>
-      </AppHeader>
+      {!embedded && (
+        <AppHeader iconId="folder" title="Shared Drives" subtitle={`\\\\${server.hostname}`}>
+          <CountPill label="shares" value={shares.length} />
+          <span className="ml-2 flex items-center gap-1.5 text-[10px] text-emerald-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            SMB on {server.hostname}
+          </span>
+        </AppHeader>
+      )}
 
       {/* The directory is a dependency even here — you cannot manage an access
           list of groups you cannot look up. */}

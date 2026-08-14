@@ -43,7 +43,7 @@ import {
 
 type Scope = { kind: "ou"; name: string } | { kind: "group"; name: string } | { kind: "all" };
 
-export default function DirectoryConsole() {
+export default function DirectoryConsole({ embedded = false }: { embedded?: boolean } = {}) {
   const infra = useInfraStore((s) => s.infra);
   const setMembership = useInfraStore((s) => s.adSetGroupMembership);
   const createGroup = useInfraStore((s) => s.adCreateGroup);
@@ -79,8 +79,10 @@ export default function DirectoryConsole() {
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
   }, [ad, scope, query]);
 
+  // Embedded means we are already inside a session on this host, so the
+  // reachability gate is the session's job, not the console's.
   if (!reach.reachable || !ad || !dc) {
-    return <ServiceDown title="Domain Controller Unreachable" reach={reach} />;
+    return embedded ? null : <ServiceDown title="Domain Controller Unreachable" reach={reach} />;
   }
 
   const selected = ad.users.find((u) => u.samAccountName === selectedSam) ?? users[0] ?? null;
@@ -91,14 +93,16 @@ export default function DirectoryConsole() {
 
   return (
     <div className="flex h-full flex-col bg-panel text-gray-200">
-      <AppHeader iconId="users" title="Active Directory Users &amp; Computers" subtitle={ad.domainDns}>
-        <CountPill label="accounts" value={ad.users.length} />
-        <CountPill label="groups" value={ad.groups.length} />
-        <span className="ml-2 flex items-center gap-1.5 text-[10px] text-emerald-300">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          bound to {dc.hostname}
-        </span>
-      </AppHeader>
+      {!embedded && (
+        <AppHeader iconId="users" title="Active Directory Users &amp; Computers" subtitle={ad.domainDns}>
+          <CountPill label="accounts" value={ad.users.length} />
+          <CountPill label="groups" value={ad.groups.length} />
+          <span className="ml-2 flex items-center gap-1.5 text-[10px] text-emerald-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            bound to {dc.hostname}
+          </span>
+        </AppHeader>
+      )}
 
       {notice && (
         <div
