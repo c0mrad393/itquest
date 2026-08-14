@@ -30,7 +30,7 @@
 
 import type { InfrastructureState, TargetNode } from "./infrastructure";
 import type { NodeId, NodeRole } from "./nodes";
-import { locationOf, serverLiveness } from "./datacenter";
+import { isRackable, locationOf, serverLiveness } from "./datacenter";
 import type { ActiveDirectoryState, ADGroup, ADUser } from "./windows";
 import { EDS_SERVICE, FILE_SERVICE } from "./branding";
 
@@ -72,6 +72,18 @@ export function reachNode(
       remedy: "Rack and provision one on the Datacenter Floor.",
     };
   }
+
+  // CLIENT ENDPOINTS ARE NOT RACKED, AND NEVER WILL BE.
+  //
+  // A staff laptop is a domain-joined machine on the user network, not a
+  // chassis in a cabinet. Running it through the rack chain asked "which U is
+  // this laptop in", got no answer, and reported a physical fault that cannot
+  // exist — which is exactly what broke Remote Support.
+  //
+  // The split is by ROLE, not by whether a rack happens to be found: a server
+  // that is genuinely unracked IS a fault worth reporting, and this must not
+  // quietly excuse it.
+  if (!isRackable(node.role)) return reachEndpoint(infra, node, serviceNames);
 
   const at = locationOf(infra.datacenter, node.nodeId);
   if (!at) {
@@ -126,6 +138,61 @@ export function reachNode(
     }
   }
 
+  return { ...UP, node };
+}
+
+/**
+ * Reachability for a client endpoint — a laptop or desktop somebody works at.
+ *
+ * The chain is genuinely shorter than a server's, because the things that can
+ * be wrong are genuinely fewer: it is switched on, it is on the network, and
+ * it has not been isolated by an incident response. There is no rack, no PDU
+ * and no top-of-rack switch, so there is nothing to check and nothing to send
+ * the operator to the Datacenter Floor for.
+ */
+function reachEndpoint(
+  infra: InfrastructureState,
+  node: TargetNode,
+  serviceNames: string[],
+): ServiceReach {
+  if (!node.connection.online) {
+    return {
+      reachable: false,
+      node,
+      layer: "power",
+      reason: `${node.hostname} is powered off.`,
+      remedy: "Ask the user to switch it on, or wait until they are next at their desk.",
+    };
+  }
+  if (!node.connection.reachable) {
+    return {
+      reachable: false,
+      node,
+      layer: "network",
+      reason: `${node.hostname} is not answering on the network.`,
+      remedy: "It may be off the corporate network — check whether they are working remotely.",
+    };
+  }
+  if (infra.security.isolatedNodeIds.includes(node.nodeId)) {
+    return {
+      reachable: false,
+      node,
+      layer: "network",
+      reason: `${node.hostname} is isolated by an active containment.`,
+      remedy: "Lift the isolation in the NetOps Console once the incident is closed.",
+    };
+  }
+  for (const name of serviceNames) {
+    if (isServiceStopped(node, name)) {
+      return {
+        reachable: false,
+        node,
+        layer: "service",
+        reason: `${node.hostname} is up, but ${name} is not running.`,
+        remedy: `Connect to ${node.hostname} and start ${name}.`,
+      };
+    }
+  }
   return { ...UP, node };
 }
 

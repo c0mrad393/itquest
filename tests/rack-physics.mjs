@@ -797,5 +797,53 @@ group("Policy grading and diagnosis");
   eq("a satisfied setting has no explanation to give", explainAbsence(usb, FIN, "usbStorageBlocked"), null);
 }
 
+
+// ── Endpoint reachability (v0.8.1 hotfix) ───────────────────────────────────
+//
+// A staff laptop is not a chassis in a cabinet. Running one through the rack
+// chain asked "which U is this laptop in", found none, and reported a physical
+// fault that cannot exist — which is what broke Remote Support.
+
+group("Client endpoints skip the rack chain");
+{
+  const laptop = {
+    nodeId: "ws-201", hostname: "WS-201", os: "windows", role: "workstation", tags: [], workloads: [],
+    connection: { online: true, reachable: true, ip: "10.0.1.55", protocol: "rdp" },
+    services: {},
+  };
+  const infra = {
+    nodes: { "ws-201": laptop },
+    // Deliberately an EMPTY floor: the endpoint must not care.
+    datacenter: { racks: [] },
+    security: { isolatedNodeIds: [] },
+    gateway: [],
+  };
+
+  eq("an unracked laptop is reachable", reachNode(infra, laptop).reachable, true);
+  eq("...with no rack complaint at all", reachNode(infra, laptop).layer, null);
+
+  const off = { ...laptop, connection: { ...laptop.connection, online: false } };
+  eq("a powered-off laptop fails on power", reachNode({ ...infra, nodes: { "ws-201": off } }, off).layer, "power");
+  eq(
+    "...and the remedy is about the person, not the datacenter",
+    reachNode({ ...infra, nodes: { "ws-201": off } }, off).remedy,
+    "Ask the user to switch it on, or wait until they are next at their desk.",
+  );
+
+  const away = { ...laptop, connection: { ...laptop.connection, reachable: false } };
+  eq("an off-network laptop fails on network", reachNode({ ...infra, nodes: { "ws-201": away } }, away).layer, "network");
+
+  const contained = { ...infra, security: { isolatedNodeIds: ["ws-201"] } };
+  eq("containment still isolates an endpoint", reachNode(contained, laptop).layer, "network");
+
+  // The rule is by ROLE, so a genuinely unracked SERVER is still a fault.
+  const orphanServer = { ...laptop, nodeId: "srv-9", hostname: "srv-9", role: "web-server" };
+  eq(
+    "an unracked server is still reported",
+    reachNode({ ...infra, nodes: { "srv-9": orphanServer } }, orphanServer).layer,
+    "physical",
+  );
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
