@@ -9,6 +9,7 @@
  * open as additional windows inside this same surface.
  */
 
+import { useEffect, useState } from "react";
 import { useHostStore } from "@/lib/host/store";
 import DesktopIcons from "./DesktopIcons";
 import WindowFrame from "./WindowFrame";
@@ -22,16 +23,24 @@ import HardwareDispatchEngine from "./HardwareDispatchEngine";
 import TelemetryEngine from "./TelemetryEngine";
 import { ToastHost } from "./Notifications";
 import { wallpaperById } from "@/lib/host/wallpapers";
-import { installGodModeConsoleApi } from "@/lib/host/god-mode";
+import { applyProfileToHost, useSessionStore } from "@/lib/host/session";
 import DebugPanel from "./DebugPanel";
-import { useEffect } from "react";
 
 export default function HostDesktop() {
   const windows = useHostStore((s) => s.windows);
   const paper = wallpaperById(useHostStore((s) => s.host.wallpaper));
 
   // Developer console handles (`sudo elevate debug`). Installed once on mount.
-  useEffect(() => installGodModeConsoleApi(), []);
+  // One local operator: read the save slot, then push the name and avatar
+  // onto the desktop's user record.
+  const [devToolsOpen, setDevToolsOpen] = useState(false);
+  const hydrate = useSessionStore((s) => s.hydrate);
+  const profile = useSessionStore((s) => s.profile);
+  const ready = useSessionStore((s) => s.ready);
+  useEffect(() => hydrate(), [hydrate]);
+  useEffect(() => {
+    if (ready) void applyProfileToHost(profile);
+  }, [ready, profile]);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden select-none font-sans">
@@ -53,7 +62,7 @@ export default function HostDesktop() {
 
       {/* Headless engines. PersistenceManager first: hydrate before evaluating. */}
       <PersistenceManager />
-      <DebugPanel />
+      <DebugPanel open={devToolsOpen} onClose={() => setDevToolsOpen(false)} />
       <TicketReconciler />
       <SlaEngine />
       <NetworkEngine />
@@ -80,7 +89,7 @@ export default function HostDesktop() {
       <ToastHost />
 
       {/* Taskbar */}
-      <Taskbar />
+      <Taskbar devToolsOpen={devToolsOpen} onToggleDevTools={() => setDevToolsOpen((v) => !v)} />
     </div>
   );
 }

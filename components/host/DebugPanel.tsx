@@ -1,24 +1,24 @@
 "use client";
 
 /**
- * Developer Debug Panel (v0.6.0)
- * ==============================
- * `sudo elevate debug` proved the idea; this is the tool. Everything the
- * console API could do, plus the things it could not: spawning one specific
- * ticket family out of thirty, and injecting a named hardware fault to watch
- * the physics react.
+ * DevTools (v0.7.0)
+ * =================
+ * The testing surface, opened from the taskbar tray or Ctrl+Shift+D.
  *
- * WHY IT IS HIDDEN RATHER THAN LOCKED. Ctrl+Shift+D opens it, and only in a
- * session that already has debug rights (Sandbox or God Mode). A player who
- * finds the shortcut in a career save gets nothing, so the growth arc cannot
- * be skipped by accident — but a tester never has to remember console
- * incantations.
+ * IT USED TO BE HIDDEN, and gated on a Sandbox or God Mode session. v0.7.0
+ * removed those login modes, so gating it on them would have left the tools
+ * unreachable — and a shortcut nobody can discover is not a tool. It is now
+ * always available and visibly labelled: this is a single-player training
+ * simulator, and a player who opens the debug drawer has chosen to.
  *
- * EVERY ACTION GOES THROUGH THE REAL STORE. Nothing here writes state the
- * normal path could not produce: Force Level Up calls `awardXp`, so the
- * reconciler's promotion handling — including the company growth milestone —
- * runs exactly as it would in play. A debug tool that bypasses the systems it
- * is meant to test is worse than none.
+ * IT ALSO ABSORBED SANDBOX MODE. "Jump to enterprise" runs the real growth
+ * engine forward one milestone at a time rather than generating a second,
+ * larger world — so the shortcut exercises the same code the slow path does.
+ *
+ * EVERY ACTION GOES THROUGH THE REAL STORE. Force Level Up awards the XP the
+ * level actually costs, so the reconciler's promotion branch — unlocks, tiers
+ * and the company growth milestone — runs exactly as it would in play. A
+ * debug tool that bypasses the systems it exists to test is worse than none.
  *
  * SVG and CSS indicators only — no emoji.
  */
@@ -29,7 +29,6 @@ import { useInfraStore } from "@/lib/infra/store";
 import { useTicketStore } from "@/lib/host/tickets-store";
 import { useDialogueStore } from "@/lib/dialogue/store";
 import { useNotificationStore } from "@/lib/host/notifications-store";
-import { debugEnabled } from "@/lib/host/session-mode";
 import { ticketLibrary } from "@/lib/tickets/factory";
 import {
   GROWTH_PHASES,
@@ -42,54 +41,36 @@ import { IconAlert, IconBolt, IconCheck, IconPlus, IconWrench, IconX } from "@/c
 
 type Tab = "progress" | "tickets" | "faults";
 
-export default function DebugPanel() {
-  const [open, setOpen] = useState(false);
-  const [enabled, setEnabled] = useState(false);
+export default function DebugPanel({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const [tab, setTab] = useState<Tab>("progress");
   const [log, setLog] = useState<string[]>([]);
 
-  // Read after mount: `debugEnabled` touches localStorage, which does not
-  // exist during SSR, and reading it in render would desync the markup.
-  useEffect(() => setEnabled(debugEnabled()), []);
-
   useEffect(() => {
-    if (!enabled) return;
     function onKey(e: KeyboardEvent) {
-      if (e.ctrlKey && e.shiftKey && (e.key === "D" || e.key === "d")) {
-        e.preventDefault();
-        setOpen((v) => !v);
-      }
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape" && open) onClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [enabled]);
-
-  if (!enabled) return null;
+  }, [open, onClose]);
 
   const say = (line: string) => setLog((l) => [line, ...l].slice(0, 8));
 
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        title="Developer tools (Ctrl+Shift+D)"
-        aria-label="Open developer tools"
-        className="fixed bottom-16 right-3 z-[60] flex h-7 w-7 items-center justify-center rounded-md border border-amber-500/40 bg-black/60 text-amber-300 backdrop-blur transition hover:bg-amber-500/15"
-      >
-        <IconWrench size={13} />
-      </button>
-    );
-  }
+  if (!open) return null;
 
   return (
     <div className="fixed bottom-16 right-3 z-[60] flex max-h-[70vh] w-[26rem] flex-col overflow-hidden rounded-lg border border-amber-500/40 bg-panel/95 shadow-2xl backdrop-blur">
       <div className="flex shrink-0 items-center gap-2 border-b border-amber-500/30 bg-amber-500/[0.07] px-3 py-2">
         <IconWrench size={13} className="text-amber-300" />
-        <span className="text-[11px] font-semibold text-amber-200">Developer tools</span>
+        <span className="text-[11px] font-semibold text-amber-200">DevTools</span>
         <span className="font-mono text-[9px] text-amber-200/60">Ctrl+Shift+D</span>
         <button
-          onClick={() => setOpen(false)}
+          onClick={onClose}
           aria-label="Close"
           className="ml-auto text-gray-400 hover:text-gray-200"
         >
@@ -130,6 +111,7 @@ function Progression({ say }: { say: (s: string) => void }) {
   const awardBudget = useHostStore((s) => s.awardBudget);
   const growth = useInfraStore((s) => s.infra.growth);
   const org = useInfraStore((s) => s.infra.org);
+  const grow = useInfraStore((s) => s.growCompany);
 
   const nextLevelXp = xpForLevel(user.level + 1);
   const spec = phaseSpec(growth.phase);
@@ -147,6 +129,26 @@ function Progression({ say }: { say: (s: string) => void }) {
     say(`level ${promo.from} -> ${promo.to} (+${need} XP)`);
   }
 
+  /**
+   * What Sandbox Mode used to be, without a second world generator.
+   *
+   * Awards the XP for level 15 and then runs the growth engine forward one
+   * milestone at a time — the same `growCompany` the promotion handler calls.
+   * A shortcut that built its own enterprise would test a code path no player
+   * ever walks.
+   */
+  function jumpToEnterprise() {
+    const need = Math.max(1, xpForLevel(15) - user.xp);
+    awardXp(need);
+    awardBudget(500_000);
+    let hired = 0;
+    for (const phase of [2, 3, 4] as const) {
+      const grew = grow(phase);
+      if (grew) hired += grew.hired;
+    }
+    say(`enterprise scale: level 15, ${hired} hired`);
+  }
+
   return (
     <div className="space-y-3">
       <section>
@@ -161,6 +163,7 @@ function Progression({ say }: { say: (s: string) => void }) {
           <Btn onClick={levelUp} icon={<IconPlus size={10} />}>Force level up</Btn>
           <Btn onClick={() => { awardXp(5000); say("+5,000 XP"); }}>+5k XP</Btn>
           <Btn onClick={() => { awardBudget(50_000); say("+50,000 Cr"); }}>+50k Cr</Btn>
+          <Btn onClick={jumpToEnterprise} icon={<IconCheck size={10} />}>Jump to enterprise</Btn>
         </div>
       </section>
 
