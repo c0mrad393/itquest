@@ -37,6 +37,8 @@ import { AppIcon } from "@/components/ui/app-icons";
 import { AppHeader, CountPill, Segmented } from "./AppChrome";
 import { playCue } from "@/lib/audio/engine";
 import { hasLicense } from "@/lib/economy/licenses";
+import EmptyState from "@/components/ui/EmptyState";
+import { IconList } from "@/components/ui/icons";
 
 type Tab = "overview" | "compute" | "network" | "traffic" | "trace";
 
@@ -318,7 +320,7 @@ function Compute({ operator }: { operator: string }) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="font-mono text-[12px] text-gray-100">{v.name}</span>
-                <span className="rounded bg-white/5 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-gray-400">
+                <span className="rounded bg-gray-500/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-gray-400">
                   {sizeSpec(v.size).label}
                 </span>
                 <span className="text-[10px] text-gray-600">{v.purpose}</span>
@@ -664,7 +666,7 @@ function Traffic({ operator }: { operator: string }) {
                   key={v.id}
                   onClick={() => setTargets(on ? targets.filter((t) => t !== v.id) : [...targets, v.id])}
                   className={`rounded-full px-2.5 py-1 text-[10px] transition ${
-                    on ? "bg-info/20 text-info ring-1 ring-info/40" : "bg-white/5 text-gray-400 hover:text-gray-200"
+                    on ? "bg-info/20 text-info ring-1 ring-info/40" : "bg-gray-500/10 text-gray-400 hover:text-gray-200"
                   }`}
                 >
                   {v.name}
@@ -785,7 +787,7 @@ function Trace() {
           <span>Resource</span>
         </div>
         {rows.length === 0 && (
-          <div className="py-6 text-center text-[11px] text-gray-600">No matching events.</div>
+          <EmptyState compact icon={<IconList size={15} />} title="No matching events" body="Nothing in the audit log fits the current filter." />
         )}
         {rows.map((e) => (
           <div

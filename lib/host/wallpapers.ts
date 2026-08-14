@@ -22,6 +22,16 @@ export interface HostWallpaper {
   family: WallpaperFamily;
   /** Any valid CSS `background` shorthand. */
   css: string;
+  /**
+   * The light-mode rendering of the same wallpaper (v0.9.0).
+   *
+   * Not a separate wallpaper — the SAME one, lit differently, so the operator's
+   * personalization choice survives a theme switch. Leaving every backdrop dark
+   * navy under a light UI was the one place the theme engine visibly stopped,
+   * and it is the largest surface on the screen. Entries without a light
+   * variant simply keep their single rendering.
+   */
+  lightCss?: string;
   /** Extra CSS applied alongside (e.g. background-size for tiled patterns). */
   size?: string;
   /** Paint the shell's radial bloom over this wallpaper. Default true. */
@@ -41,43 +51,49 @@ export const HOST_WALLPAPERS: HostWallpaper[] = [
     label: "Bloom",
     family: "gradient",
     css: "linear-gradient(135deg, #0a1730 0%, #0d2145 38%, #123a63 70%, #0a2a4d 100%)",
+    lightCss: "linear-gradient(135deg, #e8eefb 0%, #dbe7fa 38%, #c7dcf3 70%, #d5e6f7 100%)",
   },
   {
     id: "midnight",
     label: "Midnight",
     family: "gradient",
     css: "linear-gradient(160deg, #05070f 0%, #0b1224 55%, #131c38 100%)",
+    lightCss: "linear-gradient(160deg, #f2f4f9 0%, #e4e9f4 55%, #d7deee 100%)",
   },
   {
     id: "aurora",
     label: "Aurora",
     family: "gradient",
     css: "linear-gradient(150deg, #05131a 0%, #0a2f3a 40%, #10504f 72%, #0b3a4a 100%)",
+    lightCss: "linear-gradient(150deg, #eaf6f6 0%, #d5eef0 40%, #c6e9e2 72%, #d3eff2 100%)",
   },
   {
     id: "ember",
     label: "Ember",
     family: "gradient",
     css: "linear-gradient(145deg, #180a10 0%, #2f1220 45%, #4a1c2c 78%, #23101a 100%)",
+    lightCss: "linear-gradient(150deg, #fdf1e8 0%, #fbe3d2 45%, #f7d6c4 100%)",
   },
   {
     id: "violet-dusk",
     label: "Violet Dusk",
     family: "gradient",
     css: "linear-gradient(140deg, #120a24 0%, #23134a 45%, #3a1f6b 75%, #1b1038 100%)",
+    lightCss: "linear-gradient(150deg, #f2eefb 0%, #e6ddf7 45%, #dcd2f2 100%)",
   },
   {
     id: "forest",
     label: "Forest",
     family: "gradient",
     css: "linear-gradient(155deg, #06120c 0%, #0d2a1b 45%, #16452c 78%, #0b2517 100%)",
+    lightCss: "linear-gradient(150deg, #eef6ee 0%, #dcefdd 45%, #cde7d2 100%)",
   },
 
   // ── Solids ────────────────────────────────────────────────────────────────
-  { id: "graphite", label: "Graphite", family: "solid", css: "#14171c" },
-  { id: "ink", label: "Ink", family: "solid", css: "#0b0f19" },
-  { id: "slate", label: "Slate", family: "solid", css: "#1b2430" },
-  { id: "espresso", label: "Espresso", family: "solid", css: "#1a1512" },
+  { id: "graphite", label: "Graphite", family: "solid", css: "#14171c", lightCss: "#e7eaef" },
+  { id: "ink", label: "Ink", family: "solid", css: "#0b0f19", lightCss: "#eef1f7" },
+  { id: "slate", label: "Slate", family: "solid", css: "#1b2430", lightCss: "#e2e8f0" },
+  { id: "espresso", label: "Espresso", family: "solid", css: "#1a1512", lightCss: "#f2ece7" },
 
   // ── SVG patterns ──────────────────────────────────────────────────────────
   {

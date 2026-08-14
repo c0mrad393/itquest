@@ -144,7 +144,7 @@ export default function Wiki() {
                   <button
                     key={t}
                     onClick={() => setQuery(t)}
-                    className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-gray-500 transition hover:bg-white/10 hover:text-gray-300"
+                    className="rounded-full bg-gray-500/10 px-2 py-0.5 text-[10px] text-gray-500 transition hover:bg-gray-500/15 hover:text-gray-300"
                   >
                     {t}
                   </button>
@@ -180,7 +180,7 @@ function RailChip({
       aria-label={title}
       aria-pressed={active}
       className={`flex h-6 shrink-0 items-center justify-center gap-1 rounded px-2 text-[10px] font-medium transition ${
-        active ? "bg-info/20 text-info" : "text-gray-500 hover:bg-white/5 hover:text-gray-300"
+        active ? "bg-info/20 text-info" : "text-gray-500 hover:bg-gray-500/10 hover:text-gray-300"
       }`}
     >
       {children}

@@ -37,6 +37,22 @@ export type HostAppId =
 export type HostAppCategory = "work" | "system";
 
 /**
+ * How the App Drawer groups tools (v0.9.0).
+ *
+ * By JOB, not by subsystem. A newcomer looking for the ticket queue does not
+ * know whether it counts as "ITSM" or "productivity"; they know they are here
+ * to answer requests. Fifteen flat icons made them read every label.
+ */
+export type HostAppGroup = "support" | "infrastructure" | "knowledge" | "system";
+
+export const HOST_APP_GROUPS: { id: HostAppGroup; label: string; blurb: string }[] = [
+  { id: "support", label: "Support & Tickets", blurb: "The queue, the people, the mail" },
+  { id: "infrastructure", label: "Infrastructure", blurb: "Servers, racks, network and stock" },
+  { id: "knowledge", label: "Knowledge", blurb: "Documentation and standing" },
+  { id: "system", label: "System", blurb: "Your account and this machine" },
+];
+
+/**
  * Stable, serializable icon KEY — never a React node and never an emoji.
  *
  * SessionState (and the window manager, which copies the key onto each open
@@ -142,6 +158,8 @@ export interface HostAppDescriptor {
   /** Key into the SVG icon set — see `AppIcon`. Kept a string so this stays data. */
   iconId: HostAppIconId;
   category: HostAppCategory;
+  /** Which App Drawer section this appears under. */
+  group: HostAppGroup;
   description: string;
   defaultSize: { w: number; h: number };
   minSize: { w: number; h: number };
@@ -169,6 +187,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     title: "Ticket Center",
     iconId: "ticket",
     category: "work",
+    group: "support",
     description: "Incoming enterprise incidents across Helpdesk, Sysadmin, NetOps, and SecOps.",
     defaultSize: { w: 960, h: 640 },
     minSize: { w: 640, h: 420 },
@@ -182,6 +201,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     title: "Conversations",
     iconId: "messages",
     category: "work",
+    group: "support",
     description: "Direct ticket conversations with AI customer personas (emotion + CSAT).",
     defaultSize: { w: 880, h: 600 },
     minSize: { w: 560, h: 380 },
@@ -195,6 +215,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     title: "CoreMail",
     iconId: "mail",
     category: "work",
+    group: "support",
     description: "Corporate mailbox: internal staff requests, ISP notices, and vendor advisories.",
     defaultSize: { w: 1000, h: 660 },
     minSize: { w: 700, h: 460 },
@@ -208,6 +229,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     title: "NetOps Console",
     iconId: "globe",
     category: "work",
+    group: "infrastructure",
     description: "Live network topology: link metrics, re-routing, and software firewalls.",
     defaultSize: { w: 960, h: 640 },
     minSize: { w: 680, h: 460 },
@@ -220,6 +242,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     title: "Procurement",
     iconId: "cart",
     category: "work",
+    group: "infrastructure",
     description: "Vendor storefront: restock hardware, buy licences, hire contractors.",
     defaultSize: { w: 1000, h: 680 },
     minSize: { w: 720, h: 480 },
@@ -232,6 +255,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     title: "AetherCloud",
     iconId: "cloud",
     category: "work",
+    group: "infrastructure",
     description: "Hybrid cloud console: virtual networks, vNodes, storage, VPN and audit.",
     defaultSize: { w: 1080, h: 700 },
     minSize: { w: 760, h: 500 },
@@ -244,6 +268,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     title: "Monitor",
     iconId: "activity",
     category: "work",
+    group: "infrastructure",
     description: "Live infrastructure telemetry: CPU, memory and network per host.",
     defaultSize: { w: 1040, h: 680 },
     minSize: { w: 700, h: 480 },
@@ -256,6 +281,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     title: "Remote Gateway",
     iconId: "monitor",
     category: "work",
+    group: "infrastructure",
     description: "Client servers and workstations. Connect to open an RDP/SSH session.",
     defaultSize: { w: 820, h: 560 },
     minSize: { w: 560, h: 400 },
@@ -268,6 +294,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     title: "Hardware Lab & Deployment",
     iconId: "wrench",
     category: "work",
+    group: "infrastructure",
     description: "Provision hardware, image endpoints, and dispatch field teams for physical swaps.",
     defaultSize: { w: 940, h: 640 },
     minSize: { w: 680, h: 480 },
@@ -280,6 +307,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     title: "AssetManager",
     iconId: "boxes",
     category: "work",
+    group: "infrastructure",
     description: "Hardware inventory: stock levels, allocations and repairs.",
     defaultSize: { w: 900, h: 600 },
     minSize: { w: 640, h: 420 },
@@ -292,6 +320,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     title: "Server Manager",
     iconId: "server",
     category: "work",
+    group: "infrastructure",
     description:
       "The logical estate: every server's addressing, capacity and hosted workloads, with maintenance mode and live migration.",
     defaultSize: { w: 1040, h: 660 },
@@ -305,6 +334,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     title: "Datacenter Floor",
     iconId: "rack",
     category: "work",
+    group: "infrastructure",
     description: "Every rack on the floor: mount and cable hardware, patch uplinks, and watch power and heat.",
     defaultSize: { w: 1080, h: 680 },
     minSize: { w: 820, h: 520 },
@@ -317,6 +347,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     title: "Company Wiki",
     iconId: "book",
     category: "work",
+    group: "knowledge",
     description: "Internal IT documentation: standards, topology, conventions and SOPs.",
     defaultSize: { w: 1020, h: 660 },
     minSize: { w: 720, h: 460 },
@@ -329,6 +360,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     title: "Leaderboard",
     iconId: "trophy",
     category: "work",
+    group: "knowledge",
     description: "Global ranking by XP, SLA compliance, and escalation rate.",
     defaultSize: { w: 720, h: 560 },
     minSize: { w: 480, h: 360 },
@@ -341,6 +373,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     title: "Settings",
     iconId: "gear",
     category: "system",
+    group: "system",
     description: "Workstation preferences, theme, and profile.",
     defaultSize: { w: 680, h: 520 },
     minSize: { w: 480, h: 360 },
@@ -353,6 +386,7 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     title: "My Profile",
     iconId: "id-card",
     category: "system",
+    group: "system",
     description: "Your operator account: identity, avatar, stats, and sign-out.",
     defaultSize: { w: 700, h: 560 },
     minSize: { w: 520, h: 420 },

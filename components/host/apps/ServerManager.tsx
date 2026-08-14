@@ -396,7 +396,7 @@ function HostDetail({
 function Bar({ pct }: { pct: number }) {
   const tone = pct > 100 ? "bg-danger" : pct > 80 ? "bg-amber-400" : "bg-emerald-400";
   return (
-    <span className="h-0.5 flex-1 overflow-hidden rounded-full bg-black/50">
+    <span className="h-0.5 flex-1 overflow-hidden rounded-full bg-sunken/70">
       <span className={`block h-full ${tone}`} style={{ width: `${Math.min(100, pct)}%` }} />
     </span>
   );
@@ -412,7 +412,7 @@ function Meter({ label, pct, detail }: { label: string; pct: number; detail: str
         <span className="font-mono text-gray-500">{detail}</span>
         <span className={`ml-auto font-mono ${text}`}>{pct}%</span>
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-black/50">
+      <div className="h-1.5 overflow-hidden rounded-full bg-sunken/70">
         <div className={`h-full rounded-full transition-all ${tone}`} style={{ width: `${Math.min(100, pct)}%` }} />
       </div>
     </div>

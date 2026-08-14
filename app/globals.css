@@ -1,35 +1,28 @@
+/* Theme tokens first — @import must precede every other rule, and everything
+   below resolves through the custom properties it defines. */
+@import "./theme.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: dark;
-}
-
-html,
-body {
-  height: 100%;
-  background: #010409;
-  color: #c9d1d9;
-}
-
 /* ── Modern thin scrollbars (global — no default browser chrome) ──────────── */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #30363d transparent;
+  scrollbar-color: rgb(var(--edge)) transparent;
 }
 *::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-  background: #30363d;
+  background: rgb(var(--edge));
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #454d59;
+  background: rgb(var(--g-600));
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-track {
@@ -59,7 +52,7 @@ body {
   height: 8px;
 }
 .term-scroll::-webkit-scrollbar-thumb {
-  background: #30363d;
+  background: rgb(var(--edge));
   border-radius: 8px;
 }
 .term-scroll::-webkit-scrollbar-track {

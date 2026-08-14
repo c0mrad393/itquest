@@ -33,6 +33,7 @@ import { useInfraStore } from "@/lib/infra/store";
 import type { HostAppIconId, WindowsNodeState } from "@/lib/core";
 import { ADMIN_CENTER, SERVER_OS, SERVER_OS_FULL } from "@/lib/core";
 import { AppIcon } from "@/components/ui/app-icons";
+import { useThemeStore } from "@/lib/host/theme";
 import AdminCenter from "./AdminCenter";
 import ServicesPanel from "../apps-windows/ServicesPanel";
 import EventViewer from "../apps-windows/EventViewer";
@@ -72,6 +73,7 @@ export default function ServerOsDesktop({ nodeId }: { nodeId: string }) {
   const [wins, setWins] = useState<WinState[]>([]);
   const [topZ, setTopZ] = useState(10);
   const [startOpen, setStartOpen] = useState(false);
+  const light = useThemeStore((s) => s.resolved) === "light";
   const [now, setNow] = useState(() => new Date());
   const surface = useRef<HTMLDivElement>(null);
 
@@ -107,7 +109,7 @@ export default function ServerOsDesktop({ nodeId }: { nodeId: string }) {
 
   if (!node) {
     return (
-      <div className="flex h-full items-center justify-center bg-[#0d1117] text-[11px] text-gray-600">
+      <div className="flex h-full items-center justify-center bg-surface text-[11px] text-gray-600">
         This host is no longer in the estate.
       </div>
     );
@@ -133,17 +135,28 @@ export default function ServerOsDesktop({ nodeId }: { nodeId: string }) {
     <div
       ref={surface}
       onClick={() => setStartOpen(false)}
-      className="relative h-full select-none overflow-hidden bg-[#0d2137]"
+      className="relative h-full select-none overflow-hidden"
       style={{
-        // The classic server wallpaper: a flat corporate gradient, no photo.
-        backgroundImage:
-          "radial-gradient(ellipse at 30% 20%, rgba(56,110,168,0.45), transparent 60%), radial-gradient(ellipse at 75% 85%, rgba(20,60,100,0.55), transparent 55%)",
+        /*
+         * The classic server wallpaper: a flat corporate gradient, no photo.
+         *
+         * It follows the operator's THEME even though it is a remote machine.
+         * Realism would argue the server keeps its own look, but a dark slab
+         * framing a light session reads as a rendering fault rather than as a
+         * different computer — and the point of this pass is legibility. The
+         * hue stays distinctly cooler than the host desktop, which is what
+         * actually signals "you are somewhere else".
+         */
+        backgroundColor: light ? "#dce6f2" : "#0d2137",
+        backgroundImage: light
+          ? "radial-gradient(ellipse at 30% 20%, rgba(140,178,220,0.40), transparent 60%), radial-gradient(ellipse at 75% 85%, rgba(170,197,224,0.55), transparent 55%)"
+          : "radial-gradient(ellipse at 30% 20%, rgba(56,110,168,0.45), transparent 60%), radial-gradient(ellipse at 75% 85%, rgba(20,60,100,0.55), transparent 55%)",
       }}
     >
       {/* Desktop watermark — every server build has one. */}
       <div className="pointer-events-none absolute bottom-14 right-4 text-right">
-        <div className="text-[13px] font-semibold text-white/25">{SERVER_OS_FULL}</div>
-        <div className="font-mono text-[10px] text-white/20">
+        <div className="text-[13px] font-semibold text-gray-500">{SERVER_OS_FULL}</div>
+        <div className="font-mono text-[10px] text-gray-600">
           {node.hostname} · {node.connection.ip}
         </div>
       </div>
@@ -154,12 +167,12 @@ export default function ServerOsDesktop({ nodeId }: { nodeId: string }) {
           <button
             key={a.id}
             onDoubleClick={() => launch(a.id)}
-            className="flex flex-col items-center gap-1 rounded p-1.5 text-center hover:bg-white/10"
+            className="flex flex-col items-center gap-1 rounded p-1.5 text-center hover:bg-gray-500/15"
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded bg-black/30 text-gray-200">
+            <span className="flex h-8 w-8 items-center justify-center rounded bg-sunken/60 text-gray-200">
               <AppIcon id={a.iconId} size={17} />
             </span>
-            <span className="text-[9px] leading-tight text-white/80">{a.title}</span>
+            <span className="text-[9px] leading-tight text-gray-100">{a.title}</span>
           </button>
         ))}
       </div>
@@ -192,9 +205,9 @@ export default function ServerOsDesktop({ nodeId }: { nodeId: string }) {
       {startOpen && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute bottom-10 left-2 z-[999] w-64 overflow-hidden rounded-t border border-black/60 bg-[#1b1f24] shadow-2xl"
+          className="absolute bottom-10 left-2 z-[999] w-64 overflow-hidden rounded-t border border-edge bg-surface shadow-2xl"
         >
-          <div className="border-b border-black/50 bg-[#252a31] px-3 py-2">
+          <div className="border-b border-edge bg-surface-2 px-3 py-2">
             <div className="text-[11px] font-semibold text-gray-100">{node.hostname}</div>
             <div className="text-[9px] text-gray-500">{SERVER_OS_FULL}</div>
           </div>
@@ -212,12 +225,12 @@ export default function ServerOsDesktop({ nodeId }: { nodeId: string }) {
       )}
 
       {/* Taskbar */}
-      <div className="absolute inset-x-0 bottom-0 z-[998] flex h-10 items-center gap-1 border-t border-black/60 bg-[#15191e]/95 px-1.5 backdrop-blur">
+      <div className="absolute inset-x-0 bottom-0 z-[998] flex h-10 items-center gap-1 border-t border-edge bg-surface-2/95 px-1.5 backdrop-blur">
         <button
           onClick={(e) => { e.stopPropagation(); setStartOpen((v) => !v); }}
           aria-label="Start"
           className={`flex h-8 items-center gap-1.5 rounded px-2.5 text-[11px] font-semibold text-gray-200 transition ${
-            startOpen ? "bg-info/25" : "hover:bg-white/10"
+            startOpen ? "bg-info/25" : "hover:bg-gray-500/15"
           }`}
         >
           <span className="grid h-3.5 w-3.5 grid-cols-2 gap-[1px]">
@@ -227,7 +240,7 @@ export default function ServerOsDesktop({ nodeId }: { nodeId: string }) {
           Start
         </button>
 
-        <div className="mx-1 h-5 w-px bg-white/10" />
+        <div className="mx-1 h-5 w-px bg-gray-500/15" />
 
         {wins.map((w) => {
           const meta = APPS.find((a) => a.id === w.app)!;
@@ -237,8 +250,8 @@ export default function ServerOsDesktop({ nodeId }: { nodeId: string }) {
               onClick={() => (w.minimized ? focus(w.app) : toggleMin(w.app))}
               className={`flex h-8 max-w-[13rem] items-center gap-1.5 rounded border-b-2 px-2 text-[10px] transition ${
                 w.minimized
-                  ? "border-transparent text-gray-500 hover:bg-white/10"
-                  : "border-info bg-white/[0.07] text-gray-100"
+                  ? "border-transparent text-gray-500 hover:bg-gray-500/15"
+                  : "border-info bg-gray-500/15 text-gray-100"
               }`}
             >
               <AppIcon id={meta.iconId} size={12} />
@@ -308,14 +321,14 @@ function NestedWindow({
     <div
       onMouseDown={onFocus}
       style={style}
-      className="absolute flex flex-col overflow-hidden rounded-sm border border-black/70 bg-[#1b1f24] shadow-2xl"
+      className="absolute flex flex-col overflow-hidden rounded-sm border border-edge bg-surface shadow-2xl"
     >
       <div
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onDoubleClick={onMaximize}
-        className={`flex h-7 shrink-0 items-center gap-2 border-b border-black/50 bg-[#2b323b] px-2 ${
+        className={`flex h-7 shrink-0 items-center gap-2 border-b border-edge bg-surface-3 px-2 ${
           state.maximized ? "" : "cursor-move"
         }`}
       >

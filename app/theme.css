@@ -1,0 +1,141 @@
+/**
+ * TriageOS — Theme tokens (v0.9.0)
+ * ================================
+ * THE ARCHITECTURAL TRICK, because it is worth understanding before editing
+ * anything below:
+ *
+ * The codebase carries roughly 950 hardcoded `text-gray-*` utilities written
+ * for a dark UI, where `gray-100` means "bright text" and `gray-600` means
+ * "dim text". Rewriting all of them into semantic classes would have been a
+ * thousand-site edit with a thousand chances to get one wrong.
+ *
+ * Instead, Tailwind's `gray` scale is redefined here as CSS custom properties,
+ * and in LIGHT MODE THE RAMP IS INVERTED: `gray-100` resolves to near-black,
+ * `gray-600` to a mid grey that still reads on white. Every existing utility
+ * keeps its INTENT — bright stays prominent, dim stays secondary — and simply
+ * lands the right way up in both themes. One definition, not a thousand edits.
+ *
+ * Channels are space-separated RGB triples rather than hex so Tailwind's
+ * opacity modifiers keep working: `bg-info/15`, `text-gray-500/60` and friends
+ * are used all over the app and must not break.
+ *
+ * THEME SELECTION. `.theme-dark` / `.theme-light` are stamped on <html> by the
+ * theme store. Because everything downstream resolves through inherited custom
+ * properties, this reaches the nested surfaces too — the ServerOS desktop
+ * inside an RDP window and the DeskOS client both follow the operator's
+ * choice, which is what "system-wide" has to mean.
+ */
+
+:root,
+.theme-dark {
+  color-scheme: dark;
+
+  /* Neutral ramp — light-to-dark, the conventional direction. */
+  --g-50: 246 249 252;
+  --g-100: 233 239 247;
+  --g-200: 205 215 227;
+  --g-300: 167 180 196;
+  --g-400: 128 143 163;
+  --g-500: 100 114 133;
+  --g-600: 79 92 110;
+  --g-700: 58 69 84;
+  --g-800: 39 47 59;
+  --g-900: 24 30 39;
+
+  /* Surfaces, back to front. */
+  --surface-sunken: 6 10 16;    /* the page behind everything */
+  --surface: 15 20 28;          /* app panels */
+  --surface-2: 22 28 38;        /* raised rows, headers */
+  --surface-3: 31 39 51;        /* controls, hovers */
+  --edge: 45 55 70;
+
+  /* Accents. Vibrant enough to lead the eye, calm enough to sit in a
+     professional tool for an hour. */
+  --info: 82 154 255;           /* primary actions, links, selection */
+  --info-strong: 130 183 255;   /* on-dark text over info surfaces */
+  --accent: 52 211 153;         /* healthy, resolved, online */
+  --accent-strong: 110 231 183;
+  --warn: 245 176 65;           /* attention, throttling, warnings */
+  --warn-strong: 252 200 110;
+  --danger: 248 96 92;          /* offline, breached, destructive */
+  --danger-strong: 252 145 141;
+
+  /* Terminals stay near-black in both themes: a console is a console. */
+  --term: 8 11 16;
+  --term-fg: 210 220 232;
+
+  --ring: 82 154 255;
+  --shadow-strength: 0.5;
+}
+
+.theme-light {
+  color-scheme: light;
+
+  /*
+   * THE INVERTED RAMP. `gray-50` is now the DARKEST ink and `gray-900` the
+   * lightest wash, so a utility written as "bright text" on dark renders as
+   * "strong ink" on light. Contrast is checked at the two that matter most:
+   * gray-100 (#1b2230) on --surface (#ffffff) is ~15:1, and gray-500
+   * (#5c6779) is ~5.9:1 — both clear of WCAG AA for body text.
+   */
+  --g-50: 11 15 22;
+  --g-100: 27 34 48;
+  --g-200: 45 55 72;
+  --g-300: 66 78 98;
+  --g-400: 82 95 116;
+  --g-500: 92 103 121;
+  --g-600: 116 127 145;
+  --g-700: 158 168 183;
+  --g-800: 202 210 221;
+  --g-900: 232 237 243;
+
+  --surface-sunken: 240 243 248;
+  --surface: 255 255 255;
+  --surface-2: 247 249 252;
+  --surface-3: 237 241 247;
+  --edge: 216 222 232;
+
+  /* Darkened accents: the dark-mode blues and greens are too light to carry
+     text or thin strokes on white. */
+  --info: 29 108 227;
+  --info-strong: 21 84 184;
+  --accent: 13 148 100;
+  --accent-strong: 8 118 79;
+  --warn: 181 111 8;
+  --warn-strong: 146 88 4;
+  --danger: 211 47 47;
+  --danger-strong: 176 36 36;
+
+  --term: 24 28 36;
+  --term-fg: 226 232 240;
+
+  --ring: 29 108 227;
+  --shadow-strength: 0.12;
+}
+
+/* The page itself, so there is no flash of the wrong ground on load. */
+html,
+body {
+  height: 100%;
+  background: rgb(var(--surface-sunken));
+  color: rgb(var(--g-200));
+}
+
+/*
+ * Theme changes animate, but only on colours. Transitioning `all` would drag
+ * every layout property through the switch and make the whole UI lurch.
+ */
+.theme-transition,
+.theme-transition * {
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    fill 180ms ease;
+}
+
+/* Focus visibility is an accessibility floor, not a style choice. */
+:focus-visible {
+  outline: 2px solid rgb(var(--ring));
+  outline-offset: 2px;
+}

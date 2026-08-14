@@ -51,7 +51,7 @@ export default function EndpointSession({
 
   return (
     <div className="flex h-full flex-col bg-black">
-      <div className="flex shrink-0 items-center gap-2 border-b border-white/10 bg-black/60 px-3 py-1 text-[11px] text-gray-300">
+      <div className="flex shrink-0 items-center gap-2 border-b border-white/10 bg-sunken/70 px-3 py-1 text-[11px] text-gray-300">
         <span className="h-2 w-2 rounded-full bg-emerald-400" />
         <span className="uppercase tracking-wider">{meta.protocol}</span>
         <span className="text-gray-500">·</span>

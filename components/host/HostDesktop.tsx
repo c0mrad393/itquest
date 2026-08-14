@@ -11,10 +11,9 @@
 
 import { useEffect, useState } from "react";
 import { useHostStore } from "@/lib/host/store";
-import DesktopIcons from "./DesktopIcons";
 import WindowFrame from "./WindowFrame";
 import Taskbar from "./Taskbar";
-import StartMenu from "./StartMenu";
+import AppDrawer from "./AppDrawer";
 import TicketReconciler from "./TicketReconciler";
 import SlaEngine from "./SlaEngine";
 import NetworkEngine from "./NetworkEngine";
@@ -24,6 +23,7 @@ import TelemetryEngine from "./TelemetryEngine";
 import { ToastHost } from "./Notifications";
 import { wallpaperById } from "@/lib/host/wallpapers";
 import { applyProfileToHost, useSessionStore } from "@/lib/host/session";
+import { useThemeStore } from "@/lib/host/theme";
 import DebugPanel from "./DebugPanel";
 
 export default function HostDesktop() {
@@ -38,24 +38,55 @@ export default function HostDesktop() {
   const profile = useSessionStore((s) => s.profile);
   const ready = useSessionStore((s) => s.ready);
   useEffect(() => hydrate(), [hydrate]);
+  // Reads storage, applies the class, and follows the OS while set to system.
+  const initTheme = useThemeStore((s) => s.init);
+  const resolvedTheme = useThemeStore((s) => s.resolved);
+  useEffect(() => initTheme(), [initTheme]);
   useEffect(() => {
     if (ready) void applyProfileToHost(profile);
   }, [ready, profile]);
+
+  /**
+   * Open the Ticket Center, and nothing else.
+   *
+   * An empty desktop with one window on it says "this is the thing to do"
+   * far more clearly than any amount of onboarding copy. Guarded on there
+   * being no windows at all so a restored session is left exactly as the
+   * operator left it.
+   */
+  const openApp = useHostStore((s) => s.openApp);
+  useEffect(() => {
+    if (useHostStore.getState().windows.length === 0) openApp("itsm");
+    // Once, on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden select-none font-sans">
       {/* Wallpaper — chosen in Settings → Personalization, persisted with the save. */}
       <div
-        className="absolute inset-0"
-        style={{ background: paper.css, backgroundSize: paper.size }}
+        className="absolute inset-0 transition-colors duration-200"
+        style={{
+          background: resolvedTheme === "light" ? paper.lightCss ?? paper.css : paper.css,
+          backgroundSize: paper.size,
+        }}
       />
       {paper.overlay !== false && (
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(76,194,255,0.18),transparent_60%)]" />
+        <div
+          className="absolute inset-0"
+          style={{
+            // The bloom is a light source. On a pale backdrop the same additive
+            // blue reads as a smudge, so it drops to a fifth of its strength.
+            background: `radial-gradient(circle at 50% 120%, rgba(76,194,255,${
+              resolvedTheme === "light" ? 0.05 : 0.18
+            }), transparent 60%)`,
+          }}
+        />
       )}
 
       {/* Brand watermark */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <span className="select-none text-[9vw] font-black tracking-tight text-white/[0.03]">
+        <span className="select-none text-[9vw] font-black tracking-tight text-gray-50/[0.04]">
           TriageOS
         </span>
       </div>
@@ -70,7 +101,6 @@ export default function HostDesktop() {
       <TelemetryEngine />
 
       {/* Desktop icons */}
-      <DesktopIcons />
 
       {/* Windows layer */}
       {/* Windows layer. `pointer-events-none` so empty desktop space stays
@@ -83,7 +113,7 @@ export default function HostDesktop() {
       </div>
 
       {/* Start menu (renders above windows, below taskbar) */}
-      <StartMenu />
+      <AppDrawer />
 
       {/* Toast stack (above the taskbar, below nothing) */}
       <ToastHost />

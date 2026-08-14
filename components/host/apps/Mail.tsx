@@ -169,7 +169,7 @@ function Thread({ conv }: { conv: Conversation }) {
                   className="flex w-full items-center gap-2 rounded-lg border border-edge bg-panelalt px-3 py-2 text-left text-xs text-gray-200 transition hover:border-info/50 hover:bg-info/10"
                 >
                   {o.tone && (
-                    <span className="rounded bg-black/30 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-gray-500">
+                    <span className="rounded bg-sunken/60 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-gray-500">
                       {o.tone}
                     </span>
                   )}

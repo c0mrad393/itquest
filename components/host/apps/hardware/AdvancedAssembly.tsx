@@ -219,7 +219,7 @@ export default function AdvancedAssembly({
                       spec
                     </span>
                   )}
-                  <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] font-semibold ${have === 0 ? "bg-danger/20 text-danger" : "bg-white/5 text-gray-400"}`}>
+                  <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[9px] font-semibold ${have === 0 ? "bg-danger/20 text-danger" : "bg-gray-500/10 text-gray-400"}`}>
                     {have === 0 ? "none" : `${have} left`}
                   </span>
                 </button>

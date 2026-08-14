@@ -91,7 +91,7 @@ export default function DebugPanel({
       </div>
 
       {log.length > 0 && (
-        <div className="shrink-0 border-t border-edge bg-black/30 px-3 py-1.5">
+        <div className="shrink-0 border-t border-edge bg-sunken/60 px-3 py-1.5">
           {log.map((line, i) => (
             <div key={i} className={`font-mono text-[9px] ${i === 0 ? "text-emerald-300" : "text-gray-600"}`}>
               {line}

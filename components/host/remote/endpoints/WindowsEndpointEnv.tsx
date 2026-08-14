@@ -87,7 +87,7 @@ export default function WindowsEndpointEnv({ nodeId }: { nodeId: string }) {
           <button
             onClick={(e) => { e.stopPropagation(); setQuickOpen(false); setStartOpen((v) => !v); }}
             title="Start"
-            className={`flex h-8 w-8 items-center justify-center rounded ${startOpen ? "bg-white/20" : "hover:bg-white/10"}`}
+            className={`flex h-8 w-8 items-center justify-center rounded ${startOpen ? "bg-white/20" : "hover:bg-gray-500/15"}`}
           >
             <svg width="16" height="16" viewBox="0 0 18 18">
               <rect x="0" y="0" width="8" height="8" fill="#4cc2ff" /><rect x="10" y="0" width="8" height="8" fill="#4cc2ff" />
@@ -102,7 +102,7 @@ export default function WindowsEndpointEnv({ nodeId }: { nodeId: string }) {
                 key={p.id}
                 onClick={(e) => { e.stopPropagation(); onPinned(p.id); }}
                 title={p.label}
-                className={`relative flex h-8 w-8 items-center justify-center rounded text-base ${isOpen ? "bg-white/15" : "hover:bg-white/10"}`}
+                className={`relative flex h-8 w-8 items-center justify-center rounded text-base ${isOpen ? "bg-white/15" : "hover:bg-gray-500/15"}`}
               >
                 <AppIcon id={p.icon} size={18} />
                 {isOpen && <span className="absolute bottom-0.5 left-1/2 h-0.5 w-3 -translate-x-1/2 rounded-full bg-info" />}
@@ -113,7 +113,7 @@ export default function WindowsEndpointEnv({ nodeId }: { nodeId: string }) {
 
         <button
           onClick={(e) => { e.stopPropagation(); setStartOpen(false); setQuickOpen((v) => !v); }}
-          className={`ml-auto flex items-center gap-2 rounded px-2 py-1 text-[11px] text-gray-200 ${quickOpen ? "bg-white/15" : "hover:bg-white/10"}`}
+          className={`ml-auto flex items-center gap-2 rounded px-2 py-1 text-[11px] text-gray-200 ${quickOpen ? "bg-white/15" : "hover:bg-gray-500/15"}`}
           title="Quick settings"
         >
           <span title={netUp(node) ? "Connected" : "No network"} className={netUp(node) ? "" : "text-danger"}>
@@ -199,13 +199,13 @@ function StartMenu({
   return (
     <div
       onClick={(e) => e.stopPropagation()}
-      className="absolute bottom-14 left-1/2 z-40 w-[420px] -translate-x-1/2 rounded-xl border border-white/15 bg-black/60 p-4 shadow-2xl backdrop-blur-md"
+      className="absolute bottom-14 left-1/2 z-40 w-[420px] -translate-x-1/2 rounded-xl border border-white/15 bg-sunken/70 p-4 shadow-2xl backdrop-blur-md"
     >
-      <input placeholder="Search for apps, settings, and documents" className="mb-4 w-full rounded-full border border-white/10 bg-white/10 px-4 py-1.5 text-xs text-gray-100 outline-none placeholder:text-gray-400" />
+      <input placeholder="Search for apps, settings, and documents" className="mb-4 w-full rounded-full border border-white/10 bg-gray-500/15 px-4 py-1.5 text-xs text-gray-100 outline-none placeholder:text-gray-400" />
       <div className="mb-2 text-[11px] font-semibold text-gray-200">Pinned</div>
       <div className="mb-4 grid grid-cols-6 gap-2">
         {PINNED.map((p) => (
-          <button key={p.id} onClick={() => onPinned(p.id)} className="flex flex-col items-center gap-1 rounded-lg p-2 hover:bg-white/10">
+          <button key={p.id} onClick={() => onPinned(p.id)} className="flex flex-col items-center gap-1 rounded-lg p-2 hover:bg-gray-500/15">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-500/15 text-sky-300"><AppIcon id={p.icon} size={19} /></span>
             <span className="w-full truncate text-center text-[9px] text-gray-300">{p.label}</span>
           </button>
@@ -214,7 +214,7 @@ function StartMenu({
       <div className="mb-2 text-[11px] font-semibold text-gray-200">Recommended</div>
       <div className="grid grid-cols-2 gap-1">
         {recommended.map((it) => (
-          <button key={it.id} onClick={() => onOpenFile(it)} className="flex items-center gap-2 rounded-md p-2 text-left hover:bg-white/10">
+          <button key={it.id} onClick={() => onOpenFile(it)} className="flex items-center gap-2 rounded-md p-2 text-left hover:bg-gray-500/15">
             <span className="text-lg"><AppIcon id={it.isFolder ? "folder" : "file-text"} size={16} /></span>
             <span className="min-w-0">
               <span className="block truncate text-[11px] text-gray-100">{it.name}</span>
@@ -241,23 +241,23 @@ function QuickSettings({ nodeId }: { nodeId: string }) {
   const nic = node.network.interfaces[0];
   const wifiOn = node.network.interfaces.some((n) => n.up);
   return (
-    <div onClick={(e) => e.stopPropagation()} className="absolute bottom-14 right-2 z-40 w-64 rounded-xl border border-white/15 bg-black/60 p-3 text-xs text-gray-100 shadow-2xl backdrop-blur-md">
+    <div onClick={(e) => e.stopPropagation()} className="absolute bottom-14 right-2 z-40 w-64 rounded-xl border border-white/15 bg-sunken/70 p-3 text-xs text-gray-100 shadow-2xl backdrop-blur-md">
       <div className="mb-3 grid grid-cols-2 gap-2">
         <button
           onClick={() => nic && setUp(node.nodeId, nic.name, !wifiOn)}
-          className={`flex flex-col items-start gap-1 rounded-lg p-2 ${wifiOn ? "bg-info/70 text-black" : "bg-white/10"}`}
+          className={`flex flex-col items-start gap-1 rounded-lg p-2 ${wifiOn ? "bg-info/70 text-black" : "bg-gray-500/15"}`}
         >
           <span className="text-base"><AppIcon id="globe" size={14} /></span>
           <span className="text-[10px] font-semibold">Wi-Fi</span>
           <span className="text-[9px] opacity-80">{wifiOn ? "Connected" : "Off"}</span>
         </button>
-        <div className="flex flex-col items-start gap-1 rounded-lg bg-white/10 p-2">
+        <div className="flex flex-col items-start gap-1 rounded-lg bg-gray-500/15 p-2">
           <span className="text-base"><AppIcon id="battery" size={14} /></span>
           <span className="text-[10px] font-semibold">Battery</span>
           <span className="text-[9px] opacity-80">87% · plugged in</span>
         </div>
       </div>
-      <div className="rounded-lg bg-white/10 p-2">
+      <div className="rounded-lg bg-gray-500/15 p-2">
         <div className="mb-1 flex items-center gap-2">
           <span><AppIcon id="activity" size={14} /></span>
           <span className="text-[10px]">Volume</span>

@@ -65,7 +65,7 @@ export default function PingTool() {
       })}
 
       <div className="mt-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Output</div>
-      <div className="rounded border border-edge bg-black/60 p-2 font-mono text-[10px] leading-relaxed">
+      <div className="rounded border border-edge bg-sunken/70 p-2 font-mono text-[10px] leading-relaxed">
         {rack.tests.length === 0 && <span className="text-gray-600">No tests run yet.</span>}
         {rack.tests.map((t) => (
           <div key={t.id} className="mb-1.5">

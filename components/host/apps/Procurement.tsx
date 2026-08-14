@@ -251,7 +251,7 @@ function Hardware() {
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
-                        <span className="rounded bg-white/5 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-gray-400">
+                        <span className="rounded bg-gray-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-gray-400">
                           {item.brand}
                         </span>
                         <span className="font-mono text-[9px] text-gray-600">{item.model}</span>
@@ -442,7 +442,7 @@ function RailItem({
     <button
       onClick={onClick}
       className={`block w-full truncate rounded px-2 py-1 text-left text-[11px] transition ${
-        active ? "bg-info/15 text-info" : "text-gray-400 hover:bg-white/5 hover:text-gray-200"
+        active ? "bg-info/15 text-info" : "text-gray-400 hover:bg-gray-500/10 hover:text-gray-200"
       }`}
     >
       {children}
@@ -633,7 +633,7 @@ function Emergency() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-[11px] text-gray-500">{t.code}</span>
-                    <span className="rounded bg-white/5 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-gray-400">
+                    <span className="rounded bg-gray-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-gray-400">
                       {t.difficulty.replace(/_/g, " ")}
                     </span>
                   </div>

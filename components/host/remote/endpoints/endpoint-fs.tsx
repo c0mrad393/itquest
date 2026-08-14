@@ -171,7 +171,7 @@ export function FolderView({ items, openItem }: { items: EndpointFsItem[]; openI
               key={it.id}
               onDoubleClick={() => openItem(it)}
               title={`${it.name} — double-click to open`}
-              className="flex flex-col items-center gap-1 rounded-md p-2 text-center hover:bg-white/10"
+              className="flex flex-col items-center gap-1 rounded-md p-2 text-center hover:bg-gray-500/15"
             >
               <span className="relative text-[26px] leading-none">
                 <AppIcon id={it.isFolder ? "folder" : fileGlyph({ kind: "file", ext: it.ext })} size={18} />
@@ -435,7 +435,7 @@ function SideRow({ icon, label, active, onClick }: { icon: HostAppIconId; label:
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] ${active ? "bg-info/15 text-gray-100" : "text-gray-300 hover:bg-white/10"}`}
+      className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] ${active ? "bg-info/15 text-gray-100" : "text-gray-300 hover:bg-gray-500/15"}`}
     >
       <AppIcon id={icon} size={14} />
       <span className="truncate">{label}</span>

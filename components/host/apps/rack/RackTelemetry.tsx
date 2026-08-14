@@ -104,7 +104,7 @@ export default function RackTelemetry() {
               {power.drawWatts.toLocaleString()}W / {ceiling.toLocaleString()}W ({power.loadPct}%)
             </span>
           </div>
-          <div className="relative h-2 overflow-hidden rounded-full bg-black/50">
+          <div className="relative h-2 overflow-hidden rounded-full bg-sunken/70">
             {/* 80% marker — the point where a rack stops having headroom. */}
             <span className="absolute inset-y-0 z-10 w-px bg-white/25" style={{ left: "80%" }} />
             <div
@@ -123,7 +123,7 @@ export default function RackTelemetry() {
               {thermal.tempC.toFixed(1)}&deg;C [{THERMAL_LABEL[thermal.state]}]
             </span>
           </div>
-          <div className="relative h-2 overflow-hidden rounded-full bg-black/50">
+          <div className="relative h-2 overflow-hidden rounded-full bg-sunken/70">
             <span className="absolute inset-y-0 z-10 w-px bg-amber-400/60" style={{ left: `${pctOf(THERMAL_WARNING_C)}%` }} />
             <span className="absolute inset-y-0 z-10 w-px bg-danger/70" style={{ left: `${pctOf(THERMAL_CRITICAL_C)}%` }} />
             <div

@@ -58,7 +58,7 @@ export function ToastHost() {
             <button
               onClick={() => dismiss(n.id)}
               aria-label="Dismiss"
-              className="shrink-0 rounded p-0.5 text-gray-500 hover:bg-white/10 hover:text-gray-200"
+              className="shrink-0 rounded p-0.5 text-gray-500 hover:bg-gray-500/15 hover:text-gray-200"
             >
               <IconX size={12} />
             </button>
@@ -90,7 +90,7 @@ export function ActionCenter({ onClose }: { onClose: () => void }) {
           Mark all read
         </button>
         <button onClick={clear} className="text-[10px] text-gray-400 hover:text-danger">Clear</button>
-        <button onClick={onClose} aria-label="Close" className="rounded p-0.5 text-gray-500 hover:bg-white/10 hover:text-gray-200">
+        <button onClick={onClose} aria-label="Close" className="rounded p-0.5 text-gray-500 hover:bg-gray-500/15 hover:text-gray-200">
           <IconX size={12} />
         </button>
       </div>

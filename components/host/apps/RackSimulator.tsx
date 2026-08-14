@@ -223,7 +223,7 @@ export default function RackSimulator() {
             <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-wider text-gray-500">
               <span>Rack A</span><span>{rack.devices.length}/{rack.sizeU}U used</span>
             </div>
-            <div className="relative rounded-md border-2 border-[#2a3340] bg-[#0b1017] p-1.5">
+            <div className="relative rounded-md border-2 border-edge bg-sunken p-1.5">
               <div className="relative" style={{ height: rack.sizeU * ROW_H }}>
                 {/* U slots */}
                 {units.map((u) => {
@@ -282,7 +282,7 @@ export default function RackSimulator() {
                       onDoubleClick={() => openLogical(d)}
                       title={`${d.name} — double-click to configure`}
                       className={`absolute left-8 right-1 flex items-center gap-2 rounded border px-2 text-left transition ${
-                        isSel ? "border-info bg-info/20" : "border-[#3a4757] bg-[#18212c] hover:border-info/50"
+                        isSel ? "border-info bg-info/20" : "border-edge bg-surface-2 hover:border-info/50"
                       }`}
                       style={{ top: (d.uStart - 1) * ROW_H + 2, height: d.uSize * ROW_H - 4 }}
                     >
@@ -513,7 +513,7 @@ function Fact({ label, value, sub, hot }: { label: string; value: string; sub?: 
 
 function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/55 p-4" onClick={onClose}>
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-sunken/70 p-4" onClick={onClose}>
       <div className="flex max-h-full w-[560px] flex-col overflow-hidden rounded-lg border border-edge bg-panel shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex shrink-0 items-center gap-2 border-b border-edge bg-panelalt px-3 py-2 text-xs">
           <span className="font-semibold text-gray-100">{title}</span>

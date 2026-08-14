@@ -21,6 +21,8 @@ import { useNotificationStore, unreadCount } from "@/lib/host/notifications-stor
 import { ActionCenter } from "./Notifications";
 import { AppIcon, APP_ICON_SIZE } from "@/components/ui/app-icons";
 import { useFullscreen } from "@/lib/host/fullscreen";
+import { useThemeStore } from "@/lib/host/theme";
+import { IconContrast, IconMoon, IconSun } from "@/components/ui/icons";
 import Clock from "./Clock";
 import { useState } from "react";
 
@@ -42,6 +44,9 @@ export default function Taskbar({
   const openApp = useHostStore((s) => s.openApp);
   const taskbarActivate = useHostStore((s) => s.taskbarActivate);
   const host = useHostStore((s) => s.host);
+  const themePref = useThemeStore((s) => s.preference);
+  const resolvedTheme = useThemeStore((s) => s.resolved);
+  const cycleTheme = useThemeStore((s) => s.cycle);
 
   const openTickets = useTicketStore((s) =>
     s.tickets.filter((t) => !t.mailOnly && t.status !== "resolved" && t.status !== "closed").length,
@@ -69,7 +74,7 @@ export default function Taskbar({
   }
 
   return (
-    <div className="pointer-events-auto absolute bottom-0 left-0 right-0 z-[9999] flex h-12 items-center border-t border-white/10 bg-black/50 px-3 backdrop-blur-xl">
+    <div className="pointer-events-auto absolute bottom-0 left-0 right-0 z-[9999] flex h-12 items-center border-t border-white/10 bg-sunken/70 px-3 backdrop-blur-xl">
       {/* Left spacer to keep the cluster centered */}
       <div className="flex-1" />
 
@@ -79,8 +84,8 @@ export default function Taskbar({
         <button
           onClick={toggleStartMenu}
           aria-label="Start"
-          className={`flex h-9 w-9 items-center justify-center rounded-md transition hover:bg-white/10 ${
-            startMenuOpen ? "bg-white/10" : ""
+          className={`flex h-9 w-9 items-center justify-center rounded-md transition hover:bg-gray-500/15 ${
+            startMenuOpen ? "bg-gray-500/15" : ""
           }`}
         >
           <WindowsLogo />
@@ -103,7 +108,7 @@ export default function Taskbar({
                 running ? taskbarActivate(instances[0].instanceId) : openApp(appId)
               }
               title={meta.title}
-              className={`relative flex h-9 w-9 items-center justify-center rounded-md transition hover:bg-white/10 ${
+              className={`relative flex h-9 w-9 items-center justify-center rounded-md transition hover:bg-gray-500/15 ${
                 active ? "bg-white/15 text-white" : "text-gray-300"
               }`}
             >
@@ -128,10 +133,32 @@ export default function Taskbar({
 
       {/* Right: system tray + Action Center + clock */}
       <div className="flex flex-1 items-center justify-end gap-1">
-        <div className="flex items-center gap-2.5 rounded-md px-2 py-1 text-gray-300 hover:bg-white/10">
+        <div className="flex items-center gap-2.5 rounded-md px-2 py-1 text-gray-300 hover:bg-gray-500/15">
           <NetIcon on={host.tray.networkConnected} />
           <VolIcon />
         </div>
+
+        {/* Theme — three states, because "system" is a real preference and
+            not a missing one. The glyph shows what is ACTIVE, the label under
+            the tooltip says which mode is selected. */}
+        <button
+          onClick={cycleTheme}
+          aria-label={`Theme: ${themePref}. Click to change.`}
+          title={
+            themePref === "system"
+              ? `Theme: follow system (currently ${resolvedTheme})`
+              : `Theme: ${themePref}`
+          }
+          className="flex h-9 w-9 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-500/15 hover:text-gray-100"
+        >
+          {themePref === "system" ? (
+            <IconContrast size={15} />
+          ) : themePref === "light" ? (
+            <IconSun size={15} />
+          ) : (
+            <IconMoon size={15} />
+          )}
+        </button>
 
         {/* DevTools — visible on purpose. v0.7.0 removed the Sandbox and God
             Mode logins that used to gate it, and a shortcut nobody can find is
@@ -143,7 +170,7 @@ export default function Taskbar({
           className={`flex h-9 items-center gap-1.5 rounded-md px-2 text-[10px] font-semibold uppercase tracking-wider transition ${
             devToolsOpen
               ? "bg-amber-400/15 text-amber-200"
-              : "text-gray-500 hover:bg-white/10 hover:text-amber-200"
+              : "text-gray-500 hover:bg-gray-500/15 hover:text-amber-200"
           }`}
         >
           <AppIcon id="wrench" size={14} />
@@ -155,7 +182,7 @@ export default function Taskbar({
           onClick={toggleFull}
           aria-label={full ? "Exit fullscreen" : "Enter fullscreen"}
           title={full ? "Exit fullscreen" : "Fullscreen"}
-          className="flex h-9 w-9 items-center justify-center rounded-md text-gray-300 transition hover:bg-white/10"
+          className="flex h-9 w-9 items-center justify-center rounded-md text-gray-300 transition hover:bg-gray-500/15"
         >
           <AppIcon id={full ? "collapse" : "expand"} size={16} />
         </button>
@@ -165,8 +192,8 @@ export default function Taskbar({
           onClick={(e) => { e.stopPropagation(); setActionCenter((v) => !v); }}
           aria-label="Notifications"
           title="Notifications"
-          className={`relative flex h-9 w-9 items-center justify-center rounded-md text-gray-300 transition hover:bg-white/10 ${
-            actionCenter ? "bg-white/10" : ""
+          className={`relative flex h-9 w-9 items-center justify-center rounded-md text-gray-300 transition hover:bg-gray-500/15 ${
+            actionCenter ? "bg-gray-500/15" : ""
           }`}
         >
           <BellIcon />

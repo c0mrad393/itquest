@@ -24,6 +24,8 @@ import type { EmailBeat } from "@/lib/tickets/matrix";
 import { AppIcon } from "@/components/ui/app-icons";
 import { AppHeader, CountPill } from "./AppChrome";
 import type { HostAppIconId } from "@/lib/core";
+import EmptyState from "@/components/ui/EmptyState";
+import { IconMail } from "@/components/ui/icons";
 
 const FOLDERS: { id: MailFolder; label: string; iconId: HostAppIconId }[] = [
   { id: "inbox", label: "Inbox", iconId: "inbox" as const },
@@ -131,7 +133,12 @@ export default function CoreMail() {
       {/* Message list */}
       <div className="w-80 shrink-0 overflow-y-auto term-scroll border-r border-edge">
         {rows.length === 0 && (
-          <div className="p-6 text-center text-xs text-gray-600">No mail in this folder.</div>
+          <EmptyState
+            compact
+            icon={<IconMail size={16} />}
+            title="Nothing in this folder"
+            body="Mail from colleagues and vendors lands here as the day goes on."
+          />
         )}
         {rows.map((r) =>
           r.kind === "incident" ? (

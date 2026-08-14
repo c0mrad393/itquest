@@ -24,6 +24,8 @@ import {
 import TicketBrief from "./TicketBrief";
 import { AppIcon } from "@/components/ui/app-icons";
 import { AppHeader, Chip, CountPill, FilterBar, SearchField, Segmented } from "./AppChrome";
+import EmptyState from "@/components/ui/EmptyState";
+import { IconInboxZero, IconSearch, IconTicket } from "@/components/ui/icons";
 
 const SEVERITIES: (TicketSeverity | "all")[] = ["all", "low", "medium", "high", "critical"];
 const CATEGORIES: (TicketCategory | "all")[] = [
@@ -92,8 +94,28 @@ export default function TicketCenter() {
       {/* Split: list + detail */}
       <div className="flex min-h-0 flex-1">
         <div className="w-[46%] overflow-y-auto term-scroll border-r border-edge">
-          {visible.length === 0 && (
-            <div className="p-6 text-center text-xs text-gray-600">No tickets match these filters.</div>
+          {/*
+            Two very different empties wearing the same words before v0.9.0.
+            "Nothing matches your filters" is a thing the operator did and can
+            undo; "inbox zero" is a state of the WORLD and is good news. A
+            beginner who hides their whole queue behind a stray filter needs to
+            be told which of the two they are looking at.
+          */}
+          {visible.length === 0 && tickets.length > 0 && (
+            <EmptyState
+              compact
+              icon={<IconSearch size={16} />}
+              title="No tickets match these filters"
+              body="There are tickets in the queue — the current filters are hiding them. Clear a filter to bring them back."
+            />
+          )}
+          {visible.length === 0 && tickets.length === 0 && (
+            <EmptyState
+              compact
+              icon={<IconInboxZero size={18} />}
+              title="Inbox zero"
+              body="Waiting for new requests. Fresh tickets arrive on their own as the day goes on."
+            />
           )}
           {visible.map((t) => (
             <TicketRow
@@ -315,8 +337,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function EmptyDetail() {
   return (
-    <div className="flex h-full items-center justify-center text-xs text-gray-600">
-      Select a ticket to view details.
-    </div>
+    <EmptyState
+      icon={<IconTicket size={22} />}
+      title="No ticket selected"
+      body="Pick a request from the queue on the left to read it, talk to the person who raised it, and work the fix."
+    />
   );
 }

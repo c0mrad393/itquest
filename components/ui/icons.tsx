@@ -102,6 +102,23 @@ export const IconLink = (p: IconProps) => (
 export const IconPower = (p: IconProps) => (
   <Svg {...p}><path d="M12 3v9" /><path d="M6.5 6.5a8 8 0 1011 0" /></Svg>
 );
+/** Sun — light theme. */
+export const IconSun = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></Svg>
+);
+/** Moon — dark theme. */
+export const IconMoon = (p: IconProps) => (
+  <Svg {...p}><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" /></Svg>
+);
+/** Half-filled disc — follow the system. */
+export const IconContrast = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="12" r="9" /><path d="M12 3v18a9 9 0 000-18z" fill="currentColor" stroke="none" /></Svg>
+);
+/** Empty tray — the inbox-zero illustration. */
+export const IconInboxZero = (p: IconProps) => (
+  <Svg {...p}><path d="M3 13h5l1.5 3h5L16 13h5" /><path d="M5.5 5.5h13l2.5 7.5v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5z" /></Svg>
+);
+
 /** Thermometer — the rack temperature gauge. */
 export const IconThermometer = (p: IconProps) => (
   <Svg {...p}><path d="M14 14.8V4a2 2 0 10-4 0v10.8a4 4 0 104 0z" /><path d="M12 9v6" /></Svg>

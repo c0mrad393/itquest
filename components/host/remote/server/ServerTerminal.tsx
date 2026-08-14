@@ -117,8 +117,8 @@ export default function ServerTerminal({ nodeId }: { nodeId: string }) {
   }
 
   return (
-    <div className="flex h-full flex-col bg-[#0c0c0c] font-mono text-[11px] text-gray-300">
-      <div className="shrink-0 border-b border-black/60 bg-[#1b1f24] px-2 py-1 text-[10px] text-gray-400">
+    <div className="flex h-full flex-col bg-term font-mono text-[11px] text-gray-300">
+      <div className="shrink-0 border-b border-edge bg-surface px-2 py-1 text-[10px] text-gray-400">
         {SERVER_OS} Console
       </div>
       <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto p-2 leading-relaxed">

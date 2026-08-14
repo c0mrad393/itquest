@@ -79,10 +79,10 @@ export default function AdminCenter({ nodeId }: { nodeId: string }) {
   const active = available.some((s) => s.id === section) ? section : "overview";
 
   return (
-    <div className="flex h-full bg-[#1b1f24] text-gray-200">
+    <div className="flex h-full bg-surface text-gray-200">
       {/* ── Sidebar ──────────────────────────────────────────────────────── */}
-      <nav className="flex w-56 shrink-0 flex-col border-r border-black/40 bg-[#20242a]">
-        <div className="border-b border-black/40 bg-[#252a31] px-3 py-2">
+      <nav className="flex w-56 shrink-0 flex-col border-r border-edge bg-surface-2">
+        <div className="border-b border-edge bg-surface-2 px-3 py-2">
           <div className="truncate text-[12px] font-semibold text-gray-100">{node.hostname}</div>
           <div className="truncate font-mono text-[10px] text-gray-500">{node.connection.ip}</div>
           <div className="mt-0.5 truncate text-[9px] text-gray-600">{SERVER_OS_FULL}</div>
@@ -95,7 +95,7 @@ export default function AdminCenter({ nodeId }: { nodeId: string }) {
               className={`flex w-full items-center gap-2 border-l-2 px-2 py-1.5 text-left text-[11px] transition ${
                 active === s.id
                   ? "border-info bg-info/15 text-gray-100"
-                  : "border-transparent text-gray-400 hover:bg-white/[0.04] hover:text-gray-200"
+                  : "border-transparent text-gray-400 hover:bg-gray-500/10 hover:text-gray-200"
               }`}
             >
               <AppIcon id={s.iconId} size={13} />
@@ -103,7 +103,7 @@ export default function AdminCenter({ nodeId }: { nodeId: string }) {
             </button>
           ))}
         </div>
-        <div className="border-t border-black/40 px-3 py-2 text-[9px] leading-relaxed text-gray-600">
+        <div className="border-t border-edge px-3 py-2 text-[9px] leading-relaxed text-gray-600">
           {ADMIN_CENTER} · bound to {node.hostname}
         </div>
       </nav>
@@ -216,7 +216,7 @@ function Meter({ label, pct }: { label: string; pct: number }) {
         <span className="uppercase tracking-wider text-gray-500">{label}</span>
         <span className="ml-auto font-mono text-gray-400">{pct}%</span>
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-black/50">
+      <div className="h-1.5 overflow-hidden rounded-full bg-sunken/70">
         <div className={`h-full rounded-full transition-all ${tone}`} style={{ width: `${Math.min(100, pct)}%` }} />
       </div>
     </div>

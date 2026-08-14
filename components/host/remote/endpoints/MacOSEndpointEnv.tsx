@@ -233,7 +233,7 @@ function Spotlight({ node, onClose, onOpen }: { node: MacNodeState; onClose: () 
   ];
   const results = q.trim() ? pool.filter((i) => i.name.toLowerCase().includes(q.toLowerCase())).slice(0, 8) : [];
   return (
-    <div className="absolute inset-0 z-50 flex items-start justify-center bg-black/30 pt-16" onClick={onClose}>
+    <div className="absolute inset-0 z-50 flex items-start justify-center bg-sunken/60 pt-16" onClick={onClose}>
       <div className="w-[440px] overflow-hidden rounded-xl border border-white/20 bg-black/70 shadow-2xl backdrop-blur-md" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 py-3">
           <span className="text-lg"><AppIcon id="search" size={16} /></span>

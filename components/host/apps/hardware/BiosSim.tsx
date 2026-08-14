@@ -43,7 +43,7 @@ export default function BiosSim({ spec, onComplete }: { spec: BiosSpec; onComple
 
   return (
     <div className="mx-auto max-w-2xl">
-      <div className="rounded-2xl border-4 border-[#1a1f27] bg-[#05070a] p-1 shadow-2xl">
+      <div className="rounded-2xl border-4 border-edge bg-[#05070a] p-1 shadow-2xl">
         {screen === "post" && (
           <div
             onDoubleClick={() => setScreen("setup")}
@@ -65,7 +65,7 @@ export default function BiosSim({ spec, onComplete }: { spec: BiosSpec; onComple
           <div className="flex min-h-[300px] flex-col items-center justify-center gap-3 bg-black p-5 text-center font-mono text-[12px] text-gray-300">
             <div className="text-danger">No bootable device found.</div>
             <div className="text-gray-500">You missed the setup window. Reboot the bench unit and try again.</div>
-            <button onClick={() => setScreen("post")} className="rounded border border-gray-600 px-3 py-1 text-gray-200 hover:bg-white/10">⟲ Reboot</button>
+            <button onClick={() => setScreen("post")} className="rounded border border-gray-600 px-3 py-1 text-gray-200 hover:bg-gray-500/15">⟲ Reboot</button>
           </div>
         )}
 
@@ -112,7 +112,7 @@ export default function BiosSim({ spec, onComplete }: { spec: BiosSpec; onComple
 
 function BiosRow({ label, value, onToggle, req, ok }: { label: string; value: string; onToggle: () => void; req: boolean; ok: boolean }) {
   return (
-    <div className="flex items-center gap-3 rounded px-2 py-1 hover:bg-white/10">
+    <div className="flex items-center gap-3 rounded px-2 py-1 hover:bg-gray-500/15">
       <span className="w-40 text-gray-300">{label}</span>
       <button onClick={onToggle} className="rounded border border-white/30 bg-black/20 px-3 py-0.5 text-sky-100 hover:bg-black/40">◄ {value} ►</button>
       {req && <span className={`ml-auto text-[10px] ${ok ? "text-emerald-300" : "text-amber-300"}`}>{ok ? "meets requirement" : "required by ticket"}</span>}

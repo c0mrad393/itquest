@@ -75,9 +75,9 @@ export default function FleetPolicies() {
   const blocked = state.blockedOus.includes(container);
 
   return (
-    <div className="flex h-full flex-col bg-[#1b1f24] text-gray-200">
+    <div className="flex h-full flex-col bg-surface text-gray-200">
       {/* Ribbon */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-black/40 bg-[#252a31] px-3 py-1.5">
+      <div className="flex shrink-0 items-center gap-2 border-b border-edge bg-surface-2 px-3 py-1.5">
         <span className="text-[11px] font-semibold text-gray-100">{CFP}</span>
         <span className="font-mono text-[9px] text-gray-500">
           {state.policies.length} objects · {state.blockedOus.length} blocking
@@ -86,7 +86,7 @@ export default function FleetPolicies() {
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           placeholder={`New ${CFP_OBJECT.toLowerCase()} name…`}
-          className="ml-auto w-56 border border-black/50 bg-[#12161a] px-2 py-1 text-[11px] outline-none placeholder:text-gray-600 focus:border-info"
+          className="ml-auto w-56 border border-edge bg-sunken px-2 py-1 text-[11px] outline-none placeholder:text-gray-600 focus:border-info"
         />
         <button
           onClick={() => {
@@ -95,7 +95,7 @@ export default function FleetPolicies() {
             if (!err) setNewName("");
           }}
           disabled={!newName.trim()}
-          className="flex items-center gap-1 border border-black/50 bg-[#30363f] px-2 py-1 text-[11px] text-gray-100 hover:bg-[#3a424d] disabled:text-gray-600"
+          className="flex items-center gap-1 border border-edge bg-surface-3 px-2 py-1 text-[11px] text-gray-100 hover:bg-surface-3 disabled:text-gray-600"
         >
           <IconPlus size={11} /> New
         </button>
@@ -111,8 +111,8 @@ export default function FleetPolicies() {
 
       <div className="flex min-h-0 flex-1">
         {/* ── Container tree ─────────────────────────────────────────────── */}
-        <div className="w-56 shrink-0 overflow-y-auto border-r border-black/40 bg-[#20242a]">
-          <div className="border-b border-black/40 px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-gray-500">
+        <div className="w-56 shrink-0 overflow-y-auto border-r border-edge bg-surface-2">
+          <div className="border-b border-edge px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-gray-500">
             Containers
           </div>
           {containers.map((c) => {
@@ -123,7 +123,7 @@ export default function FleetPolicies() {
                 key={c.dn}
                 onClick={() => setContainer(c.dn)}
                 className={`flex w-full items-center gap-1.5 px-2 py-1 text-left text-[11px] ${
-                  container === c.dn ? "bg-info/20 text-gray-100" : "text-gray-400 hover:bg-white/[0.04]"
+                  container === c.dn ? "bg-info/20 text-gray-100" : "text-gray-400 hover:bg-gray-500/10"
                 }`}
                 style={{ paddingLeft: 8 + c.depth * 12 }}
               >
@@ -136,8 +136,8 @@ export default function FleetPolicies() {
         </div>
 
         {/* ── Links on this container + resulting settings ───────────────── */}
-        <div className="flex w-[20rem] shrink-0 flex-col border-r border-black/40">
-          <div className="flex items-center gap-1.5 border-b border-black/40 px-2 py-1">
+        <div className="flex w-[20rem] shrink-0 flex-col border-r border-edge">
+          <div className="flex items-center gap-1.5 border-b border-edge px-2 py-1">
             <span className="text-[9px] font-semibold uppercase tracking-wider text-gray-500">Linked here</span>
             {container !== DOMAIN_ROOT && (
               <label className="ml-auto flex cursor-pointer items-center gap-1 text-[9px] text-gray-400">
@@ -152,7 +152,7 @@ export default function FleetPolicies() {
             )}
           </div>
 
-          <div className="max-h-48 shrink-0 overflow-y-auto border-b border-black/40">
+          <div className="max-h-48 shrink-0 overflow-y-auto border-b border-edge">
             {linked.length === 0 && (
               <p className="px-2 py-2 text-[10px] leading-relaxed text-gray-600">
                 Nothing linked here. Select a {CFP_OBJECT.toLowerCase()} on the right and link it.
@@ -163,7 +163,7 @@ export default function FleetPolicies() {
               return (
                 <div
                   key={p.id}
-                  className={`flex items-center gap-1.5 border-b border-black/20 px-2 py-1 text-[11px] ${
+                  className={`flex items-center gap-1.5 border-b border-edge/40 px-2 py-1 text-[11px] ${
                     selected?.id === p.id ? "bg-info/10" : ""
                   }`}
                 >
@@ -193,14 +193,14 @@ export default function FleetPolicies() {
 
           {/* THE panel: what is actually in force here, and who won. */}
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="border-b border-black/40 px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-gray-500">
+            <div className="border-b border-edge px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-gray-500">
               Resulting settings
             </div>
             {resolved.size === 0 && (
               <p className="px-2 py-2 text-[10px] text-gray-600">Nothing applies to this container.</p>
             )}
             {[...resolved.values()].map((a) => (
-              <div key={a.key} className="border-b border-black/20 px-2 py-1">
+              <div key={a.key} className="border-b border-edge/40 px-2 py-1">
                 <div className="flex items-baseline gap-2 text-[10px]">
                   <span className="min-w-0 flex-1 truncate text-gray-300">{policyKeyMeta(a.key).label}</span>
                   <span className="shrink-0 font-mono text-info">{String(a.value)}</span>
@@ -264,7 +264,7 @@ function PolicyDetail({
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-2 border-b border-black/40 bg-[#20242a] px-3 py-1.5">
+      <div className="flex flex-wrap items-center gap-2 border-b border-edge bg-surface-2 px-3 py-1.5">
         <span className="text-[11px] font-semibold text-gray-100">{policy.name}</span>
         {!policy.enabled && (
           <span className="bg-gray-600/30 px-1.5 py-0.5 font-mono text-[9px] text-gray-400">DISABLED</span>
@@ -276,14 +276,14 @@ function PolicyDetail({
           {!linkedHere && (
             <button
               onClick={onLink}
-              className="border border-black/50 bg-[#30363f] px-2 py-0.5 text-[10px] text-gray-100 hover:bg-[#3a424d]"
+              className="border border-edge bg-surface-3 px-2 py-0.5 text-[10px] text-gray-100 hover:bg-surface-3"
             >
               Link here
             </button>
           )}
           <button
             onClick={onToggleEnabled}
-            className="border border-black/50 bg-[#30363f] px-2 py-0.5 text-[10px] text-gray-100 hover:bg-[#3a424d]"
+            className="border border-edge bg-surface-3 px-2 py-0.5 text-[10px] text-gray-100 hover:bg-surface-3"
           >
             {policy.enabled ? "Disable" : "Enable"}
           </button>
@@ -297,12 +297,12 @@ function PolicyDetail({
       </div>
 
       {policy.description && (
-        <p className="border-b border-black/30 px-3 py-1.5 text-[10px] text-gray-500">{policy.description}</p>
+        <p className="border-b border-edge/60 px-3 py-1.5 text-[10px] text-gray-500">{policy.description}</p>
       )}
 
       {categories.map((cat) => (
         <div key={cat}>
-          <div className="border-b border-black/30 bg-[#20242a]/60 px-3 py-1 text-[9px] font-semibold uppercase tracking-wider text-gray-500">
+          <div className="border-b border-edge/60 bg-surface-2/60 px-3 py-1 text-[9px] font-semibold uppercase tracking-wider text-gray-500">
             {cat}
           </div>
           {POLICY_KEYS.filter((k) => k.category === cat).map((meta) => {
@@ -310,7 +310,7 @@ function PolicyDetail({
             const configured = value !== undefined;
             const why = configured ? absence(meta.key) : null;
             return (
-              <div key={meta.key} className="border-b border-black/20 px-3 py-1.5">
+              <div key={meta.key} className="border-b border-edge/40 px-3 py-1.5">
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => onSet(meta.key, configured ? undefined : meta.fallback)}
@@ -328,7 +328,7 @@ function PolicyDetail({
                     <select
                       value={String(value)}
                       onChange={(e) => onSet(meta.key, e.target.value === "true")}
-                      className="shrink-0 border border-black/50 bg-[#12161a] px-1 py-0.5 font-mono text-[10px] text-gray-200"
+                      className="shrink-0 border border-edge bg-sunken px-1 py-0.5 font-mono text-[10px] text-gray-200"
                     >
                       <option value="true">Enabled</option>
                       <option value="false">Disabled</option>
@@ -339,7 +339,7 @@ function PolicyDetail({
                       type="number"
                       value={Number(value)}
                       onChange={(e) => onSet(meta.key, Number(e.target.value))}
-                      className="w-20 shrink-0 border border-black/50 bg-[#12161a] px-1 py-0.5 text-right font-mono text-[10px] text-gray-200"
+                      className="w-20 shrink-0 border border-edge bg-sunken px-1 py-0.5 text-right font-mono text-[10px] text-gray-200"
                     />
                   )}
                   {configured && meta.kind === "text" && (
@@ -347,7 +347,7 @@ function PolicyDetail({
                       value={String(value)}
                       onChange={(e) => onSet(meta.key, e.target.value)}
                       placeholder="\\\\fs01\\Share"
-                      className="w-44 shrink-0 border border-black/50 bg-[#12161a] px-1 py-0.5 font-mono text-[10px] text-gray-200 placeholder:text-gray-700"
+                      className="w-44 shrink-0 border border-edge bg-sunken px-1 py-0.5 font-mono text-[10px] text-gray-200 placeholder:text-gray-700"
                     />
                   )}
                 </div>

@@ -60,7 +60,7 @@ export default function RemoteGateway() {
               className="flex flex-col gap-3 rounded-xl border border-edge bg-panelalt p-4"
             >
               <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-black/30 text-gray-300">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sunken/60 text-gray-300">
                   <AppIcon id={OS_ICON_ID[node.os]} size={20} />
                 </div>
                 <div className="min-w-0 flex-1">

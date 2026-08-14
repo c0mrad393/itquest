@@ -114,7 +114,7 @@ export default function RemoteSession({ win }: { win: RemoteSessionWindow }) {
   return (
     <div className="flex h-full flex-col bg-black">
       {/* Session bar */}
-      <div className="flex items-center gap-2 border-b border-white/10 bg-black/60 px-3 py-1 text-[11px] text-gray-300">
+      <div className="flex items-center gap-2 border-b border-white/10 bg-sunken/70 px-3 py-1 text-[11px] text-gray-300">
         <span className={`h-2 w-2 rounded-full ${phase === "connected" ? "bg-emerald-400" : "bg-amber-400 animate-pulse"}`} />
         <span className="uppercase tracking-wider">{win.protocol}</span>
         <span className="text-gray-500">·</span>

@@ -53,7 +53,7 @@ export function CountPill({
   const tones = {
     info: "bg-info/15 text-info",
     warn: "bg-amber-500/15 text-amber-300",
-    muted: "bg-white/5 text-gray-400",
+    muted: "bg-gray-500/10 text-gray-400",
   } as const;
   return (
     <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${tones[tone]}`}>
@@ -114,7 +114,7 @@ export function Segmented<T extends string>({
           className={`rounded px-2 py-1 text-[10px] font-medium transition ${
             value === o.value
               ? "bg-info/20 text-info"
-              : "text-gray-400 hover:bg-white/5 hover:text-gray-200"
+              : "text-gray-400 hover:bg-gray-500/10 hover:text-gray-200"
           }`}
         >
           {o.label}
@@ -147,7 +147,7 @@ export function Chip({
       className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition ${
         active
           ? "bg-info/20 text-info ring-1 ring-info/40"
-          : "text-gray-400 hover:bg-white/5 hover:text-gray-200"
+          : "text-gray-400 hover:bg-gray-500/10 hover:text-gray-200"
       }`}
     >
       {children}

@@ -123,7 +123,7 @@ export default function SettingsApp() {
                     className="absolute inset-0"
                     style={{ background: w.css, backgroundSize: w.size }}
                   />
-                  <span className="absolute inset-x-0 bottom-0 bg-black/55 px-1.5 py-0.5 text-left text-[9px] font-medium text-gray-200">
+                  <span className="absolute inset-x-0 bottom-0 bg-sunken/70 px-1.5 py-0.5 text-left text-[9px] font-medium text-gray-200">
                     {w.label}
                   </span>
                   {wallpaper === w.id && (
