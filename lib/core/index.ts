@@ -27,6 +27,8 @@ export * from "./datacenter";
 export * from "./directory";
 export * from "./fileshares";
 export * from "./growth";
+export * from "./branding";
+export * from "./policy";
 export * from "./cloud";
 export * from "./infrastructure";
 export * from "./tickets";

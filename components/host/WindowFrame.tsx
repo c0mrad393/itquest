@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Host window frame (Windows 11 style)
+ * TriageOS — Host window frame (DeskOS 12 style)
  * -----------------------------------------------
  * Draggable, focusable window chrome with minimize / maximize / close, driven
  * by the host store. Handles both window kinds: host-app bodies come from the

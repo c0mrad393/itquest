@@ -5,7 +5,7 @@
  * -----------------------------------------------------------------------------
  * Windows workstation → immersive Win11 desktop (WindowsEndpointEnv).
  * Windows server / DC → Windows Admin Center: one sidebar-navigated console
- *   per host (System Status, Active Directory, File Shares, Services, Events).
+ *   per host (System Status, Enterprise Directory Services, File Shares, Services, Events).
  *   It replaced a nested Server DESKTOP — a second taskbar and eight draggable
  *   sub-windows inside a window that was already inside a window.
  * macOS  → macOS endpoint desktop.  Linux → interactive terminal.

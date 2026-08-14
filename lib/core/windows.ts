@@ -39,6 +39,11 @@ export interface ADUser {
   ou: string;
   /** Group membership by samAccountName. */
   memberOf: string[];
+  /**
+   * Reporting line, by samAccountName (v0.8.0). Onboarding requests name a
+   * manager, and an org chart with holes in it is how leavers get missed.
+   */
+  manager?: string;
   enabled: boolean;
   locked: boolean;
   passwordExpired: boolean;

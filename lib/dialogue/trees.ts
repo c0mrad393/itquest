@@ -114,7 +114,7 @@ export const DIALOGUE_TREES: Record<string, DialogueTree> = {
         options: [
           {
             id: "j0a",
-            label: "Absolutely. Verifying your account in Active Directory now.",
+            label: "Absolutely. Verifying your account in Enterprise Directory Services now.",
             tone: "empathetic",
             meter: 8,
             csat: 7,

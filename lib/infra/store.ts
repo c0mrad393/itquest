@@ -29,7 +29,8 @@ import type {
   DatacenterState, GrowthPhase, InventoryState, RackNodeMap, RackState, ServerHardware, Workload,
 } from "@/lib/core";
 import { emptyRack, directoryReach, fileServiceReach } from "@/lib/core";
-import type { ShareAccess } from "@/lib/core";
+import type { PolicyKey, PolicyLink, PolicyValue, ShareAccess } from "@/lib/core";
+import { DOMAIN_ROOT } from "@/lib/core";
 import { nextFreeIp, nextRackName, provisionNode } from "@/lib/datacenter/seed";
 import type { ShippingMethod } from "@/lib/core";
 import type { AetherVNode, AuditEvent, ShieldRule, VNodeSize, VNodeStatus } from "@/lib/core";
@@ -59,6 +60,10 @@ export interface ADUserProfilePatch {
   title?: string;
   department?: string;
   description?: string;
+  /** Reporting line, by samAccountName. */
+  manager?: string;
+  /** Moves the account into another organizational unit. */
+  ou?: string;
 }
 
 interface InfraStore {
@@ -82,6 +87,48 @@ interface InfraStore {
   /** ADUC → Reset Password (also clears lockout, like the real console). */
   resetADUserPassword: (nodeId: NodeId, samAccountName: string, password: string, mustChange: boolean) => void;
   /** ADUC → New User wizard. Returns nothing; no-op if the sam already exists. */
+  // ── Enterprise Directory Services (v0.8.0) ───────────────────────────────
+  /**
+   * Account lifecycle, addressed by DOMAIN. Each returns null on success or
+   * the reason it was refused, including an unreachable directory.
+   */
+  edsCreateUser: (spec: {
+    firstName: string;
+    lastName: string;
+    department: string;
+    title: string;
+    manager?: string;
+    groups?: string[];
+    tempPassword?: string;
+  }) => string | null;
+  /**
+   * DISABLE, not delete. A disabled account keeps its SID, its group
+   * membership and its file ownership — which is why it is the right first
+   * move for a leaver and deleting is not.
+   */
+  edsSetEnabled: (sam: string, enabled: boolean) => string | null;
+  /** Permanently remove an account. Refused while it is still enabled. */
+  edsDeleteUser: (sam: string) => string | null;
+  /** Reset a password, optionally forcing a change at next sign-in. */
+  edsResetPassword: (sam: string, forceChange: boolean) => string | null;
+  /** Clear a lockout and reset the bad-password counter. */
+  edsUnlock: (sam: string) => string | null;
+  /** Job title, department, manager, and the OU the account lives in. */
+  edsSetAttributes: (sam: string, patch: ADUserProfilePatch) => string | null;
+  /** Create an organizational unit, optionally nested under another. */
+  edsCreateOu: (name: string, parentDn?: string) => string | null;
+
+  // ── Centralized Fleet Policies (v0.8.0) ──────────────────────────────────
+  cfpCreatePolicy: (name: string, description?: string) => string | null;
+  cfpSetSetting: (policyId: string, key: PolicyKey, value: PolicyValue | undefined) => void;
+  /** Link a policy to the domain root or an OU. Re-linking updates the flags. */
+  cfpSetLink: (policyId: string, target: string, patch: Partial<Omit<PolicyLink, "target">>) => void;
+  cfpUnlink: (policyId: string, target: string) => void;
+  cfpSetPolicyEnabled: (policyId: string, enabled: boolean) => void;
+  cfpDeletePolicy: (policyId: string) => void;
+  /** Stop an OU inheriting policy from its ancestors. */
+  cfpSetBlockInheritance: (ouDn: string, blocked: boolean) => void;
+
   /**
    * Group membership (v0.5.0). Addressed by DOMAIN rather than by node — the
    * operator works against "the directory", and which DC answers is the
@@ -516,6 +563,322 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       user.badPwdCount = 0;
       return withNode(s, nodeId, clone);
     }),
+
+  // ── Enterprise Directory Services (v0.8.0) ───────────────────────────────
+
+  edsCreateUser: (spec) => {
+    const infra = get().infra;
+    const reach = directoryReach(infra);
+    if (!reach.reachable || !reach.node) return reach.reason ?? "Directory unreachable.";
+    const dcId = reach.node.nodeId;
+    const dc = infra.nodes[dcId];
+    if (!dc || dc.os !== "windows" || !dc.activeDirectory) return "That host does not serve the directory.";
+    const ad = dc.activeDirectory;
+
+    const first = spec.firstName.trim();
+    const last = spec.lastName.trim();
+    if (!first || !last) return "A new account needs a first and last name.";
+    if (!ad.ous.some((o) => o.name === spec.department)) return `No organizational unit named ${spec.department}.`;
+
+    // Logon names collide constantly in a 450-person directory; suffix rather
+    // than refuse, the way a real provisioning script does.
+    const stem = `${first[0]}.${last}`.toLowerCase().replace(/[^a-z.]/g, "");
+    const taken = new Set(ad.users.map((u) => u.samAccountName));
+    let sam = stem;
+    for (let n = 2; taken.has(sam); n++) sam = `${stem}${n}`;
+
+    const ou = ad.ous.find((o) => o.name === spec.department)!.dn;
+    const mailDomain = ad.domainDns.replace(".internal", ".com");
+
+    set((st) => {
+      const node = st.infra.nodes[dcId];
+      if (!node || node.os !== "windows" || !node.activeDirectory) return st;
+      const clone = structuredClone(node);
+      clone.activeDirectory!.users.push({
+        sid: `S-1-5-21-...-${4000 + clone.activeDirectory!.users.length}`,
+        samAccountName: sam,
+        upn: `${sam}@${ad.domainDns}`,
+        displayName: `${first} ${last}`,
+        title: spec.title,
+        department: spec.department,
+        email: `${sam}@${mailDomain}`,
+        ou,
+        memberOf: ["Domain Users", ...(spec.groups ?? [])],
+        manager: spec.manager,
+        enabled: true,
+        locked: false,
+        passwordExpired: false,
+        // A provisioned account always forces a change: the administrator
+        // knows the temporary password, which is the whole problem with it.
+        mustChangePassword: true,
+        badPwdCount: 0,
+        lastLogon: null,
+        passwordExpiresAt: Date.now() + 90 * 86_400_000,
+        description: spec.title,
+      });
+      return withNode(st, dcId, clone);
+    });
+    return null;
+  },
+
+  edsSetEnabled: (sam, enabled) => {
+    const infra = get().infra;
+    const reach = directoryReach(infra);
+    if (!reach.reachable || !reach.node) return reach.reason ?? "Directory unreachable.";
+    const dcId = reach.node.nodeId;
+    set((st) => {
+      const node = st.infra.nodes[dcId];
+      if (!node || node.os !== "windows" || !node.activeDirectory) return st;
+      const clone = structuredClone(node);
+      const user = clone.activeDirectory!.users.find((u) => u.samAccountName === sam);
+      if (!user) return st;
+      user.enabled = enabled;
+      if (enabled) { user.locked = false; user.badPwdCount = 0; }
+      return withNode(st, dcId, clone);
+    });
+    return null;
+  },
+
+  edsDeleteUser: (sam) => {
+    const infra = get().infra;
+    const reach = directoryReach(infra);
+    if (!reach.reachable || !reach.node) return reach.reason ?? "Directory unreachable.";
+    const dcId = reach.node.nodeId;
+    const dc = infra.nodes[dcId];
+    const user = dc?.os === "windows" ? dc.activeDirectory?.users.find((u) => u.samAccountName === sam) : undefined;
+    if (!user) return `No account named ${sam}.`;
+    // The lesson, enforced: deletion destroys the SID, and with it every file
+    // permission and mailbox grant that pointed at it. Disable first.
+    if (user.enabled) {
+      return "Disable the account first. Deleting an enabled account destroys its SID, and every permission granted to it goes with it.";
+    }
+    if (infra.nodes[dcId]?.os === "windows") {
+      set((st) => {
+        const node = st.infra.nodes[dcId];
+        if (!node || node.os !== "windows" || !node.activeDirectory) return st;
+        const clone = structuredClone(node);
+        const ad = clone.activeDirectory!;
+        ad.users = ad.users.filter((u) => u.samAccountName !== sam);
+        for (const g of ad.groups) g.members = g.members.filter((m) => m !== sam);
+        for (const u of ad.users) if (u.manager === sam) delete u.manager;
+        return withNode(st, dcId, clone);
+      });
+    }
+    return null;
+  },
+
+  edsResetPassword: (sam, forceChange) => {
+    const infra = get().infra;
+    const reach = directoryReach(infra);
+    if (!reach.reachable || !reach.node) return reach.reason ?? "Directory unreachable.";
+    const dcId = reach.node.nodeId;
+    set((st) => {
+      const node = st.infra.nodes[dcId];
+      if (!node || node.os !== "windows" || !node.activeDirectory) return st;
+      const clone = structuredClone(node);
+      const user = clone.activeDirectory!.users.find((u) => u.samAccountName === sam);
+      if (!user) return st;
+      user.passwordExpired = false;
+      user.mustChangePassword = forceChange;
+      user.badPwdCount = 0;
+      user.locked = false;
+      user.passwordExpiresAt = Date.now() + 90 * 86_400_000;
+      return withNode(st, dcId, clone);
+    });
+    return null;
+  },
+
+  edsUnlock: (sam) => {
+    const infra = get().infra;
+    const reach = directoryReach(infra);
+    if (!reach.reachable || !reach.node) return reach.reason ?? "Directory unreachable.";
+    const dcId = reach.node.nodeId;
+    set((st) => {
+      const node = st.infra.nodes[dcId];
+      if (!node || node.os !== "windows" || !node.activeDirectory) return st;
+      const clone = structuredClone(node);
+      const user = clone.activeDirectory!.users.find((u) => u.samAccountName === sam);
+      if (!user) return st;
+      user.locked = false;
+      user.badPwdCount = 0;
+      return withNode(st, dcId, clone);
+    });
+    return null;
+  },
+
+  edsSetAttributes: (sam, patch) => {
+    const infra = get().infra;
+    const reach = directoryReach(infra);
+    if (!reach.reachable || !reach.node) return reach.reason ?? "Directory unreachable.";
+    const dcId = reach.node.nodeId;
+    const dc = infra.nodes[dcId];
+    const ad = dc?.os === "windows" ? dc.activeDirectory : undefined;
+    if (!ad) return "That host does not serve the directory.";
+    if (patch.manager && !ad.users.some((u) => u.samAccountName === patch.manager)) {
+      return `No account named ${patch.manager} to set as manager.`;
+    }
+    if (patch.manager === sam) return "An account cannot be its own manager.";
+
+    set((st) => {
+      const node = st.infra.nodes[dcId];
+      if (!node || node.os !== "windows" || !node.activeDirectory) return st;
+      const clone = structuredClone(node);
+      const user = clone.activeDirectory!.users.find((u) => u.samAccountName === sam);
+      if (!user) return st;
+      if (patch.title !== undefined) user.title = patch.title;
+      if (patch.description !== undefined) user.description = patch.description;
+      if (patch.manager !== undefined) user.manager = patch.manager || undefined;
+      if (patch.ou !== undefined) user.ou = patch.ou;
+      if (patch.department !== undefined) {
+        user.department = patch.department;
+        // Moving department moves the account: an OU that disagrees with the
+        // department is how policy stops applying to somebody.
+        const target = clone.activeDirectory!.ous.find((o) => o.name === patch.department);
+        if (target && patch.ou === undefined) user.ou = target.dn;
+      }
+      return withNode(st, dcId, clone);
+    });
+    return null;
+  },
+
+  edsCreateOu: (name, parentDn) => {
+    const infra = get().infra;
+    const reach = directoryReach(infra);
+    if (!reach.reachable || !reach.node) return reach.reason ?? "Directory unreachable.";
+    const dcId = reach.node.nodeId;
+    const dc = infra.nodes[dcId];
+    const ad = dc?.os === "windows" ? dc.activeDirectory : undefined;
+    if (!ad) return "That host does not serve the directory.";
+    const clean = name.trim();
+    if (!clean) return "An organizational unit needs a name.";
+    if (ad.ous.some((o) => o.name.toLowerCase() === clean.toLowerCase())) return `${clean} already exists.`;
+
+    const root = ad.domainDns.split(".").map((p) => `DC=${p}`).join(",");
+    const dn = parentDn ? `OU=${clean},${parentDn}` : `OU=${clean},${root}`;
+    set((st) => {
+      const node = st.infra.nodes[dcId];
+      if (!node || node.os !== "windows" || !node.activeDirectory) return st;
+      const clone = structuredClone(node);
+      clone.activeDirectory!.ous.push({ dn, name: clean, parentDn });
+      return withNode(st, dcId, clone);
+    });
+    return null;
+  },
+
+  // ── Centralized Fleet Policies (v0.8.0) ──────────────────────────────────
+
+  cfpCreatePolicy: (name, description) => {
+    const clean = name.trim();
+    if (!clean) return "A Fleet Policy needs a name.";
+    if (get().infra.policy.policies.some((p) => p.name.toLowerCase() === clean.toLowerCase())) {
+      return `${clean} already exists.`;
+    }
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        policy: {
+          ...s.infra.policy,
+          policies: [
+            ...s.infra.policy.policies,
+            {
+              id: `cfp-${Date.now().toString(36)}`,
+              name: clean,
+              description: description ?? "",
+              enabled: true,
+              settings: {},
+              links: [],
+              updatedAt: Date.now(),
+            },
+          ],
+        },
+      },
+    }));
+    return null;
+  },
+
+  cfpSetSetting: (policyId, key, value) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        policy: {
+          ...s.infra.policy,
+          policies: s.infra.policy.policies.map((p) => {
+            if (p.id !== policyId) return p;
+            const settings = { ...p.settings };
+            if (value === undefined) delete settings[key];
+            else settings[key] = value;
+            return { ...p, settings, updatedAt: Date.now() };
+          }),
+        },
+      },
+    })),
+
+  cfpSetLink: (policyId, target, patch) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        policy: {
+          ...s.infra.policy,
+          policies: s.infra.policy.policies.map((p) => {
+            if (p.id !== policyId) return p;
+            const existing = p.links.find((l) => l.target === target);
+            const links = existing
+              ? p.links.map((l) => (l.target === target ? { ...l, ...patch } : l))
+              : [...p.links, { target, enforced: false, enabled: true, ...patch }];
+            return { ...p, links, updatedAt: Date.now() };
+          }),
+        },
+      },
+    })),
+
+  cfpUnlink: (policyId, target) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        policy: {
+          ...s.infra.policy,
+          policies: s.infra.policy.policies.map((p) =>
+            p.id === policyId
+              ? { ...p, links: p.links.filter((l) => l.target !== target), updatedAt: Date.now() }
+              : p,
+          ),
+        },
+      },
+    })),
+
+  cfpSetPolicyEnabled: (policyId, enabled) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        policy: {
+          ...s.infra.policy,
+          policies: s.infra.policy.policies.map((p) =>
+            p.id === policyId ? { ...p, enabled, updatedAt: Date.now() } : p,
+          ),
+        },
+      },
+    })),
+
+  cfpDeletePolicy: (policyId) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        policy: { ...s.infra.policy, policies: s.infra.policy.policies.filter((p) => p.id !== policyId) },
+      },
+    })),
+
+  cfpSetBlockInheritance: (ouDn, blocked) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        policy: {
+          ...s.infra.policy,
+          blockedOus: blocked
+            ? [...new Set([...s.infra.policy.blockedOus, ouDn])]
+            : s.infra.policy.blockedOus.filter((d) => d !== ouDn),
+        },
+      },
+    })),
 
   adSetGroupMembership: (sam, groupName, member) => {
     const infra = get().infra;

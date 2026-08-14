@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "jsx": "preserve"
   },
-  "include": ["lib/core/rack.ts", "lib/core/datacenter.ts", "lib/core/fileshares.ts", "lib/core/directory.ts", "lib/core/growth.ts"]
+  "include": ["lib/core/rack.ts", "lib/core/datacenter.ts", "lib/core/fileshares.ts", "lib/core/directory.ts", "lib/core/growth.ts", "lib/core/policy.ts"]
 }

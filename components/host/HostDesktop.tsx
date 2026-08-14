@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Level 0 Host Desktop (Windows 11)
+ * TriageOS — Level 0 Host Desktop (DeskOS 12)
  * ============================================
  * The operator's full-screen workstation shell: wallpaper, desktop icons, the
  * open host-app windows (managed by the host store), the Start menu, and the

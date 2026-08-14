@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Active Directory Users & Computers (v0.5.0)
+ * Enterprise Directory Services (v0.5.0)
  * ===========================================
  * An RSAT-style console running on the operator's own workstation and talking
  * to the domain controller over the network — which is exactly why it can
@@ -23,11 +23,18 @@
 import { useMemo, useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
 import {
+  CLIENT_OS_SHORT,
+  EDS,
+  REMOTE_SUPPORT,
   directoryReach,
   effectiveGroups,
+  endpointForUser,
+  reachNode,
+  type ActiveDirectoryState,
   type ADGroup,
   type ADUser,
 } from "@/lib/core";
+import { useHostStore } from "@/lib/host/store";
 import { AppHeader, CountPill } from "./AppChrome";
 import ServiceDown from "./ServiceDown";
 import {
@@ -47,8 +54,12 @@ export default function DirectoryConsole({ embedded = false }: { embedded?: bool
   const infra = useInfraStore((s) => s.infra);
   const setMembership = useInfraStore((s) => s.adSetGroupMembership);
   const createGroup = useInfraStore((s) => s.adCreateGroup);
-  const unlock = useInfraStore((s) => s.unlockADUser);
-  const setEnabled = useInfraStore((s) => s.setADUserEnabled);
+  const unlock = useInfraStore((s) => s.edsUnlock);
+  const setEnabled = useInfraStore((s) => s.edsSetEnabled);
+  const resetPassword = useInfraStore((s) => s.edsResetPassword);
+  const deleteUser = useInfraStore((s) => s.edsDeleteUser);
+  const setAttributes = useInfraStore((s) => s.edsSetAttributes);
+  const openRemote = useHostStore((s) => s.openRemote);
 
   const [scope, setScope] = useState<Scope>({ kind: "all" });
   const [query, setQuery] = useState("");
@@ -94,7 +105,7 @@ export default function DirectoryConsole({ embedded = false }: { embedded?: bool
   return (
     <div className="flex h-full flex-col bg-panel text-gray-200">
       {!embedded && (
-        <AppHeader iconId="users" title="Active Directory Users &amp; Computers" subtitle={ad.domainDns}>
+        <AppHeader iconId="users" title={EDS} subtitle={ad.domainDns}>
           <CountPill label="accounts" value={ad.users.length} />
           <CountPill label="groups" value={ad.groups.length} />
           <span className="ml-2 flex items-center gap-1.5 text-[10px] text-emerald-300">
@@ -243,14 +254,42 @@ export default function DirectoryConsole({ embedded = false }: { embedded?: bool
                     : `${selected.displayName} removed from ${g}.`,
                 )
               }
-              onUnlock={() => {
-                unlock(dc.nodeId, selected.samAccountName);
-                setNotice({ kind: "ok", text: `${selected.displayName} unlocked.` });
+              onUnlock={() => act(unlock(selected.samAccountName), `${selected.displayName} unlocked.`)}
+              onSetEnabled={(on) =>
+                act(
+                  setEnabled(selected.samAccountName, on),
+                  `${selected.displayName} ${on ? "enabled" : "disabled"}.`,
+                )
+              }
+              onResetPassword={(force) =>
+                act(
+                  resetPassword(selected.samAccountName, force),
+                  `Password reset for ${selected.displayName}${force ? " — they must change it at next sign-in." : "."}`,
+                )
+              }
+              onDelete={() => {
+                const err = deleteUser(selected.samAccountName);
+                act(err, `${selected.displayName} deleted from the directory.`);
+                if (!err) setSelectedSam(null);
               }}
-              onSetEnabled={(on) => {
-                setEnabled(dc.nodeId, selected.samAccountName, on);
-                setNotice({ kind: "ok", text: `${selected.displayName} ${on ? "enabled" : "disabled"}.` });
+              onSetAttributes={(patch) =>
+                act(setAttributes(selected.samAccountName, patch), `Updated ${selected.displayName}.`)
+              }
+              onConnectEndpoint={() => {
+                const endpoint = endpointForUser(infra, selected.samAccountName);
+                if (!endpoint) {
+                  setNotice({ kind: "err", text: "No enrolled endpoint for this account." });
+                  return;
+                }
+                const reach = reachNode(infra, endpoint);
+                if (!reach.reachable) {
+                  setNotice({ kind: "err", text: `${endpoint.hostname}: ${reach.reason}` });
+                  return;
+                }
+                openRemote(endpoint.nodeId, `${selected.displayName} — ${endpoint.hostname}`, "monitor", endpoint.connection.protocol);
+                setNotice({ kind: "ok", text: `${REMOTE_SUPPORT} session opened on ${endpoint.hostname}.` });
               }}
+              directory={ad}
             />
           )}
         </div>
@@ -265,18 +304,35 @@ function UserDetail({
   user,
   groups,
   memberships,
+  directory,
   onToggleGroup,
   onUnlock,
   onSetEnabled,
+  onResetPassword,
+  onDelete,
+  onSetAttributes,
+  onConnectEndpoint,
 }: {
   user: ADUser;
   groups: ADGroup[];
   memberships: string[];
+  directory: ActiveDirectoryState;
   onToggleGroup: (group: string, on: boolean) => void;
   onUnlock: () => void;
   onSetEnabled: (on: boolean) => void;
+  onResetPassword: (forceChange: boolean) => void;
+  onDelete: () => void;
+  onSetAttributes: (patch: { title?: string; department?: string; manager?: string }) => void;
+  onConnectEndpoint: () => void;
 }) {
   const [filter, setFilter] = useState("");
+  const [forceChange, setForceChange] = useState(true);
+  const [title, setTitle] = useState(user.title);
+  const [department, setDepartment] = useState(user.department);
+  const [manager, setManager] = useState(user.manager ?? "");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const dirtyAttrs =
+    title !== user.title || department !== user.department || (manager || undefined) !== user.manager;
   const owned = new Set(memberships);
   // Direct membership is what the console can toggle; nested membership is
   // shown but not editable, because you fix that on the parent group.
@@ -308,20 +364,122 @@ function UserDetail({
           <Fact label="Email" value={user.email} />
           <Fact label="OU" value={user.ou} />
           <Fact label="Bad password count" value={String(user.badPwdCount)} />
+          <Fact label="Manager" value={user.manager ?? "—"} />
         </dl>
-        <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+        {/* Ribbon-style action row: everything a service desk does to an
+            account, in the order they do it. */}
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
           {user.locked && (
             <button onClick={onUnlock} className="rounded border border-emerald-400/50 px-2 py-1 text-emerald-300 hover:bg-emerald-400/10">
               Unlock account
             </button>
           )}
           <button
+            onClick={() => onResetPassword(forceChange)}
+            className="rounded border border-edge px-2 py-1 text-gray-200 hover:bg-panel"
+          >
+            Reset password
+          </button>
+          <label className="flex cursor-pointer items-center gap-1 text-[10px] text-gray-400">
+            <input
+              type="checkbox"
+              checked={forceChange}
+              onChange={(e) => setForceChange(e.target.checked)}
+              className="h-3 w-3 accent-info"
+            />
+            Force change at next sign-in
+          </label>
+          <button
             onClick={() => onSetEnabled(!user.enabled)}
             className="rounded border border-edge px-2 py-1 text-gray-200 hover:bg-panel"
           >
             {user.enabled ? "Disable account" : "Enable account"}
           </button>
+          <button
+            onClick={onConnectEndpoint}
+            title={`Open a ${REMOTE_SUPPORT} session on this person's ${CLIENT_OS_SHORT} machine`}
+            className="rounded border border-info/50 px-2 py-1 text-info hover:bg-info/10"
+          >
+            Connect to endpoint
+          </button>
+          {/* Delete is last, styled as the exception it should be. The store
+              refuses while the account is still enabled — that rule is the
+              lesson, not the button. */}
+          {confirmDelete ? (
+            <span className="flex items-center gap-1.5">
+              <button
+                onClick={() => { onDelete(); setConfirmDelete(false); }}
+                className="rounded border border-danger/60 bg-danger/10 px-2 py-1 text-danger"
+              >
+                Delete permanently
+              </button>
+              <button onClick={() => setConfirmDelete(false)} className="text-[10px] text-gray-500 hover:text-gray-300">
+                cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="rounded border border-danger/40 px-2 py-1 text-danger hover:bg-danger/10"
+            >
+              Delete
+            </button>
+          )}
         </div>
+        {user.mustChangePassword && (
+          <p className="mt-1.5 text-[10px] text-amber-300">
+            Must change password at next sign-in.
+          </p>
+        )}
+      </section>
+
+      {/* ── Attributes ─────────────────────────────────────────────────── */}
+      <section className="rounded-lg border border-edge bg-panelalt/50 p-3">
+        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Attributes</h3>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Field label="Job title" value={title} onChange={setTitle} />
+          <label className="block">
+            <span className="mb-0.5 block text-[9px] uppercase tracking-wider text-gray-600">Department</span>
+            <select
+              value={department}
+              onChange={(e) => setDepartment(e.target.value)}
+              className="w-full rounded border border-edge bg-panel px-1.5 py-1 text-[11px] text-gray-200"
+            >
+              {directory.ous.map((o) => (
+                <option key={o.dn} value={o.name}>{o.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-0.5 block text-[9px] uppercase tracking-wider text-gray-600">Manager</span>
+            <select
+              value={manager}
+              onChange={(e) => setManager(e.target.value)}
+              className="w-full rounded border border-edge bg-panel px-1.5 py-1 text-[11px] text-gray-200"
+            >
+              <option value="">(none)</option>
+              {directory.users
+                .filter((u) => u.samAccountName !== user.samAccountName && u.enabled)
+                .slice(0, 300)
+                .map((u) => (
+                  <option key={u.samAccountName} value={u.samAccountName}>
+                    {u.displayName} ({u.samAccountName})
+                  </option>
+                ))}
+            </select>
+          </label>
+        </div>
+        <button
+          onClick={() => onSetAttributes({ title, department, manager })}
+          disabled={!dirtyAttrs}
+          className="mt-2 rounded border border-edge px-2 py-1 text-[11px] text-gray-200 hover:bg-panel disabled:text-gray-600"
+        >
+          Apply
+        </button>
+        <p className="mt-1.5 text-[9px] leading-relaxed text-gray-600">
+          Changing department moves the account into that organizational unit — which changes the Fleet Policies that
+          apply to it.
+        </p>
       </section>
 
       <section className="rounded-lg border border-edge bg-panelalt/50 p-3">
@@ -409,6 +567,27 @@ function TreeBtn({
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {trailing && <span className="shrink-0 font-mono text-[9px] text-gray-600">{trailing}</span>}
     </button>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-0.5 block text-[9px] uppercase tracking-wider text-gray-600">{label}</span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded border border-edge bg-panel px-1.5 py-1 text-[11px] text-gray-200 outline-none focus:border-info"
+      />
+    </label>
   );
 }
 

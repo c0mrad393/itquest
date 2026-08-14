@@ -30,7 +30,7 @@ import WikiDoc from "./WikiDoc";
 const CATEGORY_ICON: Record<WikiCategory, HostAppIconId> = {
   "Getting started": "book",
   Network: "globe",
-  "Active Directory": "users",
+  "Enterprise Directory Services": "users",
   "Servers & Services": "server",
   Procedures: "list",
   Reference: "search",

@@ -32,6 +32,7 @@ import type { InfrastructureState, TargetNode } from "./infrastructure";
 import type { NodeId, NodeRole } from "./nodes";
 import { locationOf, serverLiveness } from "./datacenter";
 import type { ActiveDirectoryState, ADGroup, ADUser } from "./windows";
+import { EDS_SERVICE, FILE_SERVICE } from "./branding";
 
 // ── Reachability ────────────────────────────────────────────────────────────
 
@@ -151,9 +152,9 @@ export function directoryReach(infra: InfrastructureState): ServiceReach {
   const dc =
     Object.values(infra.nodes).find((n) => n.role === "domain-controller" && "activeDirectory" in n) ??
     nodeByRole(infra, "domain-controller");
-  const reach = reachNode(infra, dc, ["NTDS"]);
+  const reach = reachNode(infra, dc, [EDS_SERVICE]);
   if (!reach.reachable && reach.layer === "missing") {
-    return { ...reach, reason: "This estate has no domain controller." };
+    return { ...reach, reason: "This estate has no directory server." };
   }
   return reach;
 }
@@ -161,7 +162,7 @@ export function directoryReach(infra: InfrastructureState): ServiceReach {
 /** Reach the file server. Requires the SMB service, not just the host. */
 export function fileServiceReach(infra: InfrastructureState): ServiceReach {
   const fs = nodeByRole(infra, "file-server");
-  const reach = reachNode(infra, fs, ["LanmanServer"]);
+  const reach = reachNode(infra, fs, [FILE_SERVICE]);
   if (!reach.reachable && reach.layer === "missing") {
     return { ...reach, reason: "This estate has no file server." };
   }
@@ -292,4 +293,32 @@ export function effectiveGroups(ad: ActiveDirectoryState, sam: string): string[]
 
 export function isMemberOf(ad: ActiveDirectoryState, sam: string, group: string): boolean {
   return effectiveGroups(ad, sam).includes(group);
+}
+
+// ── Endpoint mapping (v0.8.0) ───────────────────────────────────────────────
+
+/**
+ * The workstation a member of staff sits at.
+ *
+ * DERIVED rather than stored. The generator mints a fleet of endpoints and a
+ * directory of several hundred accounts; recording a mapping between them
+ * would be a third table to keep consistent through every hire, every leaver
+ * and every growth milestone. A stable hash over the account name picks the
+ * same machine every time without any of that.
+ *
+ * Returns undefined when the estate has no endpoints — a startup where
+ * everyone is on a laptop nobody has enrolled yet.
+ */
+export function endpointForUser(
+  infra: InfrastructureState,
+  sam: string,
+): TargetNode | undefined {
+  const fleet = Object.values(infra.nodes)
+    .filter((n) => n.role === "workstation")
+    .sort((a, b) => a.nodeId.localeCompare(b.nodeId));
+  if (!fleet.length) return undefined;
+
+  let h = 0;
+  for (const ch of sam) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return fleet[h % fleet.length];
 }

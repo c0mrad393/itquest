@@ -20,7 +20,7 @@ import type { InfrastructureState, TargetNode } from "@/lib/core";
 export type WikiCategory =
   | "Getting started"
   | "Network"
-  | "Active Directory"
+  | "Enterprise Directory Services"
   | "Servers & Services"
   | "Procedures"
   | "Reference";
@@ -28,7 +28,7 @@ export type WikiCategory =
 export const WIKI_CATEGORIES: WikiCategory[] = [
   "Getting started",
   "Network",
-  "Active Directory",
+  "Enterprise Directory Services",
   "Servers & Services",
   "Procedures",
   "Reference",
@@ -66,7 +66,7 @@ const ROLE_PURPOSE: Record<string, string> = {
   "app-server": "Business logic tier. Never addressed directly from outside the DMZ.",
   database: "Primary data store. Replicas carry a `-r` or numeric suffix.",
   "load-balancer": "Distributes traffic across the web tier. Health-checks members.",
-  "domain-controller": "Active Directory, DNS and Kerberos. The identity root of the estate.",
+  "domain-controller": "Enterprise Directory Services, DNS and Kerberos. The identity root of the estate.",
   "file-server": "SMB shares and mapped drives. Runs the LanmanServer service.",
   workstation: "Staff endpoint. Managed by GPO, reachable over RDP for support.",
   firewall: "Segment boundary enforcement.",
@@ -283,10 +283,10 @@ systemctl status <svc>  # the daemon's own view
 `,
   },
 
-  // ── Active Directory ──────────────────────────────────────────────────────
+  // ── Enterprise Directory Services ──────────────────────────────────────────────────────
   {
     id: "ad-overview",
-    category: "Active Directory",
+    category: "Enterprise Directory Services",
     title: "Domain overview",
     summary: "The forest, the DCs, and what depends on them.",
     tags: ["ad", "domain", "kerberos", "dns", "identity"],
@@ -320,7 +320,7 @@ The domain controllers are not just for logins. They also serve **DNS** and
   },
   {
     id: "ad-naming",
-    category: "Active Directory",
+    category: "Enterprise Directory Services",
     title: "Naming conventions",
     summary: "How accounts, hostnames, groups and OUs are named. Deviations are bugs.",
     tags: ["naming", "convention", "sam", "hostname", "ou", "groups"],
@@ -375,7 +375,7 @@ OU=<Department>,DC=${(ad?.domainDns ?? infra.org.domain).split(".").join(",DC=")
   },
   {
     id: "ad-account-lifecycle",
-    category: "Active Directory",
+    category: "Enterprise Directory Services",
     title: "Account lifecycle SOP",
     summary: "Standards for joiners, movers, leavers, lockouts and password resets.",
     tags: ["sop", "onboarding", "offboarding", "lockout", "password", "transfer"],
@@ -790,7 +790,7 @@ write memory                  # persist
 | **OU** | Organisational Unit — the AD container an object lives in. |
 | **sAMAccountName** | The short logon name, e.g. \`j.doe\`. |
 | **UPN** | User Principal Name — \`user@domain\`, the modern logon form. |
-| **GPO** | Group Policy Object. Pushes settings and drive maps at logon. |
+| **GPO** | Fleet Policy. Pushes settings and drive maps at logon. |
 | **PXE** | Network boot, used to deploy images to bare metal. |
 | **EFI partition** | Small boot partition. Missing it means no bootable device. |
 | **RAID 1** | Two disks mirrored. Survives one failing. |
@@ -798,6 +798,247 @@ write memory                  # persist
 | **LanmanServer** | The Windows service that publishes SMB shares. |
 | **CSAT** | Customer satisfaction, 0-100. Driven by tone and speed. |
 | **Containment** | Stopping spread. Comes before diagnosis in security work. |
+`,
+  },
+  {
+    id: "eds-nested-groups",
+    category: "Enterprise Directory Services",
+    title: "Why we grant access to groups, never to people",
+    summary: "Nested membership, and why an audit disagrees with reality.",
+    tags: ["ad", "identity", "groups", "acl", "shares"],
+    body: () => `
+# Why we grant access to groups, never to people
+
+Every share on the estate grants rights to a **security group**. None of them
+name an individual. That is a rule, and it is worth understanding rather than
+just following.
+
+## The reason
+
+When somebody joins the team you add them to one group and they inherit
+everything that team can reach. When they leave you remove them once. If
+access were granted per-person you would be hunting through the access list of
+every share on every server, and the one you miss is the one the auditor finds.
+
+## Nesting
+
+A group can contain another group. \`Finance_RW\` might itself be a member of
+\`Leadership\`, so anyone in Finance also gets whatever Leadership can reach —
+without appearing anywhere on the Leadership member list.
+
+This is the single most common reason a permission audit disagrees with
+reality. The person is not "in" the group you are looking at; they are in a
+group that is in it.
+
+**Enterprise Directory Services shows this.** In an account's *Member of*
+list, an inherited membership is marked \`nested\` and cannot be unticked
+there — you have to change it on the parent group, because that is where it
+comes from.
+
+## Checking properly
+
+Never reason about access from a member list. Use **Effective access** on the
+share: type the logon name and it resolves the whole chain, applies the
+deny rules, and tells you what that person can actually do.
+
+## Deny beats everything
+
+An explicit **Deny** on any group the person belongs to wins outright — over
+Change, over Full control, over every allow on the list. If somebody is in the
+right group and still cannot get in, look for a Deny before you look at
+anything else. Stale Deny entries outlive the incident they were added for.
+`,
+  },
+  {
+    id: "eds-disable-vs-delete",
+    category: "Enterprise Directory Services",
+    title: "Disable or delete? Leavers, done properly",
+    summary: "What a SID is, and why deleting one is nearly always wrong.",
+    tags: ["ad", "identity", "offboarding", "sid"],
+    body: () => `
+# Disable or delete?
+
+Somebody leaves. The instinct is to delete the account. Resist it.
+
+## What an account really is
+
+Every account has a **SID** — a unique identifier the directory generates
+once and never reuses. File permissions, mailbox rights and share access lists
+do not store a name; they store the SID. The name you see in an access list is
+looked up from it at display time.
+
+Delete the account and the SID is gone forever. Every permission that pointed
+at it becomes an orphan: the file still has an owner, but nobody can resolve
+who. Recreating an account with the identical name does **not** bring the SID
+back, so it does not restore any of that access either.
+
+## What to do instead
+
+**Disable** the account. It keeps the SID, the group membership and the file
+ownership, and nobody can sign in with it. That is what "revoke access" means
+in practice.
+
+The Enterprise Directory Services console enforces the order: it refuses to
+delete an account that is still enabled. Disable, wait out your organisation's
+retention period, then delete if you genuinely must.
+
+## The normal sequence
+
+1. **Disable** the account the moment the person leaves.
+2. Reassign anything they own — shares, mailboxes, documents.
+3. Clear their manager reference from anyone reporting to them.
+4. Only then, and only if policy requires it, delete.
+
+## Resetting is not disabling
+
+Changing somebody's password does not lock them out of a session they are
+already signed into, and it does not stop a device with a saved token. Disable
+the account when you mean to stop access.
+`,
+  },
+  {
+    id: "cfp-inheritance",
+    category: "Enterprise Directory Services",
+    title: "Fleet Policy inheritance and precedence",
+    summary: "Why the policy you just edited did nothing.",
+    tags: ["cfp", "policy", "inheritance", "compliance"],
+    body: (infra) => {
+      const ad = adOf(infra);
+      const units = (ad?.ous ?? []).map((o) => o.name).join(", ") || "none yet";
+      return `
+# Fleet Policy inheritance and precedence
+
+**Centralized Fleet Policies (CFP)** deliver settings to machines and accounts
+without visiting a single desk. A *Fleet Policy* is an object holding settings;
+it does nothing at all until it is **linked** to a container.
+
+## Containers
+
+A policy links to the **domain root** (everything) or to an **organizational
+unit** (one part of the business). This estate's units: ${units}.
+
+An account is affected by every policy linked anywhere on its path from the
+domain root down to its own unit.
+
+## The four rules, in order
+
+1. **Scope.** Only links on the account's path apply. A policy linked to
+   Marketing does nothing to Finance.
+2. **Closest wins.** Links are applied from the root outward, so a unit-level
+   setting overwrites the domain-level one. This is usually what you want:
+   a company baseline with stricter rules for the teams that need them.
+3. **Blocking.** A unit can *block inheritance*, which discards everything
+   from above it. Powerful and easy to forget — it is a common reason a
+   company-wide setting is mysteriously absent on one team.
+4. **Enforcement.** An **enforced** link ignores blocking *and* reverses the
+   order: it beats anything closer to the account. This is the override of
+   last resort. It is also why "but I set it on the unit" is sometimes wrong.
+
+## Reading the result
+
+Never assume. The console's **Resulting settings** panel lists what is
+actually in force on the selected container and names the policy that supplied
+each value. If the value is not the one you set, the panel tells you who won.
+
+## The commonest mistakes
+
+- **Created but never linked.** The policy exists, holds the right setting,
+  and reaches nobody. Always check the link count.
+- **Linked to the domain when one team was asked for.** It works, the auditor
+  is satisfied, and you have quietly changed everyone's machine.
+- **Editing the wrong policy.** Two policies set the same key; you edit the
+  one that loses. The Resulting settings panel would have told you.
+- **A block you inherited from a predecessor.** Check whether the unit blocks
+  inheritance before you spend an hour on the link.
+`;
+    },
+  },
+  {
+    id: "cfp-account-policy",
+    category: "Enterprise Directory Services",
+    title: "Lockouts, password rules and the service desk",
+    summary: "Why the lockout threshold decides your workload.",
+    tags: ["cfp", "policy", "lockout", "password", "identity"],
+    body: () => `
+# Lockouts, password rules and the service desk
+
+Account lockout is a Fleet Policy setting, and the number you choose lands
+directly on the service desk.
+
+## How a lockout happens
+
+Each failed sign-in increments a counter on the account. When it reaches the
+**lockout threshold** the account locks and stays locked for the **lockout
+duration**, or until an administrator clears it.
+
+Most lockouts are not attacks. They are a phone still trying last month's
+password, a scheduled task with stale credentials, or a mapped drive retrying
+in the background. The person is often not even at their desk.
+
+## Unlock, or reset?
+
+**Unlock** clears the lock and resets the bad-password counter. Their existing
+password still works. This is the right answer for the great majority of
+tickets.
+
+**Reset** issues a new password. Only do this when the password is genuinely
+forgotten — every reset is another thing for somebody to memorise, and a
+password reset by an administrator is a password the administrator has seen.
+When you do reset, tick **force change at next sign-in** so it becomes theirs
+again immediately.
+
+## Choosing a threshold
+
+- Too low (3) and a single misbehaving phone locks somebody out daily. You
+  become the unlock service.
+- Too high (50) and the lockout stops doing its job.
+- Around 5–10, with a duration in the tens of minutes, is the usual balance.
+
+## Length beats complexity
+
+A long passphrase is stronger and more memorable than a short puzzle.
+Complexity requirements on their own mostly produce \`Password1!\` — which is
+exactly what an attacker guesses first.
+`,
+  },
+  {
+    id: "eds-remote-support",
+    category: "Procedures",
+    title: "Verifying a change on the user's own machine",
+    summary: "Connect to an endpoint and confirm the fix landed.",
+    tags: ["remote", "support", "cfp", "verification"],
+    body: () => `
+# Verifying a change on the user's own machine
+
+A change you have not verified is a change you have made twice.
+
+## Getting there
+
+In **Enterprise Directory Services**, select the account and choose **Connect
+to endpoint**. That opens a Remote Support session on the machine that person
+actually uses — no need to find its hostname first.
+
+## What to check
+
+- **A drive mapping** — is the drive there, and does it open? A mapping that
+  appears but throws access denied is a permissions problem, not a policy one.
+- **A policy setting** — did it apply? Policies reach a machine at sign-in, so
+  a setting linked five minutes ago may need a session restart.
+- **The obvious** — is the machine even on the network? A large share of
+  "the policy did not work" tickets are a laptop that has been off for a week.
+
+## Before you connect
+
+Check the estate first. If the directory server is down, no machine is getting
+policy at all, and remoting to one endpoint tells you nothing you did not
+already know. The Remote Gateway shows what is reachable and why anything is
+not.
+
+## Etiquette
+
+Somebody is using that machine. Say what you are doing and why before you take
+their screen — the difference between good and bad support is almost never
+technical.
 `,
   },
 ];

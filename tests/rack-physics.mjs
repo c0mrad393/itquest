@@ -58,6 +58,14 @@ import {
   poolSize,
   storageDemandGb,
 } from "../.test-build/core/growth.js";
+import {
+  DOMAIN_ROOT,
+  explainAbsence,
+  ouChain,
+  resolveSetting,
+  scopeChain,
+  settingApplies,
+} from "../.test-build/core/policy.js";
 
 let pass = 0;
 let fail = 0;
@@ -479,7 +487,7 @@ group("Access diagnosis");
   eq(
     "a non-member is told which group to join",
     accessBlocker(dir, s, "m.ray", "read"),
-    "Not a member of any group with rights here (Finance_RW). Add them in Active Directory, or grant their group access on this share.",
+    "Not a member of any group with rights here (Finance_RW). Add them in Enterprise Directory Services, or grant their group access on this share.",
   );
   eq(
     "an under-granted user is told to raise the level",
@@ -665,6 +673,128 @@ group("What headcount does to the estate");
 
   eq("home drives scale with headcount", storageDemandGb(300), 3600);
   eq("...so a startup needs far less", storageDemandGb(35), 420);
+}
+
+
+// ── Fleet Policy resolution (v0.8.0) ────────────────────────────────────────
+//
+// The rules a learner is here to internalise. Getting precedence wrong in a
+// simulator teaches the OPPOSITE of the truth, so every branch is pinned.
+
+const FIN = "OU=Finance,DC=corp,DC=internal";
+const PAYROLL = "OU=Payroll,OU=Finance,DC=corp,DC=internal";
+
+const pol = (id, settings, links, extra = {}) => ({
+  id, name: id, description: "", enabled: true, settings, links, updatedAt: 0, ...extra,
+});
+const link = (target, o = {}) => ({ target, enforced: false, enabled: true, ...o });
+
+group("Policy scope");
+{
+  eq("an OU sits inside itself", ouChain(FIN), [FIN]);
+  eq("a nested OU lists its ancestors first", ouChain(PAYROLL), [FIN, PAYROLL]);
+  eq("the domain root heads every chain", scopeChain(FIN)[0], DOMAIN_ROOT);
+  eq("...and the chain runs root-outward", scopeChain(PAYROLL), [DOMAIN_ROOT, FIN, PAYROLL]);
+}
+
+group("Policy precedence");
+{
+  const domainOnly = {
+    policies: [pol("base", { passwordMinLength: 8 }, [link(DOMAIN_ROOT)])],
+    blockedOus: [],
+  };
+  eq("a domain link reaches every unit", resolveSetting(domainOnly, FIN, "passwordMinLength").value, 8);
+
+  // THE core rule: closest container wins, because it is applied last.
+  const withOu = {
+    policies: [
+      pol("base", { passwordMinLength: 8 }, [link(DOMAIN_ROOT)]),
+      pol("fin", { passwordMinLength: 16 }, [link(FIN)]),
+    ],
+    blockedOus: [],
+  };
+  eq("an OU link beats the domain link", resolveSetting(withOu, FIN, "passwordMinLength").value, 16);
+  eq("...and the console names the winner", resolveSetting(withOu, FIN, "passwordMinLength").policyName, "fin");
+  eq("a sibling unit is untouched", resolveSetting(withOu, "OU=Sales,DC=corp,DC=internal", "passwordMinLength").value, 8);
+
+  const nested = {
+    policies: [
+      pol("fin", { passwordMinLength: 16 }, [link(FIN)]),
+      pol("pay", { passwordMinLength: 20 }, [link(PAYROLL)]),
+    ],
+    blockedOus: [],
+  };
+  eq("the deepest unit wins over its parent", resolveSetting(nested, PAYROLL, "passwordMinLength").value, 20);
+}
+
+group("Blocking and enforcement");
+{
+  const blocked = {
+    policies: [
+      pol("base", { passwordMinLength: 8 }, [link(DOMAIN_ROOT)]),
+      pol("fin", { screenLockMins: 5 }, [link(FIN)]),
+    ],
+    blockedOus: [FIN],
+  };
+  // The classic "why is the company-wide setting missing on one team".
+  eq("blocking drops inherited settings", resolveSetting(blocked, FIN, "passwordMinLength"), null);
+  eq("...but keeps the unit's own", resolveSetting(blocked, FIN, "screenLockMins").value, 5);
+
+  const enforced = {
+    policies: [pol("base", { passwordMinLength: 8 }, [link(DOMAIN_ROOT, { enforced: true })])],
+    blockedOus: [FIN],
+  };
+  eq("an enforced link survives blocking", resolveSetting(enforced, FIN, "passwordMinLength").value, 8);
+
+  // Enforcement REVERSES precedence: the higher link wins.
+  const fight = {
+    policies: [
+      pol("base", { passwordMinLength: 8 }, [link(DOMAIN_ROOT, { enforced: true })]),
+      pol("fin", { passwordMinLength: 16 }, [link(FIN)]),
+    ],
+    blockedOus: [],
+  };
+  eq("an enforced domain link beats a closer OU link", resolveSetting(fight, FIN, "passwordMinLength").value, 8);
+  eq("...and says so", resolveSetting(fight, FIN, "passwordMinLength").enforced, true);
+
+  const disabled = {
+    policies: [pol("base", { passwordMinLength: 8 }, [link(DOMAIN_ROOT)], { enabled: false })],
+    blockedOus: [],
+  };
+  eq("a disabled policy applies nothing", resolveSetting(disabled, FIN, "passwordMinLength"), null);
+
+  const deadLink = {
+    policies: [pol("base", { passwordMinLength: 8 }, [link(DOMAIN_ROOT, { enabled: false })])],
+    blockedOus: [],
+  };
+  eq("a disabled LINK applies nothing either", resolveSetting(deadLink, FIN, "passwordMinLength"), null);
+}
+
+group("Policy grading and diagnosis");
+{
+  const usb = {
+    policies: [pol("usb", { usbStorageBlocked: true }, [link(FIN)])],
+    blockedOus: [],
+  };
+  // What the compliance ticket grades with.
+  eq("settingApplies sees a correctly linked policy", settingApplies(usb, FIN, "usbStorageBlocked", true), true);
+  eq("...and not on a team it was not linked to", settingApplies(usb, "OU=Sales,DC=corp,DC=internal", "usbStorageBlocked", true), false);
+
+  const unlinked = { policies: [pol("usb", { usbStorageBlocked: true }, [])], blockedOus: [] };
+  eq("an unlinked policy fails the grade", settingApplies(unlinked, FIN, "usbStorageBlocked", true), false);
+  eq(
+    "...and the console explains why",
+    explainAbsence(unlinked, FIN, "usbStorageBlocked"),
+    "usb sets it, but the policy is not linked to anything. Link it to a container.",
+  );
+
+  const nowhere = { policies: [], blockedOus: [] };
+  eq(
+    "nothing configured anywhere says so plainly",
+    explainAbsence(nowhere, FIN, "usbStorageBlocked"),
+    "No Fleet Policy sets block usb mass storage anywhere.",
+  );
+  eq("a satisfied setting has no explanation to give", explainAbsence(usb, FIN, "usbStorageBlocked"), null);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

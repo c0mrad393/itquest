@@ -16,6 +16,7 @@ import type { InventoryState } from "./inventory";
 import type { DatacenterState } from "./datacenter";
 import type { CloudState } from "./cloud";
 import type { GrowthState } from "./growth";
+import type { PolicyState } from "./policy";
 
 /** Discriminated union of every node kind. Narrow on `.os`. */
 export type TargetNode = LinuxNodeState | WindowsNodeState | MacNodeState;
@@ -132,6 +133,13 @@ export interface InfrastructureState {
    * a milestone hires onto this world rather than replacing it.
    */
   growth: GrowthState;
+  /**
+   * Centralized Fleet Policies (v0.8.0). Estate-wide rather than per-node:
+   * a policy is a property of the DOMAIN, and the domain controller that
+   * happens to serve it is an implementation detail the operator should not
+   * have to think about.
+   */
+  policy: PolicyState;
 
   loadedAt: number;
 }

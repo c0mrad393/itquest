@@ -3,7 +3,7 @@
  * ============================================
  * Builds a complete, unique world from a single seed: company profile, scale
  * matrix, node fleet (3 → 12 machines), randomized hostnames/IP schemas, a
- * network topology with live link metrics, a 100+ user Active Directory, and
+ * network topology with live link metrics, a 100+ user Enterprise Directory Services, and
  * the gateway roster. Pure function of the seed — regenerate bit-identically.
  *
  * Scenario contract: generated worlds ALWAYS contain (a) a Linux web server
@@ -63,7 +63,7 @@ export function departmentsFor(phase: GrowthPhase): typeof DEPARTMENTS {
 }
 import { createInventory } from "@/lib/inventory/seed";
 import { buildDatacenter } from "@/lib/datacenter/seed";
-import { seedShares } from "@/lib/directory/seed";
+import { seedPolicies, seedShares } from "@/lib/directory/seed";
 import { createCloudState } from "@/lib/cloud/seed";
 
 const now = Date.now();
@@ -700,21 +700,21 @@ function makeWindowsNode(
   const isDc = spec.role === "domain-controller";
   const services: Record<string, WindowsService> = isDc
     ? {
-        NTDS: winSvc(rng, "NTDS", "Active Directory Domain Services"),
+        EDSCore: winSvc(rng, "EDSCore", "Enterprise Directory Services"),
         DNS: winSvc(rng, "DNS", "DNS Server"),
         Netlogon: winSvc(rng, "Netlogon", "Netlogon"),
-        W32Time: winSvc(rng, "W32Time", "Windows Time"),
+        W32Time: winSvc(rng, "W32Time", "ServerOS Time"),
       }
     : spec.role === "file-server"
       ? {
-          LanmanServer: winSvc(rng, "LanmanServer", "Server (SMB)"),
+          FleetShare: winSvc(rng, "FleetShare", "FleetShare (file sharing)"),
           Spooler: winSvc(rng, "Spooler", "Print Spooler"),
-          W32Time: winSvc(rng, "W32Time", "Windows Time"),
+          W32Time: winSvc(rng, "W32Time", "ServerOS Time"),
         }
       : {
           Spooler: winSvc(rng, "Spooler", "Print Spooler"),
           Dnscache: winSvc(rng, "Dnscache", "DNS Client"),
-          wuauserv: winSvc(rng, "wuauserv", "Windows Update", false),
+          wuauserv: winSvc(rng, "wuauserv", "ServerOS Update", false),
         };
 
   return {
@@ -729,7 +729,7 @@ function makeWindowsNode(
     workloads: [],
     tags: isDc ? ["domain-controller", "critical-infra"] : [spec.role],
     os: "windows",
-    edition: isDc || spec.role === "file-server" ? "Windows Server 2022 Standard" : "Windows 11 Pro",
+    edition: isDc || spec.role === "file-server" ? "Macrohard ServerOS 2024 Standard" : "DeskOS 12 Pro",
     build: isDc || spec.role === "file-server" ? "20348.2402" : "22631.4317",
     isDomainController: isDc,
     filesystem: dir({ "C:": dir({ Windows: dir({ System32: dir({}) }), Users: dir({}) }) }),
@@ -1046,6 +1046,7 @@ export function generateWorld(seed: number, phase: GrowthPhase = 1): Infrastruct
     datacenter: buildDatacenter(rng, nodes, phase),
     cloud: createCloudState(org.name, slugOf(org), rng),
     growth: initialGrowth(phase),
+    policy: seedPolicies(),
     loadedAt: now,
   };
 }

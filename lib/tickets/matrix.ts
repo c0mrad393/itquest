@@ -318,13 +318,13 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     summary: "Mapped network drives are disconnected across the department.",
     hints: [
       "This PC / Finder → the mapped share shows a red ✕ (disconnected)",
-      "The share is served by the file server's SMB (Server / LanmanServer) service",
+      "The share is served by the file server's FleetShare file-sharing service",
       "RDP to the file server → Services (services.msc) → start the Server service",
     ],
     playable: true,
     makeContext: (infra) => {
       const fs = Object.values(infra.nodes).find(
-        (n): n is WindowsNodeState => n.os === "windows" && n.role === "file-server" && !!n.services["LanmanServer"],
+        (n): n is WindowsNodeState => n.os === "windows" && n.role === "file-server" && !!n.services["FleetShare"],
       );
       if (!fs) return null;
       // Only fire if at least one workstation actually maps a share here.
@@ -332,7 +332,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
         (n) => n.os !== "linux" && (n.mappedDrives ?? []).some((d) => d.serverNodeId === fs.nodeId),
       );
       if (!mapped) return null;
-      return { targetNodeId: fs.nodeId, targetHostname: fs.hostname, serviceName: "LanmanServer" };
+      return { targetNodeId: fs.nodeId, targetHostname: fs.hostname, serviceName: "FleetShare" };
     },
     title: (ctx) => `Users can't reach network drives — ${ctx.targetHostname} share offline`,
     description: (ctx) =>
@@ -340,12 +340,12 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     requester: (_ctx, org) => ({ name: "Tara Coles", role: "Front Desk", email: `tara.coles@${mailDomain(org)}`, department: "Facilities" }),
     injectFault: (infra, ctx) => {
       const fs = infra.nodes[ctx.targetNodeId as NodeId] as WindowsNodeState | undefined;
-      const svc = fs?.services["LanmanServer"];
+      const svc = fs?.services["FleetShare"];
       if (svc) { svc.status = "Stopped"; svc.pid = null; }
     },
     win: (infra, ctx) => {
       const fs = infra.nodes[ctx.targetNodeId as NodeId] as WindowsNodeState | undefined;
-      return fs?.services["LanmanServer"]?.status === "Running";
+      return fs?.services["FleetShare"]?.status === "Running";
     },
     healthyNode: (_infra, ctx) => ctx.targetNodeId,
   },
@@ -490,7 +490,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     },
     title: (ctx) => `${ctx.targetHostname} — "trust relationship failed", user can't log in`,
     description: (ctx) =>
-      `User request:\n"My PC is on but it won't let me log in — it says **the trust relationship failed**."\n\nWhat we found:\n• **${ctx.targetHostname}**'s secure channel to Active Directory is broken\n• Its machine password is out of sync with the domain\n\nObjective:\n• **Unjoin** the machine from the domain\n• **Rejoin** triageos.corp using the deployment domain-admin credential`,
+      `User request:\n"My PC is on but it won't let me log in — it says **the trust relationship failed**."\n\nWhat we found:\n• **${ctx.targetHostname}**'s secure channel to Enterprise Directory Services is broken\n• Its machine password is out of sync with the domain\n\nObjective:\n• **Unjoin** the machine from the domain\n• **Rejoin** triageos.corp using the deployment domain-admin credential`,
     requester: (_ctx, org) => ({ name: "Tara Coles", role: "Front Desk", email: `tara.coles@${mailDomain(org)}`, department: "Facilities" }),
     injectFault: (infra, ctx) => {
       const n = infra.nodes[ctx.targetNodeId as NodeId];
@@ -553,7 +553,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     summary: "The CEO needs a new ultra-light laptop provisioned.",
     hints: [
       "Hardware Lab → Laptop: disconnect the battery, install the NVMe SSD, reconnect",
-      "BIOS: Secure Boot ON for Windows 11",
+      "BIOS: Secure Boot ON for DeskOS 12",
       "Image with strict EFI/MSR/NTFS partitioning, then Domain Join",
     ],
     playable: true,
@@ -565,7 +565,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     },
     title: (ctx) => `VIP build — provision the CEO's new ultra-light laptop (${ctx.targetHostname})`,
     description: (ctx) =>
-      `User request:\nThe CEO needs their **new ultra-light laptop ready for tomorrow** — white-glove build.\n\nObjective:\n• Disconnect the battery ribbon before opening the chassis (safety)\n• Fit the **NVMe SSD**, reconnect the battery and fasten the screws\n• Enable **Secure Boot** (required for Windows 11)\n• Partition **EFI → MSR → NTFS**, then join the domain\n• Dispatch for hand-delivery`,
+      `User request:\nThe CEO needs their **new ultra-light laptop ready for tomorrow** — white-glove build.\n\nObjective:\n• Disconnect the battery ribbon before opening the chassis (safety)\n• Fit the **NVMe SSD**, reconnect the battery and fasten the screws\n• Enable **Secure Boot** (required for DeskOS 12)\n• Partition **EFI → MSR → NTFS**, then join the domain\n• Dispatch for hand-delivery`,
     requester: (_ctx, org) => ({ name: "Marcus Feld", role: "Executive Support", email: `marcus.feld@${mailDomain(org)}`, department: "IT" }),
     injectFault: (infra, ctx) => { const n = infra.nodes[ctx.targetNodeId as NodeId]; if (n) { n.health.status = "critical"; n.connection.online = false; } },
     win: (infra, ctx) => infra.security.hardwareReplaced.includes(ctx.targetNodeId as NodeId),
@@ -1002,7 +1002,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     },
   },
 
-  // ── Active Directory administration (ADUC-driven) ─────────────────────────
+  // ── Enterprise Directory Services administration (ADUC-driven) ─────────────────────────
 
   "sw-ad-pw-reset": {
     id: "sw-ad-pw-reset",
@@ -1019,7 +1019,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     origin: "dashboard",
     summary: "A user is locked out and has forgotten their password.",
     hints: [
-      "RDP to the domain controller → Active Directory Users and Computers",
+      "RDP to the domain controller → Enterprise Directory Services",
       "Find the user, right-click → Reset Password",
       "Set the temporary password from this ticket and tick 'must change at next logon'",
     ],

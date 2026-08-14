@@ -1,7 +1,7 @@
 /**
  * TriageOS — Enterprise file shares (v0.5.0)
  * ==========================================
- * Server-side SMB shares with an access control list bound to Active Directory
+ * Server-side SMB shares with an access control list bound to Enterprise Directory Services
  * security groups. This is the other half of the access-request loop: adding a
  * user to `Finance` in ADUC does nothing on its own, and granting `Finance`
  * rights on a share does nothing for a user who is not in it. Both must be
@@ -123,7 +123,7 @@ export function accessBlocker(
   if (!got) {
     const granted = share.acl.filter((a) => !a.deny).map((a) => a.groupName);
     return granted.length
-      ? `Not a member of any group with rights here (${granted.join(", ")}). Add them in Active Directory, or grant their group access on this share.`
+      ? `Not a member of any group with rights here (${granted.join(", ")}). Add them in Enterprise Directory Services, or grant their group access on this share.`
       : `No group has been granted anything on this share yet. Add an entry to its access list.`;
   }
   if (SHARE_ACCESS_RANK[got] < SHARE_ACCESS_RANK[atLeast]) {

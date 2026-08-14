@@ -17,7 +17,7 @@ export function resolveDriveStatus(infra: InfrastructureState, drive: MappedDriv
   if (!server.connection.online || !server.connection.reachable) return "disconnected";
   // SMB/Server service must be running for the share to serve files.
   if (server.os === "windows") {
-    const smb = server.services["LanmanServer"];
+    const smb = server.services["FleetShare"];
     if (smb && smb.status !== "Running") return "disconnected";
   }
   // AD share permissions revoked → authenticated but access denied.

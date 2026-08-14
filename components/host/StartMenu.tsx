@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Windows 11 Start Menu
+ * TriageOS — DeskOS 12 Start Menu
  * --------------------------------
  * Frosted floating panel above the taskbar: search field, a "Pinned" grid of
  * all host apps (from HOST_APP_REGISTRY), and a footer with the operator

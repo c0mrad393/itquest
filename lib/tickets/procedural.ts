@@ -34,7 +34,7 @@ import type {
 import {
   availableOf, baseHardwareFor, connectedLoadWatts, DEVICE_COOLING_C, floorSummary,
   isPowered, isRackable, locationOf, pduSpec, rackPower, rackThermal,
-  effectiveGroups, hasAccess, phaseSpec, poolExhausted, storageDemandGb,
+  effectiveGroups, hasAccess, phaseSpec, poolExhausted, settingApplies, storageDemandGb,
 } from "@/lib/core";
 import type { ShareAccess } from "@/lib/core";
 import { int, pick, sample, type Rng } from "@/lib/org/rng";
@@ -1334,7 +1334,7 @@ const FAMILIES: Family[] = [
           personaId: voice.persona,
           summary: "A member of staff needs access to a departmental share they are not entitled to yet.",
           hints: [
-            "Open Active Directory and add the account to the group that owns the data",
+            "Open Enterprise Directory Services and add the account to the group that owns the data",
             "Then open Shared Drives — membership alone grants nothing until the group is on the share's access list",
             "Use Effective access on the share to prove it before you resolve",
           ],
@@ -1476,7 +1476,7 @@ const FAMILIES: Family[] = [
           personaId: pick(rng, VOICES).persona,
           summary: "A new cross-team workstream needs its own security group and share access.",
           hints: [
-            "Create the security group in Active Directory first — the share cannot grant to a group that does not exist",
+            "Create the security group in Enterprise Directory Services first — the share cannot grant to a group that does not exist",
             "Add the named people to it",
             "Then grant that group Change on the share in Shared Drives",
           ],
@@ -1557,7 +1557,7 @@ const FAMILIES: Family[] = [
           mandatory: true,
           summary: "The company has grown. The infrastructure has not.",
           hints: [
-            "Active Directory already has the new starters — the organizational units and groups came with them",
+            "Enterprise Directory Services already has the new starters — the organizational units and groups came with them",
             "Check the file server has storage for their home drives and the shares to put them in",
             "Check every rack is still inside its power and thermal envelope",
           ],
@@ -1715,6 +1715,215 @@ const FAMILIES: Family[] = [
               at.device.hardware.storageGb >= storageDemandGb(infra.growth.employees) &&
               node.connection.online
             );
+          },
+        },
+      ),
+  },
+
+  // ── Directory & policy work (v0.8.0) ─────────────────────────────────────
+  //
+  // The classic service-desk curriculum, graded on the ESTATE rather than on
+  // the steps taken. The onboarding ticket in particular checks the finished
+  // account — OU, groups, title, manager — so there is no prescribed click
+  // order, only a correct outcome.
+  {
+    id: "gen-eds-lockout",
+    category: "Identity & Access",
+    track: "helpdesk",
+    tags: ["ad", "lockout", "identity"],
+    tiers: ["Tier_1_Easy"],
+    variants: 3,
+    build: ({ rng, tier, id }) => {
+      const voice = pick(rng, VOICES);
+      const cause = pick(rng, [
+        "a phone still signing in with last month's password",
+        "a stale mapped drive retrying in the background",
+        "one too many attempts before the morning coffee",
+      ]);
+      return base(
+        { category: "Identity & Access", track: "helpdesk", tags: ["ad", "lockout", "identity"] },
+        tier,
+        id,
+        {
+          personaId: voice.persona,
+          summary: "An account has locked itself out on failed sign-ins.",
+          hints: [
+            "Remote into the directory server and open Enterprise Directory Services",
+            "Find the account — locked ones carry a padlock in the list",
+            "Unlock clears the lock AND the bad-password counter; a reset is only needed if they have forgotten it",
+          ],
+          makeContext: (infra, r) => {
+            const ad = adOf(infra);
+            if (!ad) return null;
+            const candidates = ad.users.filter((u) => u.enabled);
+            if (!candidates.length) return null;
+            const user = pick(r, candidates);
+            return {
+              targetUserId: user.samAccountName,
+              targetUserName: user.displayName,
+              department: user.department,
+            };
+          },
+          title: (ctx) => `${ctx.targetUserName} is locked out and cannot sign in`,
+          description: (ctx) =>
+            `User request:\n**${ctx.targetUserName}** (${ctx.targetUserId}, ${ctx.department}) cannot sign in. ` +
+            `The message says the account is locked.\n\nWhat we found:\n` +
+            `• Repeated failed sign-ins tripped the lockout threshold — probably ${cause}\n` +
+            `• The account itself is not disabled\n\nObjective:\n` +
+            `• Clear the lockout so they can work\n\n` +
+            `> Unlocking is not the same as resetting. Reset only if the password is genuinely forgotten — every ` +
+            `reset is a password they have to memorise again.`,
+          requester: (ctx, org) => ({
+            name: String(ctx.targetUserName),
+            role: voice.role,
+            email: `${ctx.targetUserId}@${mailDomain(org)}`,
+            department: String(ctx.department),
+          }),
+          injectFault: (draft, ctx) => {
+            const dc = Object.values(draft.nodes).find((n) => n.os === "windows" && !!n.activeDirectory);
+            const ad = dc && dc.os === "windows" ? dc.activeDirectory : undefined;
+            const u = ad?.users.find((x) => x.samAccountName === ctx.targetUserId);
+            if (u) { u.locked = true; u.badPwdCount = 7; }
+          },
+          win: (infra, ctx) => {
+            const ad = adOf(infra);
+            const u = ad?.users.find((x) => x.samAccountName === ctx.targetUserId);
+            return !!u && !u.locked && u.enabled;
+          },
+        },
+      );
+    },
+  },
+  {
+    id: "gen-eds-onboarding",
+    category: "Identity & Access",
+    track: "helpdesk",
+    tags: ["ad", "identity", "onboarding"],
+    tiers: ["Tier_2_Medium", "Tier_3_Hard"],
+    variants: 2,
+    build: ({ rng, tier, id }) => {
+      const seniority = pick(rng, ["VP of Sales", "Head of Finance", "Director of Operations", "Head of People"]);
+      return base(
+        { category: "Identity & Access", track: "helpdesk", tags: ["ad", "identity", "onboarding"] },
+        tier,
+        id,
+        {
+          personaId: pick(rng, VOICES).persona,
+          summary: `A senior hire starts Monday and needs an account provisioning properly.`,
+          hints: [
+            "Enterprise Directory Services — create the account in the right organizational unit",
+            "The OU decides which Fleet Policies apply, so the department is not just a label",
+            "Set the job title and the reporting line; an org chart with holes is how leavers get missed",
+          ],
+          makeContext: (infra, r) => {
+            const ad = adOf(infra);
+            if (!ad) return null;
+            const dept = ad.ous.find((o) => new RegExp(seniority.split(" ").pop() ?? "", "i").test(o.name))
+              ?? pick(r, ad.ous);
+            const managers = ad.users.filter((u) => u.enabled && u.department === dept.name);
+            const manager = managers.length ? pick(r, managers) : pick(r, ad.users);
+            const first = pick(r, ["Tamar", "Nino", "Giorgi", "Sopho", "Luka", "Mariam"]);
+            const last = pick(r, ["Varamishvili", "Beridze", "Kapanadze", "Tsereteli", "Gogoladze"]);
+            return {
+              newUserName: `${first} ${last}`,
+              newUserSam: `${first[0].toLowerCase()}.${last.toLowerCase()}`,
+              targetTitle: seniority,
+              department: dept.name,
+              targetGroup: `${dept.name.replace(/\s+/g, "")}_RW`,
+              targetUserId: manager.samAccountName,
+              targetUserName: manager.displayName,
+            };
+          },
+          title: (ctx) => `Onboard ${ctx.newUserName} — ${ctx.targetTitle}`,
+          description: (ctx) =>
+            `HR request:\n**${ctx.newUserName}** joins as **${ctx.targetTitle}** on Monday and needs to be able ` +
+            `to work on day one.\n\nWhat we need:\n` +
+            `• An account in the **${ctx.department}** organizational unit\n` +
+            `• Job title set to **${ctx.targetTitle}**\n` +
+            `• Reporting to **${ctx.targetUserName}** (${ctx.targetUserId})\n` +
+            `• Member of **${ctx.targetGroup}** so the department's drive works\n\n` +
+            `> Put them in the right unit from the start. Moving an account later changes which Fleet Policies ` +
+            `apply to it, and that is how someone quietly loses their drive mapping.`,
+          requester: (_ctx, org) => ({
+            name: "People Operations",
+            role: "HR Business Partner",
+            email: `people@${mailDomain(org)}`,
+            department: "HR",
+          }),
+          win: (infra, ctx) => {
+            const ad = adOf(infra);
+            if (!ad) return false;
+            // Graded on the finished ACCOUNT, not the click order: any route
+            // that ends with a correctly-provisioned person is correct.
+            const u = ad.users.find(
+              (x) =>
+                x.displayName.toLowerCase() === String(ctx.newUserName).toLowerCase() ||
+                x.samAccountName === ctx.newUserSam,
+            );
+            if (!u || !u.enabled) return false;
+            if (u.department !== ctx.department) return false;
+            if (u.title !== ctx.targetTitle) return false;
+            if (u.manager !== ctx.targetUserId) return false;
+            return effectiveGroups(ad, u.samAccountName).includes(String(ctx.targetGroup));
+          },
+        },
+      );
+    },
+  },
+  {
+    id: "gen-cfp-usb-lockdown",
+    category: "Security & Incident",
+    track: "sysadmin",
+    tags: ["ad", "policy", "cfp", "security", "compliance"],
+    tiers: ["Tier_2_Medium", "Tier_3_Hard"],
+    variants: 2,
+    build: ({ rng, tier, id }) =>
+      base(
+        { category: "Security & Incident", track: "sysadmin", tags: ["ad", "policy", "cfp", "security", "compliance"] },
+        tier,
+        id,
+        {
+          personaId: pick(rng, VOICES).persona,
+          summary: "A regulated team must have removable storage blocked.",
+          hints: [
+            "Centralized Fleet Policies — create a policy and set Block USB mass storage",
+            "A policy that is not LINKED to a container does nothing at all",
+            "Link it to the department's organizational unit, not the domain root — this applies to one team",
+            "The Resulting settings panel tells you what is really in force, and which policy won",
+          ],
+          makeContext: (infra, r) => {
+            const ad = adOf(infra);
+            if (!ad) return null;
+            const ou = ad.ous.find((o) => /finance/i.test(o.name)) ?? pick(r, ad.ous);
+            return { department: ou.name, targetGroup: ou.dn, serviceName: "removable storage" };
+          },
+          title: (ctx) => `Block USB storage for ${ctx.department} — audit finding`,
+          description: (ctx, org) =>
+            `Compliance action:\nThe external audit of ${org.name} flagged that **${ctx.department}** handle ` +
+            `regulated data on machines where anyone can plug in a USB stick.\n\nWhat we need:\n` +
+            `• Removable storage blocked for **${ctx.department}** and nobody else\n` +
+            `• Delivered through Centralized Fleet Policies, not by visiting desks\n\n` +
+            `Objective:\n` +
+            `• A Fleet Policy that blocks USB mass storage, linked so it is in force on ${ctx.department}\n\n` +
+            `> Check the resulting settings before you close this. A policy you created but never linked is the ` +
+            `commonest reason an audit finding comes back.`,
+          requester: (_ctx, org) => ({
+            name: "Compliance Office",
+            role: "Compliance Officer",
+            email: `compliance@${mailDomain(org)}`,
+            department: "Legal",
+          }),
+          win: (infra, ctx) => {
+            const ou = String(ctx.targetGroup);
+            // Grades the RESULT of policy resolution, so any correct linking
+            // works — new policy or existing, OU link or an enforced one from
+            // above — and an unlinked policy fails, which is the lesson.
+            if (!settingApplies(infra.policy, ou, "usbStorageBlocked", true)) return false;
+            // ...and only for them. A domain-wide block would also satisfy a
+            // naive check, but it is not what compliance asked for.
+            const ad = adOf(infra);
+            const others = (ad?.ous ?? []).filter((o) => o.dn !== ou);
+            return !others.some((o) => settingApplies(infra.policy, o.dn, "usbStorageBlocked", true));
           },
         },
       ),

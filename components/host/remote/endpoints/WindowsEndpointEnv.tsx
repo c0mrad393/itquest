@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * WindowsEndpointEnv — mini Windows 11 desktop (remote endpoint)
+ * WindowsEndpointEnv — mini DeskOS 12 desktop (remote endpoint)
  * -----------------------------------------------------------------
  * Hyper-realistic Win11 shell: centered Mica taskbar, Start menu with Pinned
  * apps + Recommended files, a Quick Settings flyout (Wi-Fi / Volume / Battery),

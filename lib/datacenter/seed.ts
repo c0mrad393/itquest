@@ -84,7 +84,7 @@ const ROLE_WORKLOADS: Record<string, { kind: WorkloadKind; name: string; cpuPct:
   "app-server": [{ kind: "app", name: "billing-worker", cpuPct: 140, ramGb: 12 }],
   database: [{ kind: "database", name: "PostgreSQL 15 · primary", cpuPct: 420, ramGb: 64 }],
   "file-server": [{ kind: "file", name: "SMB shares", cpuPct: 90, ramGb: 16 }],
-  "domain-controller": [{ kind: "directory", name: "Active Directory · DS", cpuPct: 110, ramGb: 12 }],
+  "domain-controller": [{ kind: "directory", name: "Enterprise Directory Services · DS", cpuPct: 110, ramGb: 12 }],
   "load-balancer": [{ kind: "balancer", name: "HAProxy · edge", cpuPct: 80, ramGb: 4 }],
   hypervisor: [{ kind: "app", name: "guest pool", cpuPct: 300, ramGb: 48 }],
 };

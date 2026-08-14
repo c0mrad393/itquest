@@ -274,7 +274,7 @@ function HostDetail({
         </div>
         <dl className="grid grid-cols-2 gap-x-5 gap-y-1 font-mono text-[10px] sm:grid-cols-4">
           <Stat label="Role" value={node.displayName} />
-          <Stat label="OS" value={node.os === "linux" ? (node as { distro?: string }).distro ?? "Linux" : "Windows Server"} />
+          <Stat label="OS" value={node.os === "linux" ? (node as { distro?: string }).distro ?? "Linux" : "ServerOS"} />
           <Stat label="Location" value={`${at.rack.name} · U${at.device.uStart}`} />
           <Stat label="Draw" value={`${liveDeviceWatts(at.device, nodes)}W`} />
         </dl>

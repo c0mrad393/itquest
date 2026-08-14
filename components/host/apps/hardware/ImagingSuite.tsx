@@ -211,7 +211,7 @@ function DomainJoin({ mode, onDone }: { mode: "install" | "repair"; onDone: () =
   }
   return (
     <div className="rounded-lg border border-edge bg-panel p-4">
-      <div className="mb-1 text-sm font-semibold text-gray-100">{mode === "repair" ? "Rejoin Active Directory Domain" : "Join Active Directory Domain"}</div>
+      <div className="mb-1 text-sm font-semibold text-gray-100">{mode === "repair" ? "Rejoin Enterprise Directory Services Domain" : "Join Enterprise Directory Services Domain"}</div>
       <div className="mb-3 text-[11px] text-gray-500">Provide the domain and a high-privilege account authorized to join computers.</div>
       <div className="mb-3 rounded border border-emerald-500/30 bg-emerald-500/5 p-2 text-[11px] text-emerald-300">
         <AppIcon id="lock" size={12} /> Deployment vault — {LAB_ADMIN.user}@{LAB_DOMAIN} · pwd: <span className="font-mono">{LAB_ADMIN.password}</span>
