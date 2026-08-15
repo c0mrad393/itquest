@@ -37,6 +37,8 @@ export * from "./state";
 export * from "./identity";
 export * from "./organization";
 export * from "./glossary";
+export * from "./poe";
+export * from "./ipam";
 
 // Reused primitives (canonical definitions live in lib/vm/types).
 export type {

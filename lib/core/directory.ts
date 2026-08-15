@@ -29,6 +29,7 @@
  */
 
 import type { InfrastructureState, TargetNode } from "./infrastructure";
+import { poeLiveness } from "./poe";
 import type { NodeId, NodeRole } from "./nodes";
 import { isRackable, locationOf, serverLiveness } from "./datacenter";
 import type { ActiveDirectoryState, ADGroup, ADUser } from "./windows";
@@ -70,6 +71,30 @@ export function reachNode(
       layer: "missing",
       reason: "No such server in this estate.",
       remedy: "Rack and provision one on the Datacenter Floor.",
+    };
+  }
+
+  /*
+   * THE SWITCH PORT COMES FIRST (Build 1).
+   *
+   * Checked ahead of the role split because it applies to BOTH paths and
+   * because, when it is the answer, it is the whole answer: a camera on a
+   * disabled port is not "powered off" in any sense the operator can act on
+   * from the Server Manager — it is off because a port is off, and the remedy
+   * names the port.
+   *
+   * Safe to run against everything. `poeLiveness` returns live for any node
+   * not plugged into a switch, so a rack server drawing mains power is never
+   * told a switch is its problem.
+   */
+  const poe = poeLiveness(infra.poe, node.nodeId, infra.nodes);
+  if (!poe.live) {
+    return {
+      reachable: false,
+      node,
+      layer: "power",
+      reason: poe.reason ?? `${node.hostname} is not being powered by its switch port.`,
+      remedy: poe.remedy ?? "Check the port in Network Switches.",
     };
   }
 

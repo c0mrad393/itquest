@@ -8,6 +8,8 @@
  */
 
 import type { LinuxNodeState } from "./linux";
+import type { PoeState } from "./poe";
+import type { IpamState } from "./ipam";
 import type { WindowsNodeState } from "./windows";
 import type { MacNodeState } from "./mac";
 import type { ConnectionProtocol, NodeId } from "./nodes";
@@ -140,6 +142,17 @@ export interface InfrastructureState {
    * have to think about.
    */
   policy: PolicyState;
+  /**
+   * Managed PoE switches and what is plugged into them (Build 1). Ports carry
+   * the only link to the logical estate; every watt figure derives.
+   */
+  poe: PoeState;
+  /**
+   * Address leases and the network fault log (Build 1). Conflicts are NOT
+   * stored here — they are derived by detectConflicts() so they cannot go
+   * stale against the nodes they describe.
+   */
+  ipam: IpamState;
 
   loadedAt: number;
 }

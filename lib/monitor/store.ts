@@ -23,6 +23,7 @@
  */
 
 import { create } from "zustand";
+import { attachedNodeIds, poeLiveness } from "@/lib/core";
 import type { InfrastructureState, NodeId, TargetNode } from "@/lib/core";
 
 /** How many samples to retain per node (~2 minutes at the 2s tick). */
@@ -73,11 +74,32 @@ export function netFor(infra: InfrastructureState, nodeId: NodeId): number {
 }
 
 /**
+ * Is this node dark right now?
+ *
+ * ONE definition, used by both the anomaly label and the sampler (Build 1).
+ * They previously each tested `connection.online && connection.reachable`
+ * inline, which was fine while that pair was the whole truth — but a camera
+ * dropped by its switch's power budget is offline without either flag moving,
+ * because PoE liveness is DERIVED and nothing writes to the node. Two copies
+ * of a widening rule is how a dashboard ends up charting a device it also
+ * labels unreachable.
+ */
+function nodeDark(infra: InfrastructureState, node: TargetNode): { dark: boolean; why: string | null } {
+  if (!node.connection.online || !node.connection.reachable) {
+    return { dark: true, why: "Unreachable — no telemetry" };
+  }
+  const poe = poeLiveness(infra.poe, node.nodeId, infra.nodes);
+  if (!poe.live) return { dark: true, why: poe.reason };
+  return { dark: false, why: null };
+}
+
+/**
  * Why this node looks wrong, in the operator's language. Ordered by how much it
  * should dominate the card — an unreachable box outranks a busy one.
  */
 export function anomalyOf(infra: InfrastructureState, node: TargetNode): string | null {
-  if (!node.connection.online || !node.connection.reachable) return "Unreachable — no telemetry";
+  const dark = nodeDark(infra, node);
+  if (dark.dark) return dark.why;
   if (infra.security.isolatedNodeIds.includes(node.nodeId)) return "Isolated (containment)";
   if (node.health.diskUsedPct >= 95) return `Disk ${Math.round(node.health.diskUsedPct)}% — saturated`;
 
@@ -111,7 +133,7 @@ function sampleNode(infra: InfrastructureState, node: TargetNode): Sample {
 
   // An unreachable host reports nothing — a flatline, not a low reading. That
   // distinction is the whole point of showing a chart.
-  if (!node.connection.online || !node.connection.reachable) {
+  if (nodeDark(infra, node).dark) {
     return { t, cpu: 0, mem: 0, net: 0 };
   }
 
@@ -141,14 +163,16 @@ export const useMonitorStore = create<MonitorState>((set) => ({
   sample: (infra) =>
     set((s) => {
       const next: Record<NodeId, Sample[]> = { ...s.series };
-      // Only the gateway estate is monitored — the ~200-machine staff fleet is
-      // deliberately out of scope, exactly as it is for NetOps.
-      for (const entry of infra.gateway) {
-        const node = infra.nodes[entry.nodeId];
+      // The gateway estate plus the access layer — the ~200-machine staff fleet
+      // stays deliberately out of scope, exactly as it is for NetOps. Sampling
+      // reads the SAME watch list the dashboard renders, so a device can never
+      // appear as a card with no chart behind it.
+      for (const nodeId of monitoredNodeIds(infra)) {
+        const node = infra.nodes[nodeId];
         if (!node) continue;
-        const prev = next[entry.nodeId] ?? [];
+        const prev = next[nodeId] ?? [];
         const appended = [...prev, sampleNode(infra, node)];
-        next[entry.nodeId] = appended.length > HISTORY ? appended.slice(-HISTORY) : appended;
+        next[nodeId] = appended.length > HISTORY ? appended.slice(-HISTORY) : appended;
       }
       return { series: next };
     }),
@@ -157,20 +181,49 @@ export const useMonitorStore = create<MonitorState>((set) => ({
 }));
 
 /** Join the live world with its history for the Monitor UI. */
+/**
+ * Everything the dashboard watches.
+ *
+ * WHY THIS IS NOT JUST `infra.gateway` (Build 1). The gateway list is the set
+ * of things you can REMOTE INTO, and an IP camera is not one of them — there
+ * is no shell and no desktop, so adding cameras there would put unusable RDP
+ * buttons in the Remote Gateway.
+ *
+ * But "cannot be remoted into" and "not worth watching" are different claims.
+ * A camera dropped by its switch's power budget is exactly the kind of outage
+ * an operator needs to see, and a monitoring dashboard that silently omits a
+ * whole class of device is worse than one that shows it as offline. So the
+ * watch list is the gateway PLUS anything patched into a switch.
+ */
+export function monitoredNodeIds(infra: InfrastructureState): NodeId[] {
+  const ids = infra.gateway.map((g) => g.nodeId);
+  const seen = new Set(ids);
+  for (const id of attachedNodeIds(infra.poe)) {
+    if (!seen.has(id) && infra.nodes[id]) {
+      seen.add(id);
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
 export function telemetryFor(
   infra: InfrastructureState,
   series: Record<NodeId, Sample[]>,
 ): NodeTelemetry[] {
-  return infra.gateway
-    .map((entry) => {
-      const node = infra.nodes[entry.nodeId];
+  return monitoredNodeIds(infra)
+    .map((nodeId) => {
+      const node = infra.nodes[nodeId];
       if (!node) return null;
       const tele: NodeTelemetry = {
         nodeId: node.nodeId,
         hostname: node.hostname,
         role: node.role,
         status: node.health.status,
-        online: node.connection.online && node.connection.reachable,
+        // Same derivation the sampler and the anomaly label use. Reading the
+        // stored connection flags directly here would have shown a shed camera
+        // as "up" while its own chart flatlined.
+        online: !nodeDark(infra, node).dark,
         samples: series[node.nodeId] ?? [],
         anomaly: anomalyOf(infra, node),
       };

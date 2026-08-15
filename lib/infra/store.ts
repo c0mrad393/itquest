@@ -31,6 +31,9 @@ import type {
 import { emptyRack, directoryReach, fileServiceReach } from "@/lib/core";
 import type { PolicyKey, PolicyLink, PolicyValue, ShareAccess } from "@/lib/core";
 import { DOMAIN_ROOT } from "@/lib/core";
+// Build 1: PoE switches and addressing.
+import type { IpamState, NetworkFault, PoePort, PoePriority } from "@/lib/core";
+import { detectConflicts, isValidIp, portOfNode, switchById } from "@/lib/core";
 import { nextFreeIp, nextRackName, provisionNode } from "@/lib/datacenter/seed";
 import type { ShippingMethod } from "@/lib/core";
 import type { AetherVNode, AuditEvent, ShieldRule, VNodeSize, VNodeStatus } from "@/lib/core";
@@ -128,6 +131,38 @@ interface InfraStore {
   cfpDeletePolicy: (policyId: string) => void;
   /** Stop an OU inheriting policy from its ancestors. */
   cfpSetBlockInheritance: (ouDn: string, blocked: boolean) => void;
+
+  // ── PoE switches and addressing (Build 1) ────────────────────────────────
+  //
+  // Every one of these writes ONLY the operator's decision — port state, lease
+  // mode, the typed address. Watts, shedding and conflicts are derived on read
+  // by switchPower() and detectConflicts(), so no action here can leave a total
+  // disagreeing with the ports that produced it.
+
+  /** Admin up/down on a port. Down passes neither data nor power. */
+  poeSetPortEnabled: (switchId: string, port: number, enabled: boolean) => void;
+  /** PoE on/off independently of the data link. */
+  poeSetPortPoe: (switchId: string, port: number, on: boolean) => void;
+  /** Shedding priority — which ports survive an overload. */
+  poeSetPortPriority: (switchId: string, port: number, priority: PoePriority) => void;
+  /** Plug a node into a port. Refuses if that node is already on a port. */
+  poeAttach: (switchId: string, port: number, nodeId: NodeId) => string | null;
+  poeDetach: (switchId: string, port: number) => void;
+  poeSetPortLabel: (switchId: string, port: number, label: string) => void;
+
+  /**
+   * Switch a node between DHCP and a static address.
+   *
+   * Returns null on success or the reason it was refused, the same convention
+   * the EDS actions use. A BLOCKING conflict is refused outright; a non-blocking
+   * one (a static inside the DHCP pool) is allowed through and logged, because
+   * it is a legal thing to do that happens to be a bad idea — and refusing it
+   * would remove the lesson.
+   */
+  ipamSetStatic: (nodeId: NodeId, ip: string) => string | null;
+  ipamSetDhcp: (nodeId: NodeId) => void;
+  /** Mark a logged fault as cleared. The entry stays as history. */
+  ipamClearFault: (id: string) => void;
 
   /**
    * Group membership (v0.5.0). Addressed by DOMAIN rather than by node — the
@@ -2336,8 +2371,205 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
 
   setInfra: (infra) => set({ infra }),
 
+  // ── PoE switches (Build 1) ───────────────────────────────────────────────
+
+  poeSetPortEnabled: (switchId, port, enabled) =>
+    set((s) => ({ infra: mutatePort(s.infra, switchId, port, (p) => ({ ...p, enabled })) })),
+
+  poeSetPortPoe: (switchId, port, on) =>
+    set((s) => ({ infra: mutatePort(s.infra, switchId, port, (p) => ({ ...p, poeEnabled: on })) })),
+
+  poeSetPortPriority: (switchId, port, priority) =>
+    set((s) => ({ infra: mutatePort(s.infra, switchId, port, (p) => ({ ...p, priority })) })),
+
+  poeSetPortLabel: (switchId, port, label) =>
+    set((s) => ({ infra: mutatePort(s.infra, switchId, port, (p) => ({ ...p, label })) })),
+
+  poeAttach: (switchId, port, nodeId) => {
+    const infra = get().infra;
+    if (!infra.nodes[nodeId]) return "No such device in this estate.";
+    // A device is in one place at a time. Silently moving it would leave the
+    // old port showing a node that is not there — the exact drift the single
+    // port-to-node join exists to prevent.
+    const existing = portOfNode(infra.poe, nodeId);
+    if (existing && !(existing.sw.id === switchId && existing.port.n === port)) {
+      return `${infra.nodes[nodeId].hostname} is already patched into ${existing.sw.name} port ${existing.port.n}.`;
+    }
+    const sw = switchById(infra.poe, switchId);
+    const target = sw?.ports.find((p) => p.n === port);
+    if (!sw || !target) return "No such port on that switch.";
+    if (target.attachedNodeId && target.attachedNodeId !== nodeId) {
+      return `Port ${port} already has ${infra.nodes[target.attachedNodeId]?.hostname ?? "a device"} in it.`;
+    }
+    set((st) => ({
+      infra: mutatePort(st.infra, switchId, port, (p) => ({ ...p, attachedNodeId: nodeId })),
+    }));
+    return null;
+  },
+
+  poeDetach: (switchId, port) =>
+    set((s) => ({
+      infra: mutatePort(s.infra, switchId, port, (p) => {
+        const next = { ...p };
+        delete next.attachedNodeId;
+        delete next.label;
+        return next;
+      }),
+    })),
+
+  // ── Addressing (Build 1) ─────────────────────────────────────────────────
+
+  ipamSetStatic: (nodeId, ip) => {
+    const infra = get().infra;
+    const node = infra.nodes[nodeId];
+    if (!node) return "No such device in this estate.";
+    const trimmed = ip.trim();
+    if (!isValidIp(trimmed)) return `${trimmed || "That"} is not a valid IPv4 address.`;
+
+    /*
+     * Check against the estate as it WOULD BE, not as it is. Detecting on the
+     * current state would let a duplicate through: the address is not in use
+     * until the lease exists, so the conflict only becomes visible after the
+     * write that causes it. Building the candidate lease table first is what
+     * turns this from an after-the-fact alert into a refusal.
+     */
+    const candidate: IpamState = {
+      ...infra.ipam,
+      leases: {
+        ...infra.ipam.leases,
+        [nodeId]: { nodeId, mode: "static", staticIp: trimmed, updatedAt: Date.now() },
+      },
+    };
+    const conflicts = detectConflicts({
+      nodes: infra.nodes,
+      subnets: infra.subnets,
+      ipam: candidate,
+    }).filter((c) => c.nodeId === nodeId);
+
+    const blocking = conflicts.find((c) => c.blocking);
+    if (blocking) {
+      // Refused, and logged anyway. The operator's attempt is itself the
+      // interesting event — a ticket asking "why did this fail" wants the
+      // record, not just the toast that has already gone.
+      set((st) => ({
+        infra: {
+          ...st.infra,
+          ipam: {
+            ...st.infra.ipam,
+            faults: [
+              logFault({
+                kind:
+                  blocking.kind === "duplicate"
+                    ? "ip-conflict"
+                    : blocking.kind === "reserved"
+                      ? "reserved-address"
+                      : "out-of-subnet",
+                nodeId,
+                detail: blocking.detail,
+              }),
+              ...st.infra.ipam.faults,
+            ].slice(0, 60),
+          },
+        },
+      }));
+      return `IP conflict detected. ${blocking.detail} ${blocking.remedy}`;
+    }
+
+    set((st) => {
+      const warn = conflicts.find((c) => !c.blocking);
+      return {
+        infra: {
+          ...st.infra,
+          ipam: {
+            ...candidate,
+            faults: warn
+              ? [
+                  logFault({ kind: "dhcp-pool-overlap", nodeId, detail: warn.detail }),
+                  ...st.infra.ipam.faults,
+                ].slice(0, 60)
+              : st.infra.ipam.faults,
+          },
+        },
+      };
+    });
+    return null;
+  },
+
+  ipamSetDhcp: (nodeId) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        ipam: {
+          ...s.infra.ipam,
+          leases: {
+            ...s.infra.ipam.leases,
+            [nodeId]: {
+              // The typed address is KEPT. Toggling to DHCP and back should
+              // return what the operator had, not a blank field.
+              ...s.infra.ipam.leases[nodeId],
+              nodeId,
+              mode: "dhcp",
+              updatedAt: Date.now(),
+            },
+          },
+        },
+      },
+    })),
+
+  ipamClearFault: (id) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        ipam: {
+          ...s.infra.ipam,
+          faults: s.infra.ipam.faults.map((f) =>
+            f.id === id && !f.clearedAt ? { ...f, clearedAt: Date.now() } : f,
+          ),
+        },
+      },
+    })),
+
   reset: () => set({ infra: generateWorld(freshSeed(), 1) }),
 }));
+
+// ── Build 1 helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Rewrite one port, leaving every other switch and port identically shaped.
+ *
+ * One place that knows how to reach into the nested structure, so a new port
+ * action cannot get the spreading subtly wrong and silently drop a sibling.
+ */
+function mutatePort(
+  infra: InfrastructureState,
+  switchId: string,
+  port: number,
+  fn: (p: PoePort) => PoePort,
+): InfrastructureState {
+  return {
+    ...infra,
+    poe: {
+      ...infra.poe,
+      switches: infra.poe.switches.map((sw) =>
+        sw.id !== switchId
+          ? sw
+          : { ...sw, ports: sw.ports.map((p) => (p.n === port ? fn(p) : p)) },
+      ),
+    },
+  };
+}
+
+let faultSeq = 0;
+
+/** A fault entry with an id unique within the session. */
+function logFault(spec: {
+  kind: NetworkFault["kind"];
+  nodeId?: NodeId;
+  detail: string;
+}): NetworkFault {
+  faultSeq += 1;
+  return { id: `flt-${Date.now().toString(36)}-${faultSeq}`, at: Date.now(), ...spec };
+}
 
 /** Convenience hook: subscribe to a single node by id. */
 export function useNode(nodeId: NodeId): TargetNode | undefined {

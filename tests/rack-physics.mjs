@@ -48,6 +48,21 @@ import {
 } from "../.test-build/core/fileshares.js";
 import { effectiveGroups, gatewayTargets, reachNode } from "../.test-build/core/directory.js";
 import {
+  POE_DRAW_W,
+  poeLiveness,
+  portOfNode,
+  switchPower,
+} from "../.test-build/core/poe.js";
+import {
+  detectConflicts,
+  effectiveIp,
+  inDhcpPool,
+  ipToInt,
+  ipWithinCidr,
+  parseCidr,
+  suggestStatic,
+} from "../.test-build/core/ipam.js";
+import {
   GROWTH_PHASES,
   addressDemand,
   initialGrowth,
@@ -843,6 +858,192 @@ group("Client endpoints skip the rack chain");
     reachNode({ ...infra, nodes: { "srv-9": orphanServer } }, orphanServer).layer,
     "physical",
   );
+}
+
+// ── Build 1: PoE budget, shedding and addressing ────────────────────────────
+//
+// The three mechanics a player reasons about. Each is a pure function over
+// stored decisions, so a regression here would silently change what the
+// simulation teaches rather than throwing anything.
+{
+  group("Build 1 — PoE power budget");
+
+  const cam = (id, role = "ip-camera") => ({
+    nodeId: id,
+    hostname: id,
+    displayName: id,
+    role,
+    connection: { ip: "10.20.1.50", port: 22, protocol: "ssh", reachable: true, online: true, requiresCredentials: true, authenticated: false, latencyMs: 2 },
+  });
+
+  const port = (n, nodeId, priority = "high", extra = {}) => ({
+    n,
+    enabled: true,
+    poeEnabled: true,
+    priority,
+    ...(nodeId ? { attachedNodeId: nodeId } : {}),
+    ...extra,
+  });
+
+  // Four cameras at 12.5W = 50W, against a 65W budget: comfortable.
+  const nodes = {
+    "cam-1": cam("cam-1"),
+    "cam-2": cam("cam-2"),
+    "cam-3": cam("cam-3"),
+    "cam-4": cam("cam-4"),
+    "ap-1": { ...cam("ap-1", "access-point"), nodeId: "ap-1" },
+    "ws-1": { ...cam("ws-1", "workstation"), nodeId: "ws-1" },
+  };
+
+  const sw = {
+    id: "sw1",
+    name: "TEST-PSW-01",
+    mgmtIp: "10.20.1.2",
+    standard: "at",
+    budgetW: 65,
+    ports: [port(1, "cam-1"), port(2, "cam-2"), port(3, "cam-3"), port(4, "cam-4")],
+  };
+
+  const p = switchPower(sw, nodes);
+  eq("four cameras draw 50W", p.grantedW, 50);
+  eq("...within a 65W budget", p.overBudget, false);
+  eq("...and nothing is shed", p.shedPorts.length, 0);
+
+  // Add the access point (22W): 72W requested against 65W.
+  const loaded = { ...sw, ports: [...sw.ports, port(5, "ap-1", "low")] };
+  const lp = switchPower(loaded, nodes);
+  eq("adding an AP takes the switch over budget", lp.overBudget, true);
+  eq("...requested is the full ask, not the granted", lp.requestedW, 72);
+  eq("...the low-priority port is the one dropped", lp.shedPorts.join(","), "5");
+  eq("...granted stays inside the budget", lp.grantedW <= 65, true);
+
+  // THE DETERMINISM GUARANTEE. Same input, same victim, every time — and the
+  // answer must not depend on the order the ports happen to be listed in.
+  const shuffled = { ...loaded, ports: [...loaded.ports].reverse() };
+  eq("shedding does not depend on port order", switchPower(shuffled, nodes).shedPorts.join(","), "5");
+
+  // Priority, not port number, decides. Promote the AP and a camera goes.
+  const promoted = {
+    ...loaded,
+    ports: loaded.ports.map((x) => (x.n === 5 ? { ...x, priority: "critical" } : x)),
+  };
+  const pp = switchPower(promoted, nodes);
+  eq("promoting the AP protects it", pp.shedPorts.includes(5), false);
+  eq("...and a camera is dropped instead", pp.shedPorts.length, 1);
+
+  // Priority ties break on port number, so the LAST camera goes, not a random one.
+  eq("ties break on port number — the highest port sheds", pp.shedPorts.join(","), "4");
+
+  // A shed port delivers NOTHING, not a partial trickle: PoE negotiates the
+  // full class or nothing, and a camera on four watts is a camera that is off.
+  const shedPort = lp.ports.find((x) => x.port === 5);
+  eq("a shed port is granted zero watts", shedPort.grantedW, 0);
+
+  group("Build 1 — PoE liveness");
+
+  const state = { switches: [loaded] };
+  eq("a powered camera is live", poeLiveness(state, "cam-1", nodes).live, true);
+  eq("a shed device is not", poeLiveness(state, "ap-1", nodes).live, false);
+  eq("...and the reason names the budget", poeLiveness(state, "ap-1", nodes).reason.includes("65W"), true);
+
+  const downPort = {
+    ...loaded,
+    ports: loaded.ports.map((x) => (x.n === 1 ? { ...x, enabled: false } : x)),
+  };
+  eq("an admin-down port takes its device offline", poeLiveness({ switches: [downPort] }, "cam-1", nodes).live, false);
+
+  const noPoe = {
+    ...loaded,
+    ports: loaded.ports.map((x) => (x.n === 1 ? { ...x, poeEnabled: false } : x)),
+  };
+  eq("PoE off kills a camera", poeLiveness({ switches: [noPoe] }, "cam-1", nodes).live, false);
+
+  // THE CASE THAT MUST RETURN TRUE. A mains-powered device on a PoE-off port
+  // is fine; reporting it as down would be a fault that cannot exist.
+  const wsPort = { ...noPoe, ports: [...noPoe.ports, port(6, "ws-1", "high", { poeEnabled: false })] };
+  eq("PoE off does not affect a mains-powered workstation", poeLiveness({ switches: [wsPort] }, "ws-1", nodes).live, true);
+
+  // A node on no switch at all is never the switch's problem.
+  eq("an unattached node is live", poeLiveness(state, "srv-99", nodes).live, true);
+  eq("portOfNode finds the port", portOfNode(state, "cam-2").port.n, 2);
+  eq("...and undefined for an unattached node", portOfNode(state, "srv-99"), undefined);
+}
+
+{
+  group("Build 1 — address maths");
+
+  eq("ipToInt round-trips", ipToInt("10.20.1.5"), 10 * 2 ** 24 + 20 * 65536 + 256 + 5);
+  eq("a malformed address is null", ipToInt("10.20.1"), null);
+  eq("an out-of-range octet is null", ipToInt("10.20.1.300"), null);
+
+  const c = parseCidr("10.20.1.0/24");
+  eq("network address", c.networkInt, ipToInt("10.20.1.0"));
+  eq("broadcast address", c.broadcastInt, ipToInt("10.20.1.255"));
+  eq("gateway is .1 by convention", c.gatewayInt, ipToInt("10.20.1.1"));
+
+  // Bit-exact rather than octet-wise — the whole reason this does not reuse
+  // the cloud console's same-named helper.
+  eq("a /25 excludes the upper half", ipWithinCidr("10.20.1.200", "10.20.1.0/25"), false);
+  eq("...and includes the lower", ipWithinCidr("10.20.1.100", "10.20.1.0/25"), true);
+}
+
+{
+  group("Build 1 — IP conflict detection");
+
+  const subnets = [{ cidr: "10.20.1.0/24", label: "Mgmt VLAN" }];
+  const mk = (id, ip) => ({
+    nodeId: id,
+    hostname: id,
+    displayName: id,
+    role: "ip-camera",
+    connection: { ip, port: 22, protocol: "ssh", reachable: true, online: true, requiresCredentials: true, authenticated: false, latencyMs: 2 },
+  });
+  const nodes = { a: mk("a", "10.20.1.20"), b: mk("b", "10.20.1.21") };
+  const ipam = { leases: {}, pools: [{ cidr: "10.20.1.0/24", start: 100, end: 199 }], faults: [] };
+
+  eq("a clean estate has no conflicts", detectConflicts({ nodes, subnets, ipam }).length, 0);
+
+  // 1. DUPLICATE — and both ends must be reported, since either could be the
+  //    one the operator should move.
+  const dup = { ...ipam, leases: { b: { nodeId: "b", mode: "static", staticIp: "10.20.1.20" } } };
+  const dupC = detectConflicts({ nodes, subnets, ipam: dup });
+  eq("a duplicate is detected", dupC.some((x) => x.kind === "duplicate"), true);
+  eq("...from both sides", dupC.filter((x) => x.kind === "duplicate").length, 2);
+  eq("...and it blocks", dupC.find((x) => x.kind === "duplicate").blocking, true);
+  eq("...naming the other party", dupC.find((x) => x.nodeId === "b").withNodeId, "a");
+
+  // 2. THE GATEWAY. The single most destructive well-meaning static.
+  const gw = { ...ipam, leases: { b: { nodeId: "b", mode: "static", staticIp: "10.20.1.1" } } };
+  const gwC = detectConflicts({ nodes, subnets, ipam: gw });
+  eq("taking the gateway is a conflict", gwC.some((x) => x.kind === "reserved"), true);
+  eq("...and it blocks", gwC.find((x) => x.kind === "reserved").blocking, true);
+
+  const bcast = { ...ipam, leases: { b: { nodeId: "b", mode: "static", staticIp: "10.20.1.255" } } };
+  eq("the broadcast address is reserved too", detectConflicts({ nodes, subnets, ipam: bcast }).some((x) => x.kind === "reserved"), true);
+
+  // 3. OFF-ESTATE.
+  const off = { ...ipam, leases: { b: { nodeId: "b", mode: "static", staticIp: "192.168.9.9" } } };
+  eq("an address outside every subnet is flagged", detectConflicts({ nodes, subnets, ipam: off }).some((x) => x.kind === "out-of-subnet"), true);
+
+  // 4. INSIDE THE DHCP POOL — a warning, NOT a block. It works today and
+  //    breaks in a week, and treating it as an outage would be crying wolf.
+  const inPool = { ...ipam, leases: { b: { nodeId: "b", mode: "static", staticIp: "10.20.1.150" } } };
+  const poolC = detectConflicts({ nodes, subnets, ipam: inPool });
+  eq("a static inside the pool is flagged", poolC.some((x) => x.kind === "dhcp-pool"), true);
+  eq("...but does NOT block", poolC.find((x) => x.kind === "dhcp-pool").blocking, false);
+  eq("inDhcpPool agrees", inDhcpPool("10.20.1.150", ipam, subnets), true);
+  eq("...and an address below the pool is outside it", inDhcpPool("10.20.1.50", ipam, subnets), false);
+
+  // A DHCP node keeps its generated address; a static one overrides it.
+  eq("effectiveIp follows the lease", effectiveIp(nodes.b, inPool), "10.20.1.150");
+  eq("...and falls back to the node's own address", effectiveIp(nodes.a, inPool), "10.20.1.20");
+
+  // The suggestion must be usable: inside the subnet, below the pool, free.
+  const s = suggestStatic("10.20.1.0/24", { nodes, subnets, ipam });
+  eq("a suggestion is offered", typeof s, "string");
+  eq("...below the DHCP pool", ipToInt(s) < ipToInt("10.20.1.100"), true);
+  eq("...not the gateway", s === "10.20.1.1", false);
+  eq("...and not already taken", s !== "10.20.1.20" && s !== "10.20.1.21", true);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

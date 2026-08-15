@@ -23,6 +23,7 @@ export const APP_UNLOCK_LEVEL: Partial<Record<HostAppId, number>> = {
   monitor: 2, // watch the estate
   leaderboard: 2,
   netops: 2, // touch the network
+  switches: 3, // the access layer: ports, PoE and addressing
   hardwarelab: 3, // touch hardware
   assetmanager: 4, // manage stock
   procurement: 4, // spend money
@@ -56,6 +57,9 @@ const TAG_APP: [string, HostAppId][] = [
   ["raid", "hardwarelab"],
   ["bios", "hardwarelab"],
   ["imaging", "hardwarelab"],
+  ["poe", "switches"],
+  ["ip-conflict", "switches"],
+  ["camera", "switches"],
   ["congestion", "netops"],
   ["firewall", "netops"],
   ["containment", "netops"],

@@ -63,6 +63,7 @@ export function departmentsFor(phase: GrowthPhase): typeof DEPARTMENTS {
 }
 import { createInventory } from "@/lib/inventory/seed";
 import { buildDatacenter } from "@/lib/datacenter/seed";
+import { buildAccessLayer, buildIpam } from "@/lib/network/seed";
 import { seedPolicies, seedShares } from "@/lib/directory/seed";
 import { createCloudState } from "@/lib/cloud/seed";
 
@@ -827,8 +828,40 @@ function generateSubnets(rng: Rng, kind: TopologyKind): SubnetDef[] {
   }
 }
 
-function ipIn(rng: Rng, subnet: SubnetDef, host: number): string {
-  return subnet.cidr.replace(/\.0\/24$/, `.${host}`);
+/**
+ * Addresses already handed out, so the generator cannot mint a duplicate.
+ *
+ * WHY THIS EXISTS (Build 1). Workstations were assigned `int(rng, 20, 240)`
+ * with no uniqueness check, so a world with a handful of staff machines had a
+ * real chance of generating two nodes on the same address — and at enterprise
+ * scale it was close to certain. Nothing ever looked, so nobody noticed; the
+ * IP conflict detector added in Build 1 looked, and immediately reported a
+ * fresh estate as faulted.
+ *
+ * That is not a conflict-detector bug. A simulation that OPENS in a faulted
+ * state teaches the player that the alarm is noise, which is worse than having
+ * no alarm at all. Every generated address now goes through here.
+ *
+ * Collisions walk FORWARD from the preferred host rather than re-rolling, so
+ * a seed still produces a stable, reproducible world — re-rolling against a
+ * shared Rng would shift every subsequent draw and change the whole estate.
+ */
+function makeAllocator() {
+  const taken = new Set<string>();
+  return function ipIn(_rng: Rng, subnet: SubnetDef, host: number): string {
+    const at = (h: number) => subnet.cidr.replace(/\.0\/24$/, `.${h}`);
+    let h = Math.min(Math.max(host, 2), 254);
+    // .1 is the gateway and .255 the broadcast; never hand either out.
+    while (taken.has(at(h)) && h < 254) h += 1;
+    if (taken.has(at(h))) {
+      // Full from here up — fall back downward rather than return a duplicate.
+      h = 2;
+      while (taken.has(at(h)) && h < 254) h += 1;
+    }
+    const ip = at(h);
+    taken.add(ip);
+    return ip;
+  };
 }
 
 // ── The generator ───────────────────────────────────────────────────────────
@@ -842,6 +875,9 @@ export function generateWorld(seed: number, phase: GrowthPhase = 1): Infrastruct
 
   const nodes: Record<NodeId, TargetNode> = {};
   const add = (n: TargetNode) => (nodes[n.nodeId] = n);
+  // One allocator per world, so uniqueness holds across every subnet and every
+  // node the generator creates below — including the growth-phase extras.
+  const ipIn = makeAllocator();
   const suffix = () => String(int(rng, 1, 9)).padStart(2, "0");
 
   // Always: primary DC + fault web + a workstation (scenario contract).
@@ -1023,6 +1059,15 @@ export function generateWorld(seed: number, phase: GrowthPhase = 1): Infrastruct
     reachable: true,
   }));
 
+  /*
+   * The access layer, built last so it can see the subnets the estate settled
+   * on. Its edge devices are merged into `nodes` rather than kept beside them:
+   * a camera holds a real address and can really conflict, so it has to be a
+   * real node or half this build would be simulating itself.
+   */
+  const access = buildAccessLayer(rng, subnets, org.domain, org.netbios, nodes);
+  Object.assign(nodes, access.nodes);
+
   return {
     scenarioId: null,
     clientOrg: org.name,
@@ -1047,6 +1092,8 @@ export function generateWorld(seed: number, phase: GrowthPhase = 1): Infrastruct
     cloud: createCloudState(org.name, slugOf(org), rng),
     growth: initialGrowth(phase),
     policy: seedPolicies(),
+    poe: access.poe,
+    ipam: buildIpam(subnets, nodes),
     loadedAt: now,
   };
 }

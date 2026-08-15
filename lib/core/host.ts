@@ -26,6 +26,7 @@ export type HostAppId =
   | "racklab" // Datacenter floor — racks, cabling, power and heat
   | "serverman" // Server Manager — logical estate, maintenance and migration
   | "netops" // Network topology console (link optimization)
+  | "switches" // Managed PoE switches, port state and IP allocation
   | "monitor" // Infrastructure metrics dashboard (observability)
   | "aethercloud" // AetherCloud Engine — hybrid cloud console
   | "procurement" // Vendor storefront — spends IT Budget
@@ -236,6 +237,19 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     singleton: true,
     pinnedToTaskbar: true,
     showOnDesktop: true,
+  },
+  switches: {
+    id: "switches",
+    title: "Network Switches",
+    iconId: "switch",
+    category: "work",
+    group: "infrastructure",
+    description: "Managed PoE switches: port state, power budget and IP allocation.",
+    defaultSize: { w: 1020, h: 660 },
+    minSize: { w: 760, h: 480 },
+    singleton: true,
+    pinnedToTaskbar: false,
+    showOnDesktop: false,
   },
   procurement: {
     id: "procurement",

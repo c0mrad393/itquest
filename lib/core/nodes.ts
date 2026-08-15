@@ -35,7 +35,16 @@ export type NodeRole =
   | "workstation"
   | "firewall"
   | "router"
-  | "hypervisor";
+  | "hypervisor"
+  /*
+   * Edge devices (Build 1). These hang off a PoE switch rather than sitting in
+   * a rack or on a desk: no operating system to remote into, no workloads, and
+   * their power comes down the same cable as their data. They are real nodes
+   * because they hold real addresses and can really conflict.
+   */
+  | "ip-camera"
+  | "access-point"
+  | "voip-phone";
 
 /** Remote-access protocol the host uses to reach this node. */
 export type ConnectionProtocol = "ssh" | "rdp" | "vnc" | "winrm";
