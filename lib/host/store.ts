@@ -10,6 +10,8 @@
 "use client";
 
 import { create } from "zustand";
+import { appUnlockLevel, isAppUnlocked } from "@/lib/progression/unlocks";
+import { useNotificationStore } from "@/lib/host/notifications-store";
 import { HOST_APP_REGISTRY, type HostAppIconId, type HostAppId } from "@/lib/core";
 import type {
   ConnectionProtocol,
@@ -96,10 +98,35 @@ export const useHostStore = create<HostStore>((set, get) => ({
   startMenuOpen: false,
 
   openApp: (appId) => {
+    const meta = HOST_APP_REGISTRY[appId];
+
+    /*
+     * THE UNLOCK GATE, and the only one (polish pass).
+     *
+     * `openApp` previously opened anything it was handed, and six cross-app
+     * CTAs call it directly — Monitor's "View licence" button jumped a level-2
+     * operator straight into Procurement, which does not unlock until level 4.
+     * Gating each button would have left the seventh to be written wrong.
+     *
+     * So the refusal lives at the one door every path goes through. Callers
+     * that want to render a locked state ask `isAppUnlocked` first; callers
+     * that forget get a toast naming the level instead of a bypass.
+     */
+    const level = get().host.user.level;
+    if (!isAppUnlocked(appId, level)) {
+      useNotificationStore.getState().push({
+        kind: "warning",
+        title: `${meta.title} is locked`,
+        body: `Reach level ${appUnlockLevel(appId)} to unlock it. You are level ${level}.`,
+        badge: "Locked",
+      });
+      set({ startMenuOpen: false });
+      return;
+    }
+
     const existing = get().windows.find(
       (w) => w.kind === "app" && w.appId === appId,
     );
-    const meta = HOST_APP_REGISTRY[appId];
 
     // Singleton apps focus their existing instance instead of duplicating.
     if (existing && meta.singleton) {

@@ -88,6 +88,21 @@ import {
   recoveryStatus,
 } from "../.test-build/core/incident.js";
 import {
+  ARRIVAL_MS_BY_PHASE,
+  BACKLOG_CEILING,
+  URGENT_REFILL_BELOW,
+  ambientDecision,
+  eligibleTemplates,
+  familyOf,
+} from "../.test-build/tickets/ambient.js";
+import {
+  appUnlockLevel,
+  isAppUnlocked,
+  templateMinLevel,
+  unlockedTiers,
+} from "../.test-build/progression/unlocks.js";
+import { appForTicket, liveHints } from "../.test-build/tickets/hints.js";
+import {
   GROWTH_PHASES,
   addressDemand,
   initialGrowth,
@@ -1460,6 +1475,250 @@ group("Client endpoints skip the rack chain");
   eq("a finished recovery costs nothing", incidentHealthPenalty("restored"), 0);
   eq("a clean estate costs nothing", incidentHealthPenalty("clean"), 0);
   eq("losing the data still hurts", incidentHealthPenalty("lost") > 0, true);
+}
+
+// ── Polish pass: the ambient engine, gating, prerequisites and hints ────────
+{
+  group("Polish — the queue never runs dry");
+
+  const tpl = (id, difficulty, tags = [], extra = {}) => ({
+    id, difficulty, tags, playable: true, category: "System & Web Services", ...extra,
+  });
+
+  const library = {
+    a: tpl("gen-a-1-1", "Tier_1_Easy"),
+    b: tpl("gen-b-1-1", "Tier_1_Easy"),
+    c: tpl("gen-c-1-1", "Tier_1_Easy"),
+    d: tpl("gen-d-2-1", "Tier_2_Medium"),
+    e: tpl("gen-e-3-1", "Tier_3_Hard"),
+  };
+
+  const world = { growth: { phase: 0 }, nodes: {}, subnets: [] };
+  const rng = () => 0.5;
+
+  /*
+   * THE REGRESSION THIS SUITE EXISTS FOR.
+   *
+   * The reported bug: after roughly eight tickets the queue emptied and never
+   * refilled, because supply came only from world generation, promotions to
+   * tier-unlock levels, and player-caused faults. Simulate a long session and
+   * assert the engine keeps producing — if this ever fails again, it fails
+   * here rather than in somebody's playthrough.
+   */
+  let now = 0;
+  let lastSpawnAt = 0;
+  let open = 0;
+  let spawned = 0;
+  const MINUTES = 600; // ten hours of game time
+  for (let t = 0; t < MINUTES * 60_000; t += 5_000) {
+    now = t;
+    const d = ambientDecision({
+      infra: world, level: 1, openCount: open,
+      openTemplateIds: [], library, lastSpawnAt, now, rng,
+    });
+    if (d.spawn) { spawned += 1; lastSpawnAt = now; open += 1; }
+    // The operator works one ticket every couple of minutes.
+    if (t % 120_000 === 0 && open > 0) open -= 1;
+  }
+  eq("ten hours of play keeps producing tickets", spawned > 100, true);
+  eq("...and the operator is never starved", spawned >= MINUTES / 3, true);
+
+  group("Polish — pacing brakes");
+
+  // The backlog ceiling holds, or an operator who steps away drowns.
+  const full = ambientDecision({
+    infra: world, level: 1, openCount: BACKLOG_CEILING,
+    openTemplateIds: [], library, lastSpawnAt: 0, now: 10_000_000, rng,
+  });
+  eq("a full backlog stops new arrivals", full.spawn, false);
+  eq("...and says why", /Backlog full/.test(full.reason), true);
+
+  // Below the ceiling but inside the interval: wait.
+  const early = ambientDecision({
+    infra: world, level: 1, openCount: 4,
+    openTemplateIds: [], library, lastSpawnAt: 0, now: 1_000, rng,
+  });
+  eq("arrivals respect the interval", early.spawn, false);
+
+  // AN EMPTY BOARD JUMPS THE QUEUE. Without this, clearing the queue meant
+  // staring at "Inbox zero" for a full interval — indistinguishable from the
+  // bug being fixed.
+  const empty = ambientDecision({
+    infra: world, level: 1, openCount: 0,
+    openTemplateIds: [], library, lastSpawnAt: 0, now: 1_000, rng,
+  });
+  eq("an empty board refills immediately", empty.spawn, true);
+  eq("...even though the interval has not elapsed", URGENT_REFILL_BELOW > 0, true);
+
+  // A bigger company raises more tickets.
+  eq("enterprise pace is faster than startup pace",
+     ARRIVAL_MS_BY_PHASE[3] < ARRIVAL_MS_BY_PHASE[0], true);
+
+  group("Polish — ticket prerequisites match unlocked apps");
+
+  // A level-1 operator must never be handed Tier 3 work.
+  const lvl1 = eligibleTemplates({ infra: world, level: 1, library, openTemplateIds: [] });
+  eq("a level-1 operator gets only Tier 1", lvl1.every((t) => t.difficulty === "Tier_1_Easy"), true);
+  eq("...and does get some", lvl1.length > 0, true);
+
+  const lvl5 = eligibleTemplates({ infra: world, level: 5, library, openTemplateIds: [] });
+  eq("a level-5 operator sees Tier 3 too", lvl5.some((t) => t.difficulty === "Tier_3_Hard"), true);
+
+  // THE TOOL GATE. A ticket whose app is locked must not arrive: there is no
+  // door for the player to open.
+  const poeLib = { p: tpl("gen-poe-1-1", "Tier_1_Easy", ["poe"]) };
+  const need = appUnlockLevel("switches");
+  eq("Network Switches gates its own ticket class", need > 1, true);
+  eq(
+    "a PoE ticket cannot arrive before the switch panel does",
+    eligibleTemplates({ infra: world, level: need - 1, library: poeLib, openTemplateIds: [] }).length,
+    0,
+  );
+  eq(
+    "...and does once it is unlocked",
+    eligibleTemplates({ infra: world, level: need, library: poeLib, openTemplateIds: [] }).length,
+    1,
+  );
+  eq("templateMinLevel agrees", templateMinLevel(["poe"]), need);
+  eq("an untagged template needs nothing", templateMinLevel([]), 1);
+
+  // One live ticket per family, or the board fills with duplicates that all
+  // grade the same world state.
+  const dupes = eligibleTemplates({
+    infra: world, level: 1, library, openTemplateIds: ["gen-a-1-1"],
+  });
+  eq("a family with an open ticket is excluded", dupes.some((t) => t.id === "gen-a-1-1"), false);
+  eq("familyOf strips the tier and variant", familyOf("gen-lockout-1-3"), "gen-lockout");
+  eq("...and leaves hand-authored ids alone", familyOf("sec-t4-ransomware-dr"), "sec-t4-ransomware-dr");
+
+  // Unplayable templates never arrive — a ticket that cannot be resolved is a
+  // dead end, which is the thing this whole pass is about.
+  const unplayable = { u: tpl("gen-u-1-1", "Tier_1_Easy", [], { playable: false }) };
+  eq("an unplayable template never arrives",
+     eligibleTemplates({ infra: world, level: 9, library: unplayable, openTemplateIds: [] }).length, 0);
+
+  // Systemic set-pieces stay out of the rotation: a ransomware event arriving
+  // unannounced every ninety seconds would be a different game.
+  const systemic = { s: tpl("sec-t4-x", "Tier_4_Expert", [], { injectFault: () => {} }) };
+  eq("systemic Tier 4 set-pieces are not ambient",
+     eligibleTemplates({ infra: world, level: 9, library: systemic, openTemplateIds: [] }).length, 0);
+}
+
+{
+  group("Polish — app gating is total");
+
+  // Every gated app refuses below its level and permits at it. This is the
+  // property the Monitor bypass violated: a level-2 operator reached
+  // Procurement, which opens at 4.
+  for (const app of ["monitor", "netops", "switches", "hardwarelab", "assetmanager",
+                     "procurement", "backup", "racklab", "serverman", "aethercloud"]) {
+    const need = appUnlockLevel(app);
+    eq(`${app} is locked below level ${need}`, isAppUnlocked(app, need - 1), false);
+    eq(`${app} opens at level ${need}`, isAppUnlocked(app, need), true);
+  }
+
+  // The intern's core loop is never gated — an operator with no apps at all
+  // would have nothing to do on their first day.
+  eq("the ticket queue is always available", isAppUnlocked("itsm", 1), true);
+  eq("so is the remote gateway", isAppUnlocked("gateway", 1), true);
+  eq("and the wiki", isAppUnlocked("wiki", 1), true);
+
+  // The specific reported bypass, pinned.
+  eq("Monitor opens before Procurement — the bypass path", appUnlockLevel("monitor") < appUnlockLevel("procurement"), true);
+  eq("...so a Monitor-level operator must NOT reach Procurement",
+     isAppUnlocked("procurement", appUnlockLevel("monitor")), false);
+
+  // Tiers gate in step with the operator's ability to work them.
+  eq("Tier 1 from the start", unlockedTiers(1).includes("Tier_1_Easy"), true);
+  eq("Tier 4 is not", unlockedTiers(1).includes("Tier_4_Expert"), false);
+  eq("Tier 4 by level 7", unlockedTiers(7).includes("Tier_4_Expert"), true);
+}
+
+{
+  group("Polish — the hint engine reads live state");
+
+  const baseWorld = () => structuredClone({
+    nodes: {},
+    subnets: [{ cidr: "10.1.1.0/24", label: "Core" }],
+    security: { isolatedNodeIds: [] },
+    ipam: { leases: {}, pools: [], faults: [] },
+    poe: { switches: [] },
+    traffic: { nvr: null, cameras: {}, uplinkMbps: {}, backboneMbps: 1000, baselineMbps: 0 },
+    backup: { tier: "none", policies: {}, dataLost: [], log: [] },
+    incident: { startedAt: null, patientZero: null, compromised: [], encryptedShareIds: [], containedAt: null, resolvedAt: null },
+    datacenter: { racks: [] },
+    growth: { phase: 0 },
+  });
+
+  const ticket = (tags = [], ctx = {}) => ({
+    id: "t1", tags, hints: [], dynamicContext: ctx, status: "new",
+  });
+
+  // Three stages, always — the reveal mechanic charges XP per step and must
+  // have something to give at each one.
+  const clean = liveHints(baseWorld(), ticket(["poe"]));
+  eq("the ladder always has three stages", clean.length, 3);
+  eq("stage 1 names WHERE", clean[0].stage, 1);
+  eq("...and points at the right app", clean[0].app, "switches");
+  eq("tags route to the owning app", appForTicket(ticket(["backup"])), "backup");
+  eq("...and fall back to the gateway", appForTicket(ticket([])), "gateway");
+
+  /*
+   * THE CAPABILITY THAT DID NOT EXIST BEFORE.
+   *
+   * A static hint written with the template cannot name the port that is
+   * actually down. This one reads the estate and does — and, crucially, stops
+   * saying it the moment the operator fixes it.
+   */
+  const down = baseWorld();
+  down.nodes["CAM-1"] = { nodeId: "CAM-1", hostname: "CAM-1", role: "ip-camera",
+    connection: { ip: "10.1.1.21", online: true, reachable: true, port: 22, protocol: "ssh", requiresCredentials: true, authenticated: false, latencyMs: 2 },
+    health: { status: "healthy", cpuLoad: 4, memUsedPct: 10, diskUsedPct: 5, uptimeSeconds: 10 } };
+  down.poe.switches = [{ id: "sw1", name: "MERC-PSW-01", mgmtIp: "10.1.1.2", standard: "at", budgetW: 130,
+    ports: [{ n: 7, enabled: false, poeEnabled: true, priority: "high", attachedNodeId: "CAM-1" }] }];
+
+  const named = liveHints(down, ticket(["poe"]));
+  eq("stage 2 names the actual port", /Port 7/.test(named[1].text), true);
+  eq("...and the actual switch", /MERC-PSW-01/.test(named[1].text), true);
+  eq("...and the device behind it", /CAM-1/.test(named[1].text), true);
+  eq("stage 3 says how to fix it", /Port enabled/.test(named[2].text), true);
+
+  // FIXED FAULTS STOP BEING HINTED. This is what a static string cannot do.
+  const fixed = structuredClone(down);
+  fixed.poe.switches[0].ports[0].enabled = true;
+  eq("a repaired port is no longer named", /Port 7 on MERC-PSW-01 is administratively down/.test(liveHints(fixed, ticket(["poe"]))[1].text), false);
+
+  // An incident outranks everything: while it is spreading, nothing else is
+  // the useful thing to say.
+  const hit = baseWorld();
+  hit.incident = { startedAt: 1, patientZero: "MAC-1", compromised: [{ nodeId: "MAC-1", at: 1, vector: "phishing" }], encryptedShareIds: [], containedAt: null, resolvedAt: null };
+  const inc = liveHints(hit, ticket(["poe"]));
+  eq("an active incident outranks a PoE fault", /MAC-1/.test(inc[1].text), true);
+  eq("...and redirects the operator to the incident's next step", inc[1].app != null, true);
+
+  // A locked account is named by login and display name.
+  const dir = baseWorld();
+  dir.nodes["DC-1"] = { nodeId: "DC-1", hostname: "DC-1", role: "domain-controller", os: "windows",
+    connection: { ip: "10.1.1.10", online: true, reachable: true, port: 3389, protocol: "rdp", requiresCredentials: true, authenticated: false, latencyMs: 2 },
+    health: { status: "healthy", cpuLoad: 4, memUsedPct: 10, diskUsedPct: 5, uptimeSeconds: 10 },
+    activeDirectory: { users: [{ samAccountName: "j.doe", displayName: "Jane Doe", locked: true, enabled: true }], groups: [], ous: [] } };
+  const locked = liveHints(dir, ticket(["identity"], { targetUserId: "j.doe" }));
+  eq("a locked account is named", /Jane Doe/.test(locked[1].text), true);
+  eq("...by login name too", /j\.doe/.test(locked[1].text), true);
+
+  /*
+   * HONEST FALLBACK. When nothing is visibly broken the engine says so rather
+   * than inventing a fault — the static hints it replaced were confidently
+   * wrong in exactly this situation.
+   */
+  const quiet = liveHints(baseWorld(), ticket([]));
+  eq("a clean estate admits it cannot see the fault", /Nothing on the estate is reporting a fault/.test(quiet[1].text), true);
+
+  // A probe that throws must not take the hint system down: the operator asked
+  // for help, and a crash is the one answer worse than none.
+  const broken = baseWorld();
+  broken.poe = null;
+  eq("a malformed world still produces hints", liveHints(broken, ticket(["poe"])).length, 3);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

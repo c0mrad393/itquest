@@ -24,6 +24,7 @@ import type { HostAppIconId } from "@/lib/core";
 import { AppHeader, CountPill, Segmented } from "./AppChrome";
 import { useHostStore } from "@/lib/host/store";
 import { hasLicense } from "@/lib/economy/licenses";
+import AppLink from "@/components/ui/AppLink";
 
 type Metric = "cpu" | "mem" | "net";
 
@@ -169,12 +170,16 @@ export default function Monitor() {
                 Advanced Diagnostics licence required — available in Procurement.
               </div>
             </div>
-            <button
-              onClick={() => openApp("procurement")}
+            {/* Renders as a lock with the required level when Procurement is
+                still gated — the reported bypass was this button opening it
+                regardless. */}
+            <AppLink
+              app="procurement"
+              purpose="where Advanced Diagnostics is bought"
               className="shrink-0 rounded-md border border-info/40 px-2.5 py-1 text-[10px] font-semibold text-info hover:bg-info/10"
             >
               View licence
-            </button>
+            </AppLink>
           </div>
         )}
 

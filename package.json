@@ -8,7 +8,7 @@
     "start": "next start -p 3000",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:physics": "tsc -p tsconfig.test.json && node tests/prepare.mjs && node tests/rack-physics.mjs",
+    "test:physics": "rm -rf .test-build tsconfig.test.tsbuildinfo && tsc -p tsconfig.test.json && node tests/prepare.mjs && node tests/rack-physics.mjs",
     "test": "npm run typecheck && npm run test:physics"
   },
   "dependencies": {

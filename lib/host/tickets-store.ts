@@ -13,6 +13,23 @@ import type { InfrastructureState, Ticket, TicketStatus, TicketTrack, TicketSeve
 import { useInfraStore } from "@/lib/infra/store";
 import { generateTicketQueue, generateTierBatch, applyQueueFaults, buildTicket, ticketLibrary } from "@/lib/tickets/factory";
 import { mulberry32 } from "@/lib/org/rng";
+import { templateMinLevel } from "@/lib/progression/unlocks";
+import { useHostStore } from "@/lib/host/store";
+
+/**
+ * The operator's level, read lazily.
+ *
+ * Via `getState()` rather than an import-time binding because the host store
+ * and this one initialise in an order that is not guaranteed; reading at call
+ * time is the only version that cannot see an undefined store.
+ */
+function levelNow(): number {
+  try {
+    return useHostStore.getState().host.user.level;
+  } catch {
+    return 1;
+  }
+}
 import type { EmailBeat } from "@/lib/tickets/matrix";
 
 export interface TicketFilters {
@@ -72,7 +89,7 @@ interface TicketStore {
   spawnTemplate: (
     templateId: string,
     infra: InfrastructureState,
-    opts?: { injectFault?: boolean },
+    opts?: { injectFault?: boolean; ignorePrerequisites?: boolean },
   ) => Ticket | null;
   /**
    * Close a ticket without meeting its win-condition — the external contractor
@@ -167,7 +184,21 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
     if (open) return null;
 
     const library = ticketLibrary(infra);
-    const candidates = Object.values(library).filter((t) => t.id.startsWith(familyId));
+    /*
+     * THE PREREQUISITE GATE (polish pass).
+     *
+     * Previously only the STARTER queue filtered by required tool, so a
+     * reactive incident — a tripped breaker, say — could dispatch a ticket
+     * demanding an app the operator has not unlocked. That is a dead end in
+     * the queue rather than a challenge: there is no door to open.
+     *
+     * `templateMinLevel` maps a template's tags to the app it needs and that
+     * app's unlock level, so this is the same rule the drawer enforces.
+     */
+    const level = levelNow();
+    const candidates = Object.values(library).filter(
+      (t) => t.id.startsWith(familyId) && templateMinLevel(t.tags) <= level,
+    );
     if (!candidates.length) return null;
     const rng = mulberry32((infra.org.seed ^ Date.now()) >>> 0);
     const template = candidates[Math.floor(rng() * candidates.length)];
@@ -189,6 +220,13 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
     const library = ticketLibrary(infra);
     const template = library[templateId];
     if (!template) return null;
+
+    // The bench is allowed past the gate on purpose — testing a locked class
+    // is the entire reason it exists — but every non-bench caller is held to
+    // the same prerequisite rule as everything else.
+    if (!opts.ignorePrerequisites && templateMinLevel(template.tags) > levelNow()) {
+      return null;
+    }
 
     const rng = mulberry32((infra.org.seed ^ Date.now()) >>> 0);
     const built = buildTicket(template, infra, rng);

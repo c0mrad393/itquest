@@ -20,6 +20,7 @@ import { availableOf, incompatibilityReason, specLine } from "@/lib/core";
 import type { AssetItem } from "@/lib/core";
 import { playCue } from "@/lib/audio/engine";
 import { AppIcon } from "@/components/ui/app-icons";
+import AppLink from "@/components/ui/AppLink";
 
 type Phase = "prep" | "swap" | "cabling" | "fasten" | "close" | "ready";
 
@@ -237,9 +238,15 @@ export default function AdvancedAssembly({
             <div className="mt-2 flex items-center gap-1.5 rounded-md border border-danger/40 bg-danger/10 px-2 py-1.5 text-[10px] text-danger">
               <AppIcon id="alert" size={11} />
               <span className="min-w-0 flex-1">Store room is out of this part.</span>
-              <button onClick={() => openApp("procurement")} className="shrink-0 rounded border border-danger/40 px-1.5 py-0.5 font-semibold hover:bg-danger/15">
+              {/* Hardware Lab opens at level 3, Procurement at 4 — so this
+                  button was reachable while its target was locked. */}
+              <AppLink
+                app="procurement"
+                purpose="where replacement parts are ordered"
+                className="shrink-0 rounded border border-danger/40 px-1.5 py-0.5 font-semibold hover:bg-danger/15"
+              >
                 Order
-              </button>
+              </AppLink>
             </div>
           )}
         </div>

@@ -22,6 +22,11 @@ import { IconChevronRight } from "@/components/ui/icons";
 import { AppIcon } from "@/components/ui/app-icons";
 import { useTicketStore } from "@/lib/host/tickets-store";
 import { HINT_PENALTY_PER_STEP, hintFactor, projectedXp } from "@/lib/scenario/scoring";
+import { useMemo } from "react";
+import { useInfraStore } from "@/lib/infra/store";
+import { liveHints } from "@/lib/tickets/hints";
+import { HOST_APP_REGISTRY } from "@/lib/core";
+import AppLink from "@/components/ui/AppLink";
 
 /** Split **bold** runs into styled spans. */
 function inline(text: string, keyPrefix: string) {
@@ -97,7 +102,19 @@ export function TicketHints({ ticket }: { ticket: Ticket }) {
   const revealHint = useTicketStore((s) => s.revealHint);
   const setHardMode = useTicketStore((s) => s.setHardMode);
 
-  const hints = ticket.hints ?? [];
+  /*
+   * LIVE HINTS (polish pass).
+   *
+   * Derived from the estate on every render rather than read off the template.
+   * The old static strings were written when the template was, so they could
+   * not name the port that is actually down — and worse, they kept saying
+   * "isolate the host" after the host had been isolated, because they had no
+   * way to know. These re-derive, so a hint can never describe a fault the
+   * operator has already fixed.
+   */
+  const infra = useInfraStore((s) => s.infra);
+  const hintStages = useMemo(() => liveHints(infra, ticket), [infra, ticket]);
+  const hints = hintStages.map((h) => h.text);
   if (hints.length === 0) return null;
 
   const revealed = ticket.hintsRevealed;
@@ -161,12 +178,23 @@ export function TicketHints({ ticket }: { ticket: Ticket }) {
 
       {revealed > 0 && (
         <ol className="space-y-1.5 px-3 py-2.5">
-          {hints.slice(0, revealed).map((h, i) => (
+          {hintStages.slice(0, revealed).map((h, i) => (
             <li key={i} className="flex gap-2 text-[11px] leading-relaxed text-gray-300">
               <span className="mt-px flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-info/15 text-[9px] font-bold text-info">
                 {i + 1}
               </span>
-              <span>{h}</span>
+              <span className="min-w-0 flex-1">
+                {h.text}
+                {/* The last stage names the action, so it earns a way to get
+                    there. Gated like every other cross-app jump. */}
+                {h.stage === 3 && h.app && (
+                  <span className="mt-1 block">
+                    <AppLink app={h.app} className="btn-secondary btn-sm">
+                      Open {HOST_APP_REGISTRY[h.app].title}
+                    </AppLink>
+                  </span>
+                )}
+              </span>
             </li>
           ))}
         </ol>
@@ -180,7 +208,7 @@ export function TicketHints({ ticket }: { ticket: Ticket }) {
               className="inline-flex items-center gap-1.5 rounded-md border border-info/40 bg-info/10 px-2.5 py-1.5 text-[11px] font-semibold text-info transition hover:bg-info/20"
             >
               <AppIcon id="eye" size={12} />
-              Reveal next hint
+              Need a hint?
               <span className="font-mono text-[10px] font-normal text-info/70">
                 −{Math.round(HINT_PENALTY_PER_STEP * 100)}%
               </span>

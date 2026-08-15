@@ -15,6 +15,7 @@ import WindowFrame from "./WindowFrame";
 import Taskbar from "./Taskbar";
 import AppDrawer from "./AppDrawer";
 import TicketReconciler from "./TicketReconciler";
+import TicketEngine from "./TicketEngine";
 import SlaEngine from "./SlaEngine";
 import NetworkEngine from "./NetworkEngine";
 import PersistenceManager from "./PersistenceManager";
@@ -108,6 +109,7 @@ export default function HostDesktop() {
       <PersistenceManager />
       <DebugPanel open={devToolsOpen} onClose={() => setDevToolsOpen(false)} />
       <TicketReconciler />
+      <TicketEngine />
       <SlaEngine />
       <NetworkEngine />
       <HardwareDispatchEngine />

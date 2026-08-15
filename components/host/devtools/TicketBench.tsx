@@ -98,7 +98,9 @@ export default function TicketBench({ say }: { say: (s: string) => void }) {
   }, [infra, query]);
 
   function fire(templateId: string, label: string) {
-    const t = spawnTemplate(templateId, infra, { injectFault });
+    // The bench deliberately ignores the unlock gate — testing a class the
+    // player has not reached yet is the whole point of it.
+    const t = spawnTemplate(templateId, infra, { injectFault, ignorePrerequisites: true });
     if (!t) {
       say(`${label}: this world cannot host it (no valid context)`);
       return;

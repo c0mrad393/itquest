@@ -359,9 +359,9 @@ export function SystemBrowser({
           {variant === "windows" ? "Quick access" : "Favorites"}
         </div>
         {variant === "macos" && (
-          <SideRow icon="link" label="AirDrop" onClick={() => {}} />
+          <SideRow icon="link" label="AirDrop" />
         )}
-        {variant === "macos" && <SideRow icon="grid" label="Applications" onClick={() => {}} />}
+        {variant === "macos" && <SideRow icon="grid" label="Applications" />}
         {sidebar.map((s) => (
           <SideRow key={s.id} icon={s.icon} label={s.label} active={loc === s.id} onClick={() => setLoc(s.id as Loc)} />
         ))}
@@ -431,7 +431,23 @@ export function SystemBrowser({
   );
 }
 
-function SideRow({ icon, label, active, onClick }: { icon: HostAppIconId; label: string; active?: boolean; onClick: () => void }) {
+/**
+ * `onClick` is optional: some sidebar entries are SET DRESSING — AirDrop and
+ * Applications exist because a Finder without them does not look like a
+ * Finder, and neither has anything to show in a simulator. They previously
+ * rendered as buttons with an empty handler, which is a small dead end: it
+ * invites a click and answers with nothing. Without a handler they render as
+ * plain, unclickable rows, which is honest about what they are.
+ */
+function SideRow({ icon, label, active, onClick }: { icon: HostAppIconId; label: string; active?: boolean; onClick?: () => void }) {
+  if (!onClick) {
+    return (
+      <div className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[11px] text-gray-600">
+        <AppIcon id={icon} size={14} />
+        <span className="truncate">{label}</span>
+      </div>
+    );
+  }
   return (
     <button
       onClick={onClick}
