@@ -103,6 +103,15 @@ import {
 } from "../.test-build/progression/unlocks.js";
 import { appForTicket, liveHints } from "../.test-build/tickets/hints.js";
 import {
+  CASCADE_HEALTH_PENALTY,
+  THERMAL_LATENCY_FACTOR,
+  activeCascades,
+  cascadeLatencyFactor,
+  cascadeResolved,
+  cascadeStatus,
+} from "../.test-build/core/cascade.js";
+import { isHardwareTicket, jobForTicket } from "../.test-build/hardware/types.js";
+import {
   GROWTH_PHASES,
   addressDemand,
   initialGrowth,
@@ -1719,6 +1728,202 @@ group("Client endpoints skip the rack chain");
   const broken = baseWorld();
   broken.poe = null;
   eq("a malformed world still produces hints", liveHints(broken, ticket(["poe"])).length, 3);
+}
+
+// ── QA2: hardware binding and cascade failures ──────────────────────────────
+{
+  group("QA2 — the Hardware Lab sees procedural work");
+
+  /*
+   * THE REPORTED BUG. Recognition was `templateId.startsWith("hw-")`, which
+   * matched the nine hand-authored scenarios and none of the thirty-two
+   * procedural families — so a generated RAM upgrade left the Lab empty. The
+   * ambient engine draws mostly from those families, which made it constant.
+   */
+  eq("hand-authored hardware is recognised", isHardwareTicket("hw-t1-ram-upgrade", []), true);
+  eq("a procedural RAM job WAS invisible by id alone", "gen-ram-upgrade-1-2".startsWith("hw-"), false);
+  eq("...and is now recognised by tag", isHardwareTicket("gen-ram-upgrade-1-2", ["hardware", "ram"]), true);
+  eq("a disk swap is recognised", isHardwareTicket("gen-disk-swap-2-1", ["hardware", "disk", "raid"]), true);
+  eq("a lockout is NOT hardware", isHardwareTicket("gen-lockout-1-1", ["identity", "ad"]), false);
+  eq("...nor is a phishing report", isHardwareTicket("gen-phish-1-1", ["phishing"]), false);
+
+  group("QA2 — jobs derive from what the ticket needs");
+
+  const t = (id, tags, host = "WS-401") => ({
+    id: "tkt-1", templateId: id, title: "x", tags,
+    dynamicContext: { targetNodeId: "n1", targetHostname: host },
+  });
+
+  const ram = jobForTicket(t("gen-ram-upgrade-1-2", ["hardware", "ram"]));
+  eq("a derived job exists for a procedural family", ram !== null, true);
+  eq("...and asks for the right part", ram.assembly.defective, "ram");
+  eq("...with a bench stage", ram.stages.includes("assembly"), true);
+
+  // The part comes from the tag that names it, and order matters: a ticket
+  // tagged both raid and disk is a disk job, not a memory one.
+  eq("a raid job fits an SSD", jobForTicket(t("gen-disk-swap-2-1", ["hardware", "raid", "disk"])).assembly.defective, "ssd");
+
+  // Chassis type is inferred from the hostname the ticket already carries.
+  eq("a server hostname opens a server chassis",
+     jobForTicket(t("gen-disk-swap-2-1", ["hardware", "disk"], "KITE-FS-03")).assembly.archetype, "server");
+  eq("a Mac hostname opens a laptop",
+     jobForTicket(t("gen-ram-upgrade-1-1", ["hardware", "ram"], "MAC-411")).assembly.archetype, "laptop");
+  eq("...and a server job needs its baffle removed",
+     jobForTicket(t("gen-disk-swap-2-1", ["hardware", "disk"], "KITE-FS-03")).assembly.baffle, true);
+
+  // A ticket with nothing physical to do must NOT appear at the bench.
+  eq("a non-hardware ticket derives no job", jobForTicket(t("gen-lockout-1-1", ["identity"])), null);
+  // Nor may a job exist without a target — that would be a row opening an
+  // empty workshop.
+  eq("no target node means no job",
+     jobForTicket({ id: "x", templateId: "gen-ram-upgrade-1-1", tags: ["ram"], dynamicContext: {} }), null);
+}
+
+{
+  group("QA2 — cascade: thermal");
+
+  const world = (over = {}) => structuredClone({
+    nodes: {
+      "SQL-1": {
+        nodeId: "SQL-1", hostname: "SQL-1", role: "database", os: "linux",
+        connection: { ip: "10.1.1.30", port: 22, protocol: "ssh", reachable: true, online: true, requiresCredentials: true, authenticated: false, latencyMs: 4 },
+        health: { status: "healthy", cpuLoad: 20, memUsedPct: 40, diskUsedPct: 45, uptimeSeconds: 100 },
+        services: { postgresql: { name: "postgresql", status: "active" } },
+      },
+    },
+    subnets: [{ cidr: "10.1.1.0/24", label: "Core" }],
+    security: { isolatedNodeIds: [] },
+    ipam: { leases: {}, pools: [], faults: [] },
+    poe: { switches: [] },
+    cascade: { faults: [{ id: "f1", kind: "thermal", nodeId: "SQL-1", startedAt: 1 }] },
+    ...over,
+  });
+
+  const w = world();
+  const f = () => w.cascade.faults[0];
+
+  // THE SYMPTOM IS DERIVED. Latency inflates without anything being written
+  // onto the node — which is what lets it disappear the moment the root cause
+  // is fixed, with no cleanup code to forget.
+  eq("a throttled host runs slow", cascadeLatencyFactor(w, "SQL-1"), THERMAL_LATENCY_FACTOR);
+  eq("...and a healthy one does not", cascadeLatencyFactor(w, "OTHER"), 1);
+  eq("it is NOT taken offline — slow is the lesson", w.nodes["SQL-1"].connection.online, true);
+
+  // The sequence is enforced in order.
+  eq("it starts at diagnosis", cascadeStatus(w, f()).stage, "diagnosing");
+  eq("...pointing at the Server Manager", cascadeStatus(w, f()).nextApp, "serverman");
+  eq("...and is not resolved", cascadeResolved(w, f()), false);
+
+  const down = world();
+  down.nodes["SQL-1"].connection.online = false;
+  eq("powering down advances the stage", cascadeStatus(down, down.cascade.faults[0]).stage, "drained");
+  eq("...and sends the operator to the bench", cascadeStatus(down, down.cascade.faults[0]).nextApp, "hardwarelab");
+
+  const swapped = structuredClone(down);
+  swapped.cascade.faults[0].partReplacedAt = Date.now();
+  eq("replacing the part advances again", cascadeStatus(swapped, swapped.cascade.faults[0]).stage, "repaired");
+
+  const booted = structuredClone(swapped);
+  booted.nodes["SQL-1"].connection.online = true;
+  eq("booting it finishes the sequence", cascadeStatus(booted, booted.cascade.faults[0]).stage, "resolved");
+  eq("...so the ticket can close", cascadeResolved(booted, booted.cascade.faults[0]), true);
+  eq("...and the latency penalty is gone once cleared",
+     cascadeLatencyFactor({ ...booted, cascade: { faults: [{ ...booted.cascade.faults[0], clearedAt: 1 }] } }, "SQL-1"), 1);
+
+  // A repaired host that gets powered down again regresses — the stage is the
+  // truth about the world, not a counter.
+  const reDown = structuredClone(booted);
+  reDown.nodes["SQL-1"].connection.online = false;
+  eq("powering it back down regresses the stage", cascadeStatus(reDown, reDown.cascade.faults[0]).stage, "repaired");
+}
+
+{
+  group("QA2 — cascade: rogue DHCP");
+
+  const w = structuredClone({
+    nodes: {
+      "WS-9": {
+        nodeId: "WS-9", hostname: "WS-9", role: "workstation", os: "windows",
+        connection: { ip: "192.168.88.147", port: 3389, protocol: "rdp", reachable: true, online: true, requiresCredentials: true, authenticated: false, latencyMs: 3 },
+        health: { status: "healthy", cpuLoad: 10, memUsedPct: 30, diskUsedPct: 40, uptimeSeconds: 50 },
+        services: {},
+      },
+    },
+    subnets: [{ cidr: "10.1.3.0/24", label: "User" }],
+    security: { isolatedNodeIds: [] },
+    ipam: { leases: {}, pools: [], faults: [] },
+    poe: { switches: [{ id: "sw1", name: "SW1", mgmtIp: "10.1.1.2", standard: "at", budgetW: 100,
+      ports: [{ n: 4, enabled: true, poeEnabled: true, priority: "high", attachedNodeId: "WS-9" }] }] },
+    cascade: { faults: [{ id: "f2", kind: "rogue-dhcp", nodeId: "WS-9", startedAt: 1 }] },
+  });
+
+  // The address is off-estate: on the network and unreachable at once.
+  eq("the rogue address is outside every subnet",
+     w.subnets.some((s) => w.nodes["WS-9"].connection.ip.startsWith(s.cidr.split("/")[0].split(".").slice(0,3).join("."))), false);
+  eq("it starts at diagnosis", cascadeStatus(w, w.cascade.faults[0]).stage, "diagnosing");
+  eq("...in the switch panel", cascadeStatus(w, w.cascade.faults[0]).nextApp, "switches");
+
+  const cut = structuredClone(w);
+  cut.poe.switches[0].ports[0].enabled = false;
+  eq("cutting the port advances the stage", cascadeStatus(cut, cut.cascade.faults[0]).stage, "drained");
+
+  const fixed = structuredClone(cut);
+  fixed.nodes["WS-9"].connection.ip = "10.1.3.44";
+  eq("a correct address advances again", cascadeStatus(fixed, fixed.cascade.faults[0]).stage, "repaired");
+
+  const back = structuredClone(fixed);
+  back.poe.switches[0].ports[0].enabled = true;
+  eq("re-enabling the port finishes it", cascadeResolved(back, back.cascade.faults[0]), true);
+
+  // Throttling is thermal-only; a DHCP fault does not slow the host down.
+  eq("a DHCP cascade does not inflate latency", cascadeLatencyFactor(w, "WS-9"), 1);
+}
+
+{
+  group("QA2 — cascade: storage dependency");
+
+  const w = structuredClone({
+    nodes: {
+      "SQL-2": {
+        nodeId: "SQL-2", hostname: "SQL-2", role: "database", os: "linux",
+        connection: { ip: "10.1.1.31", port: 22, protocol: "ssh", reachable: true, online: true, requiresCredentials: true, authenticated: false, latencyMs: 3 },
+        health: { status: "critical", cpuLoad: 30, memUsedPct: 50, diskUsedPct: 99, uptimeSeconds: 10 },
+        services: { postgresql: { name: "postgresql", status: "failed" } },
+      },
+    },
+    subnets: [{ cidr: "10.1.1.0/24", label: "Core" }],
+    security: { isolatedNodeIds: [] },
+    ipam: { leases: {}, pools: [], faults: [] },
+    poe: { switches: [] },
+    cascade: { faults: [{ id: "f3", kind: "storage-dependency", nodeId: "SQL-2", startedAt: 1 }] },
+  });
+
+  // THE LESSON: restarting the service achieves nothing while the volume is
+  // full, so the sequence refuses to advance on a restart alone.
+  eq("a full volume blocks the repair", cascadeStatus(w, w.cascade.faults[0]).stage, "diagnosing");
+  const restartedOnly = structuredClone(w);
+  restartedOnly.nodes["SQL-2"].services.postgresql.status = "active";
+  eq("restarting the service alone does NOT resolve it", cascadeResolved(restartedOnly, restartedOnly.cascade.faults[0]), false);
+
+  // Either route out of a full disk counts.
+  const logsCleared = structuredClone(w);
+  logsCleared.nodes["SQL-2"].health.diskUsedPct = 72;
+  eq("clearing logs frees the repair", cascadeStatus(logsCleared, logsCleared.cascade.faults[0]).stage, "repaired");
+
+  const biggerDisk = structuredClone(w);
+  biggerDisk.cascade.faults[0].partReplacedAt = Date.now();
+  eq("a larger disk does too", cascadeStatus(biggerDisk, biggerDisk.cascade.faults[0]).stage, "repaired");
+
+  const done = structuredClone(logsCleared);
+  done.nodes["SQL-2"].services.postgresql.status = "active";
+  eq("space plus a running service resolves it", cascadeResolved(done, done.cascade.faults[0]), true);
+
+  group("QA2 — cascade bookkeeping");
+
+  eq("cleared faults drop out of the active list",
+     activeCascades({ cascade: { faults: [{ id: "x", kind: "thermal", nodeId: "n", startedAt: 1, clearedAt: 2 }] } }).length, 0);
+  eq("a missing slice is not a crash", activeCascades({}).length, 0);
+  eq("every kind costs health", Object.values(CASCADE_HEALTH_PENALTY).every((v) => v > 0), true);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

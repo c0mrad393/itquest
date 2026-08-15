@@ -29,7 +29,7 @@ import type {
 import { isPowered, uplinkOf, hybridRoute, exposedAdminRules } from "@/lib/core";
 import { findFaultWeb, findFirstWorkstation, findPrimaryDC } from "@/lib/org/generator";
 import { int, pick, type Rng } from "@/lib/org/rng";
-import { isIsolated } from "@/lib/core";
+import { cascadeResolved, isIsolated } from "@/lib/core";
 
 export interface EmailBeat {
   from: string;
@@ -1590,6 +1590,182 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
       return done && sharesBack;
     },
     healthyNode: (_infra, ctx) => ctx.serverNodeId as NodeId | undefined,
+  },
+
+  /*
+   * ── CASCADE FAILURES (QA phase 2) ───────────────────────────────────────
+   *
+   * Three multi-stage classes. What makes them different from everything
+   * above is not difficulty but SHAPE: the symptom the requester reports is
+   * downstream of the actual fault, so the operator has to diagnose before
+   * they can act, and the action is a sequence across two or three apps.
+   *
+   * Each one's win-condition is `cascadeResolved`, which asks the world
+   * whether the repair sequence is complete. None of them grade a checklist
+   * the ticket kept for itself — undo a step and the ticket correctly
+   * un-resolves.
+   */
+
+  "csc-t2-thermal-throttle": {
+    id: "csc-t2-thermal-throttle",
+    category: "System & Web Services",
+    difficulty: "Tier_2_Medium",
+    track: "sysadmin",
+    severity: "high",
+    priority: "P2",
+    slaDuration: 14 * 60,
+    responseSeconds: 3 * 60,
+    xpReward: 620,
+    personaId: "persona-sysadmin-calm",
+    tags: ["hardware", "thermal-module", "cascade", "latency"],
+    origin: "dashboard",
+    summary: "A server's cooling has failed. It is not down — it is slow.",
+    hints: [],
+    playable: true,
+    makeContext: (infra, rng) => {
+      const servers = Object.values(infra.nodes).filter(
+        (n) => n.role === "database" || n.role === "app-server" || n.role === "file-server",
+      );
+      if (!servers.length) return null;
+      const n = pick(rng, servers);
+      return { targetNodeId: n.nodeId, targetHostname: n.hostname };
+    },
+    title: (ctx) => `${ctx.targetHostname} is responding slowly — no obvious cause`,
+    description: (ctx) =>
+      `Users report that ${ctx.targetHostname} "still works but everything takes forever". It is not offline and no service has failed, ` +
+      `so the usual checks come back clean.\n\nIts cooling module has failed and the CPU is throttling to protect itself — which shows up as latency, not as an outage.\n\n` +
+      `This is hardware, so it cannot be fixed from a console:\n` +
+      `1. Power ${ctx.targetHostname} down from the Server Manager. Do not open a running chassis.\n` +
+      `2. Replace the cooling module at the bench in the Hardware Lab.\n` +
+      `3. Bring it back online.`,
+    requester: (_ctx, org) => ({
+      name: "Service Desk", role: "Tier 1", email: `it@${mailDomain(org)}`, department: "IT",
+    }),
+    injectFault: (infra, ctx) => {
+      infra.cascade = {
+        faults: [
+          ...(infra.cascade?.faults ?? []),
+          { id: `csc-thermal-${Date.now().toString(36)}`, kind: "thermal", nodeId: ctx.targetNodeId as NodeId, startedAt: Date.now() },
+        ],
+      };
+    },
+    win: (infra, ctx) => {
+      const f = (infra.cascade?.faults ?? []).find((x) => x.nodeId === ctx.targetNodeId && !x.clearedAt);
+      return !!f && cascadeResolved(infra, f);
+    },
+    healthyNode: (_infra, ctx) => ctx.targetNodeId as NodeId | undefined,
+  },
+
+  "csc-t2-rogue-dhcp": {
+    id: "csc-t2-rogue-dhcp",
+    category: "Network & Routing",
+    difficulty: "Tier_2_Medium",
+    track: "netops",
+    severity: "medium",
+    priority: "P2",
+    slaDuration: 12 * 60,
+    responseSeconds: 3 * 60,
+    xpReward: 540,
+    personaId: "persona-sysadmin-calm",
+    tags: ["dhcp", "ip-conflict", "cascade", "poe"],
+    origin: "dashboard",
+    summary: "An endpoint took an address from the wrong scope.",
+    hints: [],
+    playable: true,
+    makeContext: (infra, rng) => {
+      // Only something on a managed port: the repair is "find the port and
+      // cut it", and a device on no switch has no port to find.
+      const attached = (infra.poe?.switches ?? []).flatMap((sw) =>
+        sw.ports.filter((p) => p.attachedNodeId).map((p) => p.attachedNodeId as string),
+      );
+      const candidates = attached.map((id) => infra.nodes[id]).filter(Boolean);
+      if (!candidates.length) return null;
+      const n = pick(rng, candidates);
+      return { targetNodeId: n.nodeId, targetHostname: n.hostname };
+    },
+    title: (ctx) => `${ctx.targetHostname} is on the network but unreachable`,
+    description: (ctx) =>
+      `${ctx.targetHostname} shows a link light and reports itself connected, yet nothing on the estate can reach it. ` +
+      `Something on that segment is answering DHCP that should not be, and it has handed out an address from the wrong scope.\n\n` +
+      `Work it in order:\n` +
+      `1. Find its port in Network Switches and disable it, so it stops renewing the bad lease.\n` +
+      `2. Give it a correct address inside one of the estate's subnets.\n` +
+      `3. Re-enable the port.`,
+    requester: (_ctx, org) => ({
+      name: "Service Desk", role: "Tier 1", email: `it@${mailDomain(org)}`, department: "IT",
+    }),
+    injectFault: (infra, ctx) => {
+      const node = infra.nodes[ctx.targetNodeId as NodeId];
+      if (node) {
+        // An address from a scope this estate does not define — reachable by
+        // nothing, which is exactly the confusing part.
+        node.connection.ip = "192.168.88.147";
+      }
+      infra.cascade = {
+        faults: [
+          ...(infra.cascade?.faults ?? []),
+          { id: `csc-dhcp-${Date.now().toString(36)}`, kind: "rogue-dhcp", nodeId: ctx.targetNodeId as NodeId, startedAt: Date.now() },
+        ],
+      };
+    },
+    win: (infra, ctx) => {
+      const f = (infra.cascade?.faults ?? []).find((x) => x.nodeId === ctx.targetNodeId && !x.clearedAt);
+      return !!f && cascadeResolved(infra, f);
+    },
+  },
+
+  "csc-t3-storage-dependency": {
+    id: "csc-t3-storage-dependency",
+    category: "System & Web Services",
+    difficulty: "Tier_3_Hard",
+    track: "sysadmin",
+    severity: "high",
+    priority: "P1",
+    slaDuration: 16 * 60,
+    responseSeconds: 2 * 60,
+    xpReward: 880,
+    personaId: "persona-sysadmin-calm",
+    tags: ["disk", "storage", "capacity", "logs", "cascade", "hardware"],
+    origin: "dashboard",
+    summary: "The database is down because its volume is full. Restarting it will not help.",
+    hints: [],
+    playable: true,
+    makeContext: (infra, rng) => {
+      const dbs = Object.values(infra.nodes).filter((n) => n.role === "database" && n.os === "linux");
+      if (!dbs.length) return null;
+      const n = pick(rng, dbs);
+      return { targetNodeId: n.nodeId, targetHostname: n.hostname, serviceName: "postgresql" };
+    },
+    title: (ctx) => `postgresql will not stay up on ${ctx.targetHostname}`,
+    description: (ctx) =>
+      `The database on ${ctx.targetHostname} stops within seconds of every restart. The service itself is fine — ` +
+      `its volume is full, so it cannot write its WAL and exits.\n\n` +
+      `Restarting it again will fail again. Free space first, by either route:\n` +
+      `- clear the logs over SSH, which buys time but not much, or\n` +
+      `- fit a larger disk at the bench in the Hardware Lab, which actually fixes it.\n\n` +
+      `Then start the service.`,
+    requester: (_ctx, org) => ({
+      name: "Service Desk", role: "Tier 1", email: `it@${mailDomain(org)}`, department: "IT",
+    }),
+    injectFault: (infra, ctx) => {
+      const node = infra.nodes[ctx.targetNodeId as NodeId];
+      if (node && node.os === "linux") {
+        node.health.diskUsedPct = 99;
+        const svc = node.services?.["postgresql"];
+        if (svc) svc.status = "failed";
+      }
+      infra.cascade = {
+        faults: [
+          ...(infra.cascade?.faults ?? []),
+          { id: `csc-store-${Date.now().toString(36)}`, kind: "storage-dependency", nodeId: ctx.targetNodeId as NodeId, startedAt: Date.now() },
+        ],
+      };
+    },
+    win: (infra, ctx) => {
+      const f = (infra.cascade?.faults ?? []).find((x) => x.nodeId === ctx.targetNodeId && !x.clearedAt);
+      return !!f && cascadeResolved(infra, f);
+    },
+    healthyNode: (_infra, ctx) => ctx.targetNodeId as NodeId | undefined,
   },
 
   "sec-t3-apt": {

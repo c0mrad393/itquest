@@ -64,7 +64,7 @@ export function departmentsFor(phase: GrowthPhase): typeof DEPARTMENTS {
 import { createInventory } from "@/lib/inventory/seed";
 import { buildDatacenter } from "@/lib/datacenter/seed";
 import { buildAccessLayer, buildIpam } from "@/lib/network/seed";
-import { createIncidentState, defaultSizeGb, isProtectable } from "@/lib/core";
+import { createCascadeState, createIncidentState, defaultSizeGb, isProtectable } from "@/lib/core";
 import { seedPolicies, seedShares } from "@/lib/directory/seed";
 import { createCloudState } from "@/lib/cloud/seed";
 
@@ -1114,6 +1114,7 @@ export function generateWorld(seed: number, phase: GrowthPhase = 1): Infrastruct
       log: [],
     },
     incident: createIncidentState(),
+    cascade: createCascadeState(),
     loadedAt: now,
   };
 }

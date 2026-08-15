@@ -47,6 +47,19 @@ interface HostStore {
   move: (instanceId: string, x: number, y: number) => void;
   resize: (instanceId: string, rect: WindowRect) => void;
 
+  /**
+   * Deep-link target: the device an app should focus when it opens.
+   *
+   * SESSION-SCOPED AND ONE-SHOT. It is a navigation intent, not a fact about
+   * the world — persisting "focus CAM-101" would have a restored save open the
+   * Hardware Lab on a device the player has long since dealt with. The
+   * receiving app consumes it and clears it.
+   */
+  focusTarget: { app: HostAppId; nodeId: string } | null;
+  /** Open `app` already focused on `nodeId`. Respects the unlock gate. */
+  openAppFocused: (app: HostAppId, nodeId: string) => void;
+  clearFocusTarget: () => void;
+
   setStartMenu: (open: boolean) => void;
   toggleStartMenu: () => void;
 
@@ -264,6 +277,17 @@ export const useHostStore = create<HostStore>((set, get) => ({
     set((s) => ({
       windows: s.windows.map((w) => (w.instanceId === instanceId ? { ...w, ...rect } : w)),
     })),
+
+  focusTarget: null,
+
+  openAppFocused: (app, nodeId) => {
+    // Set the intent BEFORE opening, so a freshly-mounted app sees it on its
+    // first render rather than flashing an unfocused list and then jumping.
+    set({ focusTarget: { app, nodeId } });
+    get().openApp(app);
+  },
+
+  clearFocusTarget: () => set({ focusTarget: null }),
 
   setStartMenu: (open) => set({ startMenuOpen: open }),
   toggleStartMenu: () => set((s) => ({ startMenuOpen: !s.startMenuOpen })),

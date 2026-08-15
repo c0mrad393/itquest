@@ -8,6 +8,7 @@
  */
 
 import type { LinuxNodeState } from "./linux";
+import type { CascadeState } from "./cascade";
 import type { BackupState } from "./backup";
 import type { IncidentState } from "./incident";
 import type { TrafficState } from "./traffic";
@@ -171,6 +172,11 @@ export interface InfrastructureState {
    * recovery STAGE and whether isolation is in force are derived.
    */
   incident: IncidentState;
+  /**
+   * Multi-stage cascade faults (QA2). Stores the root cause and the repair
+   * progress; every symptom — latency, health, the dead service — derives.
+   */
+  cascade: CascadeState;
 
   loadedAt: number;
 }

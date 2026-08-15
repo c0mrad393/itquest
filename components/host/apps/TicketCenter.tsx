@@ -27,6 +27,7 @@ import { AppHeader, Chip, CountPill, FilterBar, SearchField, Segmented } from ".
 import EmptyState from "@/components/ui/EmptyState";
 import { IconInboxZero, IconSearch, IconTicket } from "@/components/ui/icons";
 import { Term } from "@/components/ui/Tooltip";
+import { isHardwareTicket, jobForTicket } from "@/lib/hardware/types";
 
 const SEVERITIES: (TicketSeverity | "all")[] = ["all", "low", "medium", "high", "critical"];
 const CATEGORIES: (TicketCategory | "all")[] = [
@@ -195,6 +196,9 @@ function TicketRow({
 function TicketDetail({ ticket }: { ticket: Ticket }) {
   const { accept, escalate, setStatus } = useTicketStore();
   const openApp = useHostStore((s) => s.openApp);
+  const openAppFocused = useHostStore((s) => s.openAppFocused);
+  // Null for anything with no bench work, which is what picks the CTA below.
+  const hwJob = isHardwareTicket(ticket.templateId, ticket.tags) ? jobForTicket(ticket) : null;
   const operator = useHostStore((s) => s.host.user.displayName);
   const dialogueEvent = useDialogueStore((s) => s.event);
 
@@ -302,12 +306,27 @@ function TicketDetail({ ticket }: { ticket: Ticket }) {
             Mark in progress
           </button>
         )}
-        <button
-          onClick={() => openApp("gateway")}
-          className="rounded-md border border-edge px-3 py-1.5 text-xs text-gray-200 hover:bg-panelalt"
-        >
-          Open Remote Gateway →
-        </button>
+        {/*
+          THE DEEP LINK (QA2). A hardware ticket sends the operator to the
+          bench with the right device already selected, rather than to a
+          gateway that cannot do the job — and rather than to a list they then
+          have to search for the hostname the ticket just told them.
+        */}
+        {hwJob ? (
+          <button
+            onClick={() => openAppFocused("hardwarelab", hwJob.targetNodeId)}
+            className="rounded-md border border-brand-fill bg-brand-soft/15 px-3 py-1.5 text-xs font-semibold text-brand-text hover:bg-brand-soft/25"
+          >
+            Open {hwJob.targetHostname} in Hardware Lab &rarr;
+          </button>
+        ) : (
+          <button
+            onClick={() => openApp("gateway")}
+            className="rounded-md border border-edge px-3 py-1.5 text-xs text-gray-200 hover:bg-panelalt"
+          >
+            Open Remote Gateway &rarr;
+          </button>
+        )}
         {!closed && (
           <button
             onClick={() => escalate(ticket.id)}

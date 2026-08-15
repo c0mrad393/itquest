@@ -90,6 +90,18 @@ const catalogue: AssetItem[] = [
   { id: "sku-nic-10g", name: "Stratos 10GbE NIC dual-port", brand: "Stratos", category: "component", model: "ST-N10D",
     spare: 0, deployed: 0, inTransit: 0, faulty: 0, price: 340, traits: { busInterface: "PCIe" } },
 
+  /*
+   * Cooling modules (QA2). The thermal cascade asks the operator to replace
+   * one, and without a real SKU the bench offered power supplies for a heat
+   * problem — a work order saying "Cooling module" beside a parts list of
+   * PSUs, which teaches precisely the wrong association. One spare of each in
+   * stock, so the first thermal ticket is workable without a procurement trip.
+   */
+  { id: "sku-fan-1u", name: "Zephyr 1U Hot-Swap Fan Module", brand: "Zephyr", category: "component", model: "ZP-F1U",
+    spare: 1, deployed: 0, inTransit: 0, faulty: 0, price: 95, traits: { hotSwap: true, formFactor: "1U" } },
+  { id: "sku-fan-2u", name: "Zephyr 2U Redundant Cooling Module", brand: "Zephyr", category: "component", model: "ZP-F2U",
+    spare: 1, deployed: 0, inTransit: 0, faulty: 0, price: 180, traits: { hotSwap: true, formFactor: "2U" } },
+
   // ── Peripherals ─────────────────────────────────────────────────────────
   { id: "sku-mouse", name: "Meridian USB Optical Mouse", brand: "Meridian", category: "peripheral", model: "PM-100",
     spare: 2, deployed: 2, inTransit: 0, faulty: 0, price: 18, traits: { busInterface: "USB" } },

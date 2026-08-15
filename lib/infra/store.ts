@@ -36,7 +36,7 @@ import type { IpamState, NetworkFault, PoePort, PoePriority } from "@/lib/core";
 import { detectConflicts, isValidIp, portOfNode, switchById } from "@/lib/core";
 import type { VideoProfileId } from "@/lib/core";
 import { DEFAULT_PROFILE } from "@/lib/core";
-import type { BackupSchedule, RestoreEvent, StorageTierId } from "@/lib/core";
+import type { BackupSchedule, CascadeKind, RestoreEvent, StorageTierId } from "@/lib/core";
 import {
   backupsCompromised,
   capacityOf,
@@ -224,6 +224,21 @@ interface InfraStore {
   incidentWipe: (nodeId: NodeId) => string | null;
   /** Clear a resolved incident once every host is restored. */
   incidentClear: () => void;
+
+  // ── Cascade faults (QA2) ─────────────────────────────────────────────────
+  /** Plant a root cause. Used by the cascade templates' fault injection. */
+  cascadeStart: (kind: CascadeKind, nodeId: NodeId) => void;
+  /**
+   * Record that the failed part has been replaced at the bench.
+   *
+   * A FACT ABOUT WHAT THE OPERATOR DID, not a conclusion — the stage machine
+   * combines it with the live estate to decide where they are. Refused while
+   * the host is still running, because you do not swap a cooling module on a
+   * live server and the refusal is the lesson.
+   */
+  cascadeReplacePart: (nodeId: NodeId) => string | null;
+  /** Free disk by clearing logs — the non-hardware route out of a full volume. */
+  cascadeClearLogs: (nodeId: NodeId) => string | null;
 
   /**
    * Group membership (v0.5.0). Addressed by DOMAIN rather than by node — the
@@ -2927,8 +2942,77 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       },
     })),
 
+
+  // ── Cascade faults (QA2) ─────────────────────────────────────────────────
+
+  cascadeStart: (kind, nodeId) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        cascade: {
+          faults: [
+            ...(s.infra.cascade?.faults ?? []).filter((f) => f.nodeId !== nodeId || f.clearedAt),
+            { id: `csc-${Date.now().toString(36)}`, kind, nodeId, startedAt: Date.now() },
+          ],
+        },
+      },
+    })),
+
+  cascadeReplacePart: (nodeId) => {
+    const infra = get().infra;
+    const fault = (infra.cascade?.faults ?? []).find((f) => f.nodeId === nodeId && !f.clearedAt);
+    if (!fault) return "There is no outstanding hardware fault on that host.";
+    if (fault.partReplacedAt) return "The part has already been replaced.";
+
+    const node = infra.nodes[nodeId];
+    if (fault.kind === "thermal" && node?.connection.online) {
+      return `${nodeId} is still running. Power it down from the Server Manager before opening the chassis.`;
+    }
+
+    set((st) => ({
+      infra: {
+        ...st.infra,
+        cascade: {
+          faults: (st.infra.cascade?.faults ?? []).map((f) =>
+            f.id === fault.id ? { ...f, partReplacedAt: Date.now() } : f,
+          ),
+        },
+        // A bigger disk is a real capacity change, so the storage cascade's
+        // symptom clears through the SAME field the Monitor reads. Nothing
+        // special-cases it; the volume simply is not full any more.
+        nodes:
+          fault.kind === "storage-dependency" && node
+            ? { ...st.infra.nodes, [nodeId]: { ...node, health: { ...node.health, diskUsedPct: 38 } } }
+            : st.infra.nodes,
+      },
+    }));
+    return null;
+  },
+
+  cascadeClearLogs: (nodeId) => {
+    const infra = get().infra;
+    const node = infra.nodes[nodeId];
+    if (!node) return "No such host.";
+    if (node.health.diskUsedPct < 90) return "There is already free space on that volume.";
+    set((st) => {
+      const n = st.infra.nodes[nodeId];
+      if (!n) return st;
+      return {
+        infra: {
+          ...st.infra,
+          // Clearing logs frees less than a new disk — enough to start the
+          // service, not enough to stop it happening again, which is the
+          // honest difference between the two routes.
+          nodes: { ...st.infra.nodes, [nodeId]: { ...n, health: { ...n.health, diskUsedPct: 72 } } },
+        },
+      };
+    });
+    return null;
+  },
+
   reset: () => set({ infra: generateWorld(freshSeed(), 1) }),
 }));
+
 
 let restoreSeq = 0;
 
