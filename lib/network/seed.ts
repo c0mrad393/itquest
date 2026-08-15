@@ -39,6 +39,8 @@ import type {
   TargetNode,
 } from "@/lib/core";
 import { POE_DRAW_W, isPoweredDevice, parseCidr, intToIp } from "@/lib/core";
+import type { CameraStreamConfig, TrafficState, VideoProfileId } from "@/lib/core";
+import { DEFAULT_PROFILE, VIDEO_PROFILES } from "@/lib/core";
 
 type Rng = () => number;
 
@@ -157,7 +159,7 @@ export function buildAccessLayer(
    * it sits beside would open every new game on a false conflict alarm.
    */
   existing: Record<NodeId, TargetNode> = {},
-): { poe: PoeState; nodes: Record<NodeId, TargetNode> } {
+): { poe: PoeState; nodes: Record<NodeId, TargetNode>; traffic: TrafficState } {
   const nodes: Record<NodeId, TargetNode> = {};
 
   // Cameras and APs live on the management VLAN where the org has one, and on
@@ -215,6 +217,36 @@ export function buildAccessLayer(
     port.priority = "high";
   }
 
+  /*
+   * THE RECORDER (Build 2).
+   *
+   * Given a port on the same switch as the cameras, because that is how these
+   * sites are actually built — and because it puts the recorder and its
+   * cameras on the same uplink, which is exactly the topology that saturates.
+   * A player who moves the NVR onto the core switch has genuinely fixed
+   * something, and that only works if it starts in the wrong place.
+   *
+   * It is mains-powered, so it costs no PoE budget; the port still carries its
+   * data, which is why it belongs on the faceplate rather than nowhere.
+   */
+  const nvrHostname = `${netbios.slice(0, 4)}-NVR-01`;
+  const nvrHost = claim(host);
+  const nvrIp = addrAt(nvrHost);
+  nodes[nvrHostname] = makeEdgeNode(
+    rng,
+    "nvr",
+    nvrHostname,
+    "Video recorder",
+    nvrIp,
+    domain,
+  );
+  const nvrPort = ports[nextPort++];
+  if (nvrPort) {
+    nvrPort.attachedNodeId = nvrHostname;
+    nvrPort.label = "Video recorder";
+    nvrPort.priority = "critical";
+  }
+
   const drawn = Object.values(nodes).reduce(
     (w, n) => w + (isPoweredDevice(n.role) ? (POE_DRAW_W[n.role] ?? 0) : 0),
     0,
@@ -240,7 +272,47 @@ export function buildAccessLayer(
   // The management address is claimed too, for the same reason.
   claim(2);
 
-  return { poe: { switches: [sw] }, nodes };
+  /*
+   * Camera profiles. Mostly 1080p with one 720p door camera, so the estate
+   * starts comfortably inside its uplink and the player has to CHANGE
+   * something to break it. Seeding it already saturated would teach that the
+   * bandwidth meter is scenery rather than a consequence.
+   */
+  const cameraIds = Object.values(nodes)
+    .filter((n) => n.role === "ip-camera")
+    .map((n) => n.nodeId);
+  const cameras: Record<NodeId, CameraStreamConfig> = {};
+  cameraIds.forEach((id, i) => {
+    const profile: VideoProfileId = i === 0 ? "720p" : DEFAULT_PROFILE;
+    cameras[id] = { nodeId: id, profile, recording: true };
+  });
+
+  const traffic: TrafficState = {
+    nvr: {
+      nodeId: nvrHostname,
+      name: nvrHostname,
+      // Channels sized to the cameras present plus two. The channel limit is a
+      // real constraint, not a wall — it should bite on expansion, not today.
+      channels: cameraIds.length + 2,
+      storageTb: 8,
+      retentionDays: 30,
+    },
+    cameras,
+    /*
+     * A 100 Mbps uplink on a gigabit access switch. This is the single most
+     * common real-world cause of exactly this outage: the switch is fine, the
+     * cameras are fine, and the one cable joining them to everything else is
+     * a decade older than both. It is also the constraint the player can
+     * actually find, because the panel shows it next to the load.
+     */
+    uplinkMbps: { [sw.id]: 100 },
+    backboneMbps: 1000,
+    // Office traffic the site carries anyway, so video is not the only thing
+    // on the wire and the arithmetic is not artificially clean.
+    baselineMbps: Math.round(int(rng, 40, 90)),
+  };
+
+  return { poe: { switches: [sw] }, nodes, traffic };
 }
 
 /**

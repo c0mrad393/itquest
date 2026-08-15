@@ -14,6 +14,8 @@ import { gatewayTargets } from "@/lib/core";
 import { useHostStore } from "@/lib/host/store";
 import type { HealthStatus } from "@/lib/core";
 import { AppIcon, OS_ICON_ID } from "@/components/ui/app-icons";
+import { computeTraffic, effectiveLatency } from "@/lib/core";
+import { useTrafficOverrides } from "@/lib/host/devtools";
 
 const HEALTH: Record<HealthStatus, { label: string; dot: string; text: string }> = {
   healthy: { label: "Healthy", dot: "bg-emerald-400", text: "text-emerald-300" },
@@ -24,6 +26,9 @@ const HEALTH: Record<HealthStatus, { label: string; dot: string; text: string }>
 
 export default function RemoteGateway() {
   const infra = useInfraStore((s) => s.infra);
+  // Congestion is a property of the PATH, so it is read once for the whole
+  // list rather than per row — every entry here shares the same backbone.
+  const satLevel = computeTraffic(infra, useTrafficOverrides()).level;
   const windows = useHostStore((s) => s.windows);
   const openRemote = useHostStore((s) => s.openRemote);
   const focus = useHostStore((s) => s.focus);
@@ -94,7 +99,20 @@ export default function RemoteGateway() {
                 <span className="text-[11px] text-gray-500">
                   · {node.role.replace(/-/g, " ")}
                 </span>
-                <span className="ml-auto text-[11px] text-gray-500">{node.connection.latencyMs} ms</span>
+                {/* Inflated by congestion, so the operator sees the network is
+                    slow BEFORE they blame the machine they are about to open. */}
+                <span
+                  className={`ml-auto text-[11px] ${
+                    satLevel === "clear" || satLevel === "busy" ? "text-gray-500" : "text-warn-strong"
+                  }`}
+                  title={
+                    satLevel === "clear" || satLevel === "busy"
+                      ? undefined
+                      : `Base ${node.connection.latencyMs} ms, inflated by network congestion.`
+                  }
+                >
+                  {effectiveLatency(node.connection.latencyMs, satLevel)} ms
+                </span>
               </div>
 
               {session ? (

@@ -33,6 +33,8 @@ import { useMemo, useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
 import {
   POE_STANDARD,
+  SATURATION_META,
+  computeTraffic,
   detectConflicts,
   effectiveIp,
   isPoweredDevice,
@@ -46,12 +48,16 @@ import {
   type PoePort,
   type PoePriority,
   type PoeSwitch,
+  type SegmentLoad,
+  type TrafficReport,
 } from "@/lib/core";
+import { useTrafficOverrides } from "@/lib/host/devtools";
 import { AppHeader, CountPill } from "./AppChrome";
 import EmptyState from "@/components/ui/EmptyState";
 import { Term } from "@/components/ui/Tooltip";
 import Disclosure from "@/components/ui/Disclosure";
 import {
+  IconActivity,
   IconAlert,
   IconBolt,
   IconCheck,
@@ -63,6 +69,7 @@ const PRIORITIES: PoePriority[] = ["critical", "high", "low"];
 
 export default function SwitchPanel() {
   const infra = useInfraStore((s) => s.infra);
+  const overrides = useTrafficOverrides();
   const [switchId, setSwitchId] = useState<string | null>(null);
   const [selectedPort, setSelectedPort] = useState<number | null>(null);
 
@@ -79,6 +86,11 @@ export default function SwitchPanel() {
     () => detectConflicts({ nodes: infra.nodes, subnets: infra.subnets, ipam: infra.ipam }),
     [infra.nodes, infra.subnets, infra.ipam],
   );
+
+  // Video load on this switch's uplink (Builds 2-3). Same derivation the Dev
+  // bench and the Monitor read, so the three cannot disagree.
+  const traffic = useMemo(() => computeTraffic(infra, overrides), [infra, overrides]);
+  const uplink = traffic.uplinks.find((u) => u.id === sw?.id) ?? null;
 
   const openFaults = infra.ipam.faults.filter((f) => !f.clearedAt);
 
@@ -124,6 +136,11 @@ export default function SwitchPanel() {
             <IconAlert size={10} /> Over PoE budget
           </span>
         )}
+        {uplink && uplink.level !== "clear" && (
+          <span className={uplink.level === "busy" ? "chip-warn" : "chip-bad"}>
+            <IconActivity size={10} /> Uplink {SATURATION_META[uplink.level].label.toLowerCase()}
+          </span>
+        )}
         {onThisSwitch.length > 0 && (
           <span className="chip-bad">
             <IconAlert size={10} /> IP conflict detected
@@ -160,12 +177,15 @@ export default function SwitchPanel() {
           <Faceplate
             sw={sw}
             power={power}
+            traffic={traffic}
             selected={selectedPort}
             onSelect={setSelectedPort}
             conflicts={conflicts}
           />
 
           <BudgetMeter sw={sw} power={power} />
+
+          {uplink && <UplinkMeter seg={uplink} traffic={traffic} switchId={sw.id} />}
 
           {openFaults.length > 0 && <FaultLog faults={openFaults} />}
 
@@ -211,12 +231,14 @@ export default function SwitchPanel() {
 function Faceplate({
   sw,
   power,
+  traffic,
   selected,
   onSelect,
   conflicts,
 }: {
   sw: PoeSwitch;
   power: ReturnType<typeof switchPower>;
+  traffic: TrafficReport;
   selected: number | null;
   onSelect: (n: number) => void;
   conflicts: IpConflict[];
@@ -246,6 +268,7 @@ function Faceplate({
                 key={n}
                 port={port}
                 power={power}
+                traffic={traffic}
                 selected={selected === n}
                 conflicted={conflicts.some(
                   (c) => c.blocking && c.nodeId === port.attachedNodeId,
@@ -265,18 +288,21 @@ function Faceplate({
 function PortJack({
   port,
   power,
+  traffic,
   selected,
   conflicted,
   onSelect,
 }: {
   port: PoePort;
   power: ReturnType<typeof switchPower>;
+  traffic: TrafficReport;
   selected: boolean;
   conflicted: boolean;
   onSelect: () => void;
 }) {
   const pp = power.ports.find((p) => p.port === port.n);
   const occupied = !!port.attachedNodeId;
+  const mbps = traffic.cameras.find((c) => c.nodeId === port.attachedNodeId)?.mbps ?? 0;
 
   /*
    * State decides colour, in the order a fault should dominate a healthy
@@ -309,9 +335,14 @@ function PortJack({
           ? "over class"
           : !occupied
             ? "empty"
-            : (pp?.requestedW ?? 0) > 0
-              ? `${(pp?.grantedW ?? 0).toFixed(1)}W`
-              : "link";
+            : mbps > 0
+              // Bandwidth beats watts on the label for a streaming camera: an
+              // operator hunting a saturated uplink needs the Mbps, and the
+              // watts are one click away in the port editor.
+              ? `${mbps.toFixed(1)}Mb`
+              : (pp?.requestedW ?? 0) > 0
+                ? `${(pp?.grantedW ?? 0).toFixed(1)}W`
+                : "link";
 
   return (
     <button
@@ -401,6 +432,96 @@ function BudgetMeter({ sw, power }: { sw: PoeSwitch; power: ReturnType<typeof sw
           {Math.floor((power.budgetW - power.grantedW) / 12.5) === 1 ? "" : "s"}.
         </p>
       )}
+    </div>
+  );
+}
+
+// ── Uplink saturation ───────────────────────────────────────────────────────
+
+/**
+ * The uplink meter, sitting directly beneath the PoE budget meter.
+ *
+ * Two constraints, side by side, is the point of putting it here. A switch can
+ * be comfortably inside its POWER budget and hopelessly over its BANDWIDTH
+ * budget at the same time, and an operator who has only ever seen the watts
+ * will keep adding cameras that power up perfectly and record nothing. The two
+ * meters answer different questions and both have to be visible to be learned.
+ */
+function UplinkMeter({
+  seg,
+  traffic,
+  switchId,
+}: {
+  seg: SegmentLoad;
+  traffic: TrafficReport;
+  switchId: string;
+}) {
+  const setUplink = useInfraStore((s) => s.trafficSetUplink);
+  const streaming = traffic.cameras.filter((c) => c.switchId === switchId && c.streaming).length;
+  const tone =
+    seg.level === "saturated"
+      ? "bg-danger"
+      : seg.level === "congested"
+        ? "bg-warn"
+        : seg.level === "busy"
+          ? "bg-warn-strong"
+          : "bg-accent";
+
+  return (
+    <div className="mb-3 rounded-lg border border-edge bg-surface p-3">
+      <div className="mb-1.5 flex items-baseline gap-2">
+        <IconActivity size={12} className="text-info-strong" />
+        <span className="text-[11px] font-semibold text-gray-100">
+          <Term k="uplink">Uplink</Term> bandwidth
+        </span>
+        <span className="ml-auto font-mono text-[11px] text-gray-200">
+          {seg.offeredMbps} Mbps
+          <span className="text-gray-500"> / {seg.capacityMbps}</span>
+        </span>
+      </div>
+
+      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-500/20">
+        <div
+          className={`h-full rounded-full transition-all ${tone}`}
+          style={{ width: `${Math.min(100, seg.loadPct)}%` }}
+        />
+      </div>
+
+      {seg.level === "clear" || seg.level === "busy" ? (
+        <p className="mt-1.5 text-[11px] text-gray-500">
+          {streaming} camera{streaming === 1 ? "" : "s"} streaming ·{" "}
+          {Math.max(0, Math.round(seg.capacityMbps - seg.offeredMbps))} Mbps spare.
+        </p>
+      ) : (
+        <p className="mt-1.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-danger-strong">
+          <IconAlert size={11} className="mt-px shrink-0" />
+          <span>
+            {streaming} camera{streaming === 1 ? "" : "s"} are offering {seg.offeredMbps} Mbps into a{" "}
+            {seg.capacityMbps} Mbps uplink. Everything sharing this link — servers included — is
+            slowed by it. Lower a camera&apos;s resolution, stop recording one, move some to another
+            switch, or fit a faster uplink.
+          </span>
+        </p>
+      )}
+
+      {/* The real remedy, available in one click: most of these outages end
+          with somebody replacing a decade-old 100 Mbps run. */}
+      <div className="mt-1.5 flex items-center gap-1">
+        <span className="text-[10px] text-gray-500">Uplink speed</span>
+        {[100, 1000, 10000].map((mbps) => (
+          <button
+            key={mbps}
+            onClick={() => setUplink(switchId, mbps)}
+            className={`rounded border px-1.5 py-0.5 font-mono text-[10px] transition ${
+              seg.capacityMbps === mbps
+                ? "border-brand-fill bg-brand-soft/20 text-brand-text"
+                : "border-edge text-gray-400 hover:border-edge-strong hover:text-gray-200"
+            }`}
+          >
+            {mbps >= 1000 ? `${mbps / 1000}G` : `${mbps}M`}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

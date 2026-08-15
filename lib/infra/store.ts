@@ -34,6 +34,8 @@ import { DOMAIN_ROOT } from "@/lib/core";
 // Build 1: PoE switches and addressing.
 import type { IpamState, NetworkFault, PoePort, PoePriority } from "@/lib/core";
 import { detectConflicts, isValidIp, portOfNode, switchById } from "@/lib/core";
+import type { VideoProfileId } from "@/lib/core";
+import { DEFAULT_PROFILE } from "@/lib/core";
 import { nextFreeIp, nextRackName, provisionNode } from "@/lib/datacenter/seed";
 import type { ShippingMethod } from "@/lib/core";
 import type { AetherVNode, AuditEvent, ShieldRule, VNodeSize, VNodeStatus } from "@/lib/core";
@@ -163,6 +165,25 @@ interface InfraStore {
   ipamSetDhcp: (nodeId: NodeId) => void;
   /** Mark a logged fault as cleared. The entry stays as history. */
   ipamClearFault: (id: string) => void;
+
+  // ── Video traffic (Build 2) ──────────────────────────────────────────────
+  /** Change a camera's video profile. Bitrate DERIVES from this. */
+  trafficSetProfile: (nodeId: NodeId, profile: VideoProfileId) => void;
+  /** Stop or start recording a camera to the NVR. */
+  trafficSetRecording: (nodeId: NodeId, recording: boolean) => void;
+  /** Re-size a switch's uplink — the usual real remedy for a saturated link. */
+  trafficSetUplink: (switchId: string, mbps: number) => void;
+
+  // ── Dev bench (Build 3) ──────────────────────────────────────────────────
+  //
+  // These build REAL nodes through the REAL attach path, so a spawned device
+  // is indistinguishable from a seeded one. A bench with its own construction
+  // code could create devices the game cannot, and the bug that hid would be
+  // precisely the one worth finding.
+  /** Create a camera and patch it in. Null port takes the next free one. */
+  devSpawnCamera: (switchId: string, port: number | null, profile: VideoProfileId) => string | null;
+  /** Create a recorder and make it the estate's NVR. */
+  devSpawnNvr: () => string | null;
 
   /**
    * Group membership (v0.5.0). Addressed by DOMAIN rather than by node — the
@@ -2529,8 +2550,184 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       },
     })),
 
+
+  // ── Video traffic (Build 2) ──────────────────────────────────────────────
+
+  trafficSetProfile: (nodeId, profile) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        traffic: {
+          ...s.infra.traffic,
+          cameras: {
+            ...s.infra.traffic.cameras,
+            [nodeId]: {
+              nodeId,
+              recording: s.infra.traffic.cameras[nodeId]?.recording ?? true,
+              profile,
+            },
+          },
+        },
+      },
+    })),
+
+  trafficSetRecording: (nodeId, recording) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        traffic: {
+          ...s.infra.traffic,
+          cameras: {
+            ...s.infra.traffic.cameras,
+            [nodeId]: {
+              nodeId,
+              profile: s.infra.traffic.cameras[nodeId]?.profile ?? DEFAULT_PROFILE,
+              recording,
+            },
+          },
+        },
+      },
+    })),
+
+  trafficSetUplink: (switchId, mbps) =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        traffic: {
+          ...s.infra.traffic,
+          uplinkMbps: { ...s.infra.traffic.uplinkMbps, [switchId]: Math.max(10, mbps) },
+        },
+      },
+    })),
+
+  // ── Dev bench (Build 3) ──────────────────────────────────────────────────
+
+  devSpawnCamera: (switchId, port, profile) => {
+    const infra = get().infra;
+    const sw = infra.poe.switches.find((x) => x.id === switchId);
+    if (!sw) return "No such switch.";
+    const target = port ?? sw.ports.find((p) => !p.attachedNodeId)?.n;
+    if (target == null) return `${sw.name} has no free port.`;
+
+    // Address from the same subnet the switch manages, skipping what is taken —
+    // spawning a camera straight into an IP conflict would make the bench a
+    // source of noise rather than a way to isolate one variable.
+    const existing = new Set(Object.values(infra.nodes).map((n) => n.connection.ip));
+    const base = infra.nodes[sw.ports.find((p) => p.attachedNodeId)?.attachedNodeId ?? ""]?.connection.ip
+      ?? infra.subnets[0].cidr.replace(/\.0\/24$/, ".2");
+    const stem = base.replace(/\.\d+$/, "");
+    let host = 30;
+    while (existing.has(`${stem}.${host}`) && host < 250) host += 1;
+    const ip = `${stem}.${host}`;
+
+    let n = 1;
+    while (infra.nodes[`CAM-9${String(n).padStart(2, "0")}`]) n += 1;
+    const hostname = `CAM-9${String(n).padStart(2, "0")}`;
+
+    set((st) => ({
+      infra: {
+        ...st.infra,
+        nodes: {
+          ...st.infra.nodes,
+          [hostname]: devEdgeNode(hostname, "Bench camera", "ip-camera", ip),
+        },
+        traffic: {
+          ...st.infra.traffic,
+          cameras: {
+            ...st.infra.traffic.cameras,
+            [hostname]: { nodeId: hostname, profile, recording: true },
+          },
+        },
+        ipam: {
+          ...st.infra.ipam,
+          leases: { ...st.infra.ipam.leases, [hostname]: { nodeId: hostname, mode: "dhcp" } },
+        },
+      },
+    }));
+    // The REAL attach path, with all its refusals intact.
+    return get().poeAttach(switchId, target, hostname);
+  },
+
+  devSpawnNvr: () => {
+    const infra = get().infra;
+    let n = 1;
+    while (infra.nodes[`NVR-9${String(n).padStart(2, "0")}`]) n += 1;
+    const hostname = `NVR-9${String(n).padStart(2, "0")}`;
+    const existing = new Set(Object.values(infra.nodes).map((x) => x.connection.ip));
+    const stem = (infra.subnets[0]?.cidr ?? "10.0.0.0/24").replace(/\.0\/24$/, "");
+    let host = 60;
+    while (existing.has(`${stem}.${host}`) && host < 250) host += 1;
+
+    set((st) => ({
+      infra: {
+        ...st.infra,
+        nodes: {
+          ...st.infra.nodes,
+          [hostname]: devEdgeNode(hostname, "Bench recorder", "nvr", `${stem}.${host}`),
+        },
+        traffic: {
+          ...st.infra.traffic,
+          nvr: { nodeId: hostname, name: hostname, channels: 64, storageTb: 32, retentionDays: 30 },
+        },
+        ipam: {
+          ...st.infra.ipam,
+          leases: { ...st.infra.ipam.leases, [hostname]: { nodeId: hostname, mode: "dhcp" } },
+        },
+      },
+    }));
+    return null;
+  },
+
   reset: () => set({ infra: generateWorld(freshSeed(), 1) }),
 }));
+
+/** A minimal edge node for the bench — the same shape the seeder produces. */
+function devEdgeNode(
+  hostname: string,
+  displayName: string,
+  role: "ip-camera" | "nvr",
+  ip: string,
+): TargetNode {
+  const gw = ip.replace(/\.\d+$/, ".1");
+  return {
+    nodeId: hostname,
+    hostname,
+    displayName,
+    role,
+    connection: {
+      protocol: "ssh",
+      ip,
+      port: 22,
+      reachable: true,
+      online: true,
+      requiresCredentials: true,
+      authenticated: false,
+      latencyMs: 2.4,
+    },
+    network: {
+      interfaces: [{ name: "eth0", up: true, ipv4: ip, netmask: "255.255.255.0", mac: "02:1c:00:00:00:00", carrier: true }],
+      routes: [{ destination: "default", gateway: gw, iface: "eth0", metric: 100 }],
+      dnsServers: [gw],
+      hostsTable: { [hostname]: ip },
+      firewall: [],
+      reachableHosts: {},
+    },
+    health: { status: "healthy", cpuLoad: 6, memUsedPct: 30, diskUsedPct: 12, uptimeSeconds: 3600 },
+    workloads: [],
+    tags: [role],
+    os: "linux",
+    distro: role === "ip-camera" ? "BusyBox 1.35 (camera firmware)" : "Linux (appliance)",
+    kernel: "5.15.0-embedded",
+    filesystem: { kind: "dir", children: {} },
+    users: [],
+    services: {},
+    processes: [],
+    logs: {},
+    packages: [],
+    session: { cwd: "/", user: "root", history: [], env: {} },
+  } as unknown as TargetNode;
+}
+
 
 // ── Build 1 helpers ─────────────────────────────────────────────────────────
 

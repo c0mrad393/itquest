@@ -1094,6 +1094,7 @@ export function generateWorld(seed: number, phase: GrowthPhase = 1): Infrastruct
     policy: seedPolicies(),
     poe: access.poe,
     ipam: buildIpam(subnets, nodes),
+    traffic: access.traffic,
     loadedAt: now,
   };
 }

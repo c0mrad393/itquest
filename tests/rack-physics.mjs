@@ -63,6 +63,15 @@ import {
   suggestStatic,
 } from "../.test-build/core/ipam.js";
 import {
+  SATURATION_PENALTY,
+  VIDEO_PROFILES,
+  computeTraffic,
+  effectiveLatency,
+  effectiveLossPct,
+  estateHealth,
+  levelFor,
+} from "../.test-build/core/traffic.js";
+import {
   GROWTH_PHASES,
   addressDemand,
   initialGrowth,
@@ -1044,6 +1053,164 @@ group("Client endpoints skip the rack chain");
   eq("...below the DHCP pool", ipToInt(s) < ipToInt("10.20.1.100"), true);
   eq("...not the gateway", s === "10.20.1.1", false);
   eq("...and not already taken", s !== "10.20.1.20" && s !== "10.20.1.21", true);
+}
+
+// ── Builds 2-3: video traffic and bandwidth saturation ──────────────────────
+{
+  group("Builds 2-3 — stream gating");
+
+  const cam = (id, ip) => ({
+    nodeId: id, hostname: id, displayName: id, role: "ip-camera",
+    connection: { ip, port: 22, protocol: "ssh", reachable: true, online: true, requiresCredentials: true, authenticated: false, latencyMs: 2 },
+    health: { status: "healthy", cpuLoad: 5, memUsedPct: 20, diskUsedPct: 10, uptimeSeconds: 100 },
+  });
+  const nvrNode = {
+    nodeId: "NVR-1", hostname: "NVR-1", displayName: "NVR", role: "nvr",
+    connection: { ip: "10.1.1.60", port: 22, protocol: "ssh", reachable: true, online: true, requiresCredentials: true, authenticated: false, latencyMs: 2 },
+    health: { status: "healthy", cpuLoad: 5, memUsedPct: 20, diskUsedPct: 10, uptimeSeconds: 100 },
+  };
+
+  const port = (n, nodeId) => ({ n, enabled: true, poeEnabled: true, priority: "high", attachedNodeId: nodeId });
+
+  // structuredClone, because these fixtures get MUTATED in place by the tests
+  // below. Sharing the nvrNode reference had an earlier case's
+  // `online = false` leak into two later ones and fail them for the wrong
+  // reason — a shared mutable fixture is a bug generator, not a shortcut.
+  function world(over = {}) {
+    const nodes = structuredClone({
+      "CAM-1": cam("CAM-1", "10.1.1.21"),
+      "CAM-2": cam("CAM-2", "10.1.1.22"),
+      "CAM-3": cam("CAM-3", "10.1.1.23"),
+      "NVR-1": nvrNode,
+    });
+    return {
+      nodes,
+      subnets: [{ cidr: "10.1.1.0/24", label: "Core VLAN" }],
+      security: { isolatedNodeIds: [] },
+      ipam: { leases: {}, pools: [{ cidr: "10.1.1.0/24", start: 100, end: 199 }], faults: [] },
+      poe: {
+        switches: [{
+          id: "sw1", name: "SW1", mgmtIp: "10.1.1.2", standard: "at", budgetW: 200,
+          ports: [port(1, "CAM-1"), port(2, "CAM-2"), port(3, "CAM-3"), port(4, "NVR-1")],
+        }],
+      },
+      traffic: {
+        nvr: { nodeId: "NVR-1", name: "NVR-1", channels: 8, storageTb: 8, retentionDays: 30 },
+        cameras: {
+          "CAM-1": { nodeId: "CAM-1", profile: "1080p", recording: true },
+          "CAM-2": { nodeId: "CAM-2", profile: "1080p", recording: true },
+          "CAM-3": { nodeId: "CAM-3", profile: "1080p", recording: true },
+        },
+        uplinkMbps: { sw1: 100 },
+        backboneMbps: 1000,
+        baselineMbps: 0,
+      },
+      ...over,
+    };
+  }
+
+  const base = computeTraffic(world());
+  eq("three 1080p cameras offer 12 Mbps", base.videoMbps, 12);
+  eq("...all streaming", base.cameras.filter((c) => c.streaming).length, 3);
+  eq("...uplink is clear at 12 of 100", base.uplinks[0].level, "clear");
+
+  // GATE 1: POWER. A shed or disabled port sends nothing — which is why
+  // shedding doubles as a way to relieve congestion.
+  const w1 = world();
+  w1.poe.switches[0].ports[0].enabled = false;
+  const off = computeTraffic(w1);
+  eq("a disabled port stops its camera streaming", off.videoMbps, 8);
+  eq("...and the camera says why", /administratively down/.test(off.cameras.find((c) => c.nodeId === "CAM-1").blockedBy), true);
+
+  // GATE 2: ADDRESS. A camera in a blocking conflict contributes no load.
+  const w2 = world();
+  w2.ipam.leases = { "CAM-2": { nodeId: "CAM-2", mode: "static", staticIp: "10.1.1.21" } };
+  const dup = computeTraffic(w2);
+  eq("an address conflict stops both cameras streaming", dup.videoMbps, 4);
+
+  // GATE 3: THE RECORDER. No NVR, no streams — a stream with nothing to record
+  // to is not a stream.
+  const w3 = world();
+  w3.nodes["NVR-1"].connection.online = false;
+  const noNvr = computeTraffic(w3);
+  eq("a downed recorder stops every stream", noNvr.videoMbps, 0);
+  eq("...and every camera names the recorder", noNvr.cameras.every((c) => /NVR-1/.test(c.blockedBy)), true);
+
+  // Recording switched off is a per-camera choice, not an outage.
+  const w4 = world();
+  w4.traffic.cameras["CAM-3"].recording = false;
+  eq("a camera not recording sends nothing", computeTraffic(w4).videoMbps, 8);
+
+  // CHANNEL LIMIT — stable, so the same camera is refused until something changes.
+  const w5 = world();
+  w5.traffic.nvr.channels = 2;
+  const limited = computeTraffic(w5);
+  eq("the channel limit refuses the surplus stream", limited.videoMbps, 8);
+  eq("...and reports how many were refused", limited.overChannels, 1);
+  eq("...deterministically", computeTraffic(w5).cameras.find((c) => !c.streaming).nodeId, limited.cameras.find((c) => !c.streaming).nodeId);
+}
+
+{
+  group("Builds 2-3 — saturation thresholds");
+
+  eq("under 70% is clear", levelFor(69), "clear");
+  eq("70% is busy", levelFor(70), "busy");
+  eq("90% is congested", levelFor(90), "congested");
+  eq("100% is saturated", levelFor(100), "saturated");
+  eq("over capacity stays saturated", levelFor(180), "saturated");
+  // Below capacity the switch is coping; calling that saturated would teach a
+  // player to panic at a number that is fine.
+  eq("99% is NOT saturated", levelFor(99), "congested");
+
+  group("Builds 2-3 — saturation impact");
+
+  // Latency is a MULTIPLIER, so the same congestion hurts a WAN hop far more
+  // than a LAN hop — which is why the WAN link is the one people notice.
+  eq("a clear link does not inflate latency", effectiveLatency(2, "clear"), 2);
+  eq("a saturated LAN hop goes 2ms -> 18ms", effectiveLatency(2, "saturated"), 18);
+  eq("a saturated WAN hop goes 40ms -> 360ms", effectiveLatency(40, "saturated"), 360);
+  eq("congested is gentler than saturated", effectiveLatency(10, "congested") < effectiveLatency(10, "saturated"), true);
+
+  // Loss is additive and starts at zero until the link is genuinely over.
+  eq("busy adds no loss", effectiveLossPct(0, "busy"), 0);
+  eq("saturated adds loss", effectiveLossPct(0, "saturated") > 0, true);
+  eq("loss cannot exceed 100", effectiveLossPct(99, "saturated"), 100);
+
+  // The veil only engages where the penalty says there is a frame delay.
+  eq("no frame delay below congested", SATURATION_PENALTY.busy.frameDelayMs, 0);
+  eq("congested stalls frames", SATURATION_PENALTY.congested.frameDelayMs > 0, true);
+}
+
+{
+  group("Builds 2-3 — the worst segment wins");
+
+  const nodes = {};
+  const infra = {
+    nodes,
+    subnets: [{ cidr: "10.1.1.0/24", label: "Core" }],
+    security: { isolatedNodeIds: [] },
+    ipam: { leases: {}, pools: [], faults: [] },
+    poe: { switches: [] },
+    traffic: { nvr: null, cameras: {}, uplinkMbps: {}, backboneMbps: 1000, baselineMbps: 950 },
+  };
+  const r = computeTraffic(infra);
+  // An idle backbone must not mask a drowning uplink, and vice versa: the
+  // estate feels the WORST hop on the path, not the average.
+  eq("a 95% backbone reads congested", r.backbone.level, "congested");
+  eq("...and sets the estate level", r.level, "congested");
+
+  // Health takes points OFF rather than setting the score, so congestion and a
+  // dead server compound instead of one hiding the other.
+  const h = estateHealth(infra, r);
+  eq("congestion costs health", h.score < 100, true);
+  eq("...and says why", /Network congested/.test(h.notes[0]), true);
+
+  group("Builds 2-3 — dev overrides");
+
+  const forced = computeTraffic(infra, { forceState: "saturated" });
+  eq("a pinned state overrides the maths", forced.level, "saturated");
+  eq("...and is flagged as forced, never passed off as a measurement", forced.forced, true);
+  eq("an unforced report is not flagged", r.forced, false);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

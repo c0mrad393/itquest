@@ -44,7 +44,9 @@ export type NodeRole =
    */
   | "ip-camera"
   | "access-point"
-  | "voip-phone";
+  | "voip-phone"
+  /** Network Video Recorder — the thing every camera streams to (Build 2). */
+  | "nvr";
 
 /** Remote-access protocol the host uses to reach this node. */
 export type ConnectionProtocol = "ssh" | "rdp" | "vnc" | "winrm";

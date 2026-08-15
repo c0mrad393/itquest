@@ -19,6 +19,9 @@ import type { RemoteSessionWindow } from "@/lib/host/windows";
 import NodeEnvironment from "./NodeEnvironment";
 import { AppIcon } from "@/components/ui/app-icons";
 import { RemoteConnectionBanner, RemoteSurface } from "./RemoteChrome";
+import CongestionVeil from "./CongestionVeil";
+import { computeTraffic, effectiveLatency } from "@/lib/core";
+import { useTrafficOverrides } from "@/lib/host/devtools";
 
 type Phase = "connecting" | "authenticating" | "negotiating" | "connected" | "error";
 
@@ -53,6 +56,14 @@ export default function RemoteSession({ win }: { win: RemoteSessionWindow }) {
   const close = useHostStore((s) => s.close);
 
   const reach = reachNode(infra, node);
+
+  /*
+   * The path this session runs over. Derived, never stored: when the operator
+   * fixes the congestion in another window, this session recovers on the next
+   * render because it is reading the same numbers the switch panel is.
+   */
+  const overrides = useTrafficOverrides();
+  const traffic = computeTraffic(infra, overrides);
   const [phase, setPhase] = useState<Phase>("connecting");
   const [logIndex, setLogIndex] = useState(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -125,18 +136,20 @@ export default function RemoteSession({ win }: { win: RemoteSessionWindow }) {
         ip={node.connection.ip}
         port={node.connection.port}
         protocol={win.protocol}
-        latencyMs={node.connection.latencyMs}
+        latencyMs={effectiveLatency(node.connection.latencyMs, traffic.level)}
         status={phase}
         kind={node.role === "workstation" ? "endpoint" : "server"}
         onDisconnect={() => close(win.instanceId)}
       />
 
       <RemoteSurface>
-        {phase === "connected" ? (
-          <NodeEnvironment node={node} />
-        ) : (
-          <Handshake lines={lines.slice(0, logIndex)} />
-        )}
+        <CongestionVeil level={traffic.level} hostname={node.hostname}>
+          {phase === "connected" ? (
+            <NodeEnvironment node={node} />
+          ) : (
+            <Handshake lines={lines.slice(0, logIndex)} />
+          )}
+        </CongestionVeil>
       </RemoteSurface>
     </div>
   );

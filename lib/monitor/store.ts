@@ -24,6 +24,8 @@
 
 import { create } from "zustand";
 import { attachedNodeIds, poeLiveness } from "@/lib/core";
+import { SATURATION_META, computeTraffic, effectiveLatency, isCamera } from "@/lib/core";
+import { trafficOverrides } from "@/lib/host/devtools";
 import type { InfrastructureState, NodeId, TargetNode } from "@/lib/core";
 
 /** How many samples to retain per node (~2 minutes at the 2s tick). */
@@ -101,6 +103,25 @@ export function anomalyOf(infra: InfrastructureState, node: TargetNode): string 
   const dark = nodeDark(infra, node);
   if (dark.dark) return dark.why;
   if (infra.security.isolatedNodeIds.includes(node.nodeId)) return "Isolated (containment)";
+
+  /*
+   * CONGESTION IS A PROPERTY OF THE PATH, NOT THE HOST (Build 3).
+   *
+   * It ranks just below "unreachable" and above every local symptom, because
+   * a saturated link makes healthy servers LOOK ill — high latency, dropped
+   * sessions, timeouts — and an operator who reads those symptoms as a server
+   * fault will spend an hour on the wrong machine. Naming the network first is
+   * the single most useful thing this dashboard can do during an outage.
+   */
+  const traffic = computeTraffic(infra, trafficOverrides());
+  if (traffic.level === "saturated" || traffic.level === "congested") {
+    const seg = [traffic.backbone, ...traffic.uplinks]
+      .filter((x) => x.level === traffic.level)
+      .map((x) => x.label)[0];
+    return `Network ${SATURATION_META[traffic.level].label.toLowerCase()} — ${seg ?? "path"} at ${Math.round(
+      (seg === traffic.backbone.label ? traffic.backbone : traffic.uplinks.find((u) => u.label === seg) ?? traffic.backbone).loadPct,
+    )}% of capacity`;
+  }
   if (node.health.diskUsedPct >= 95) return `Disk ${Math.round(node.health.diskUsedPct)}% — saturated`;
 
   const hot = hottestProcess(node);

@@ -8,6 +8,7 @@
  */
 
 import type { LinuxNodeState } from "./linux";
+import type { TrafficState } from "./traffic";
 import type { PoeState } from "./poe";
 import type { IpamState } from "./ipam";
 import type { WindowsNodeState } from "./windows";
@@ -153,6 +154,11 @@ export interface InfrastructureState {
    * stale against the nodes they describe.
    */
   ipam: IpamState;
+  /**
+   * Video traffic and the recorder (Builds 2-3). Stores base bitrates, the NVR
+   * and link capacities; every load figure and the saturation state derive.
+   */
+  traffic: TrafficState;
 
   loadedAt: number;
 }
