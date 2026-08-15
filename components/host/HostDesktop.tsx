@@ -59,7 +59,7 @@ export default function HostDesktop() {
   }, [ready, profile]);
 
   /**
-   * Open the Ticket Center, and nothing else.
+   * Open the Dashboard, and nothing else.
    *
    * An empty desktop with one window on it says "this is the thing to do"
    * far more clearly than any amount of onboarding copy. Guarded on there
@@ -68,7 +68,7 @@ export default function HostDesktop() {
    */
   const openApp = useHostStore((s) => s.openApp);
   useEffect(() => {
-    if (useHostStore.getState().windows.length === 0) openApp("itsm");
+    if (useHostStore.getState().windows.length === 0) openApp("dashboard");
     // Once, on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

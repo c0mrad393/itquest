@@ -17,6 +17,7 @@
 import { isAppUnlocked } from "@/lib/progression/unlocks";
 
 export type HostAppId =
+  | "dashboard" // Operations home — KPIs, quick access, activity
   | "itsm" // Ticket dashboard
   | "mail" // Persona conversation client (ticket dialogue threads)
   | "coremail" // Outlook-style corporate mailbox (internal + external mail)
@@ -184,6 +185,19 @@ export type HostAppRegistry = Record<HostAppId, HostAppDescriptor>;
  * `id` → component in a separate component registry so this stays serializable.
  */
 export const HOST_APP_REGISTRY: HostAppRegistry = {
+  dashboard: {
+    id: "dashboard",
+    title: "Dashboard",
+    iconId: "chart-bar",
+    category: "work",
+    group: "support",
+    description: "Estate health, the queue at a glance, and everything else one click away.",
+    defaultSize: { w: 1100, h: 720 },
+    minSize: { w: 720, h: 520 },
+    singleton: true,
+    pinnedToTaskbar: true,
+    showOnDesktop: false,
+  },
   itsm: {
     id: "itsm",
     title: "Ticket Center",

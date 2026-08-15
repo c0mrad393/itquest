@@ -27,6 +27,7 @@ import AetherConsole from "./apps/AetherConsole";
 import Procurement from "./apps/Procurement";
 import SwitchPanel from "./apps/SwitchPanel";
 import BackupCenter from "./apps/BackupCenter";
+import Dashboard from "./apps/Dashboard";
 
 export function renderHostApp(appId: HostAppId): React.ReactNode {
   switch (appId) {
@@ -46,6 +47,8 @@ export function renderHostApp(appId: HostAppId): React.ReactNode {
       return <Mail />;
     case "coremail":
       return <CoreMail />;
+    case "dashboard":
+      return <Dashboard />;
     case "backup":
       return <BackupCenter />;
     case "switches":
