@@ -29,6 +29,7 @@ import type {
 import { isPowered, uplinkOf, hybridRoute, exposedAdminRules } from "@/lib/core";
 import { findFaultWeb, findFirstWorkstation, findPrimaryDC } from "@/lib/org/generator";
 import { int, pick, type Rng } from "@/lib/org/rng";
+import { isIsolated } from "@/lib/core";
 
 export interface EmailBeat {
   from: string;
@@ -1445,6 +1446,150 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
       { from: "SOC On-Call", fromEmail: `soc-noreply@${mailDomain(org)}`, subject: `Re: [HIGH] contain ${ctx.targetHostname} NOW`, body: `Encryption is spreading via the share. Isolate ${ctx.targetHostname} from the topology before it hits more hosts. P1.`, ageMin: 3 },
     ],
     win: (infra, ctx) => infra.security.isolatedNodeIds.includes(ctx.targetNodeId as NodeId),
+  },
+
+  /*
+   * THE FULL DISASTER-RECOVERY INCIDENT (DR build).
+   *
+   * Distinct from `sec-t2-ransomware`, which is a containment drill and stays
+   * as it is: that one is won by isolating the host, and it is the right size
+   * for a Tier 2 operator. This is the Tier 4 version, where containment is
+   * only the FIRST of three steps and the other two expose whether the player
+   * ever bought backup storage.
+   *
+   * The win-condition grades the whole sequence rather than any single action,
+   * because the sequence is the skill. A player who isolates, wipes and
+   * restores has done disaster recovery; a player who restores onto a live
+   * infected host has done something that looks similar and works out very
+   * differently.
+   */
+  "sec-t4-ransomware-dr": {
+    id: "sec-t4-ransomware-dr",
+    category: "Security & Incident",
+    difficulty: "Tier_4_Expert",
+    track: "secops",
+    severity: "critical",
+    priority: "P1",
+    slaDuration: 25 * 60,
+    responseSeconds: 2 * 60,
+    xpReward: 1400,
+    personaId: "persona-soc-panicked",
+    tags: ["ransomware", "backup", "recovery", "containment", "disaster-recovery"],
+    origin: "dashboard",
+    summary: "Network-wide encryption event. Isolate, wipe, then restore from backup.",
+    hints: [
+      "Isolate patient zero first — disable its switch port, or contain it from NetOps",
+      "Wipe every compromised host before restoring, or the clean copy is re-encrypted",
+      "Restore from Backup & Recovery — which only works if a schedule was running",
+    ],
+    playable: true,
+    makeContext: (infra, rng) => {
+      // Patient zero is a Mac endpoint by design — the brief calls for one, and
+      // it also quietly corrects the assumption that these events only ever
+      // start on Windows.
+      const macs = Object.values(infra.nodes).filter((n) => n.os === "macos" && n.role === "workstation");
+      const zero = macs.length ? pick(rng, macs) : findFirstWorkstation(infra);
+      if (!zero) return null;
+
+      const fileServer = Object.values(infra.nodes).find((n) => n.role === "file-server");
+      const shares = fileServer?.shares ?? [];
+      if (!fileServer || shares.length === 0) return null;
+
+      const user = randomUser(infra, rng);
+      return {
+        targetNodeId: zero.nodeId,
+        targetHostname: zero.hostname,
+        targetUserId: user?.samAccountName,
+        targetUserName: user?.displayName ?? "a member of staff",
+        serverHostname: fileServer.hostname,
+        serverNodeId: fileServer.nodeId,
+        shareId: shares[0].id,
+        shareName: shares[0].name,
+        senderDomain: pick(rng, ["invoice-docs.co", "secure-dropbox-share.net", "dhl-tracking-notice.com"]),
+      };
+    },
+    title: (ctx) => `Ransomware — files encrypted across ${ctx.shareName} (from ${ctx.targetHostname})`,
+    description: (ctx) =>
+      `${ctx.targetUserName} opened an attachment from ${ctx.senderDomain} on ${ctx.targetHostname}. ` +
+      `Within minutes every file on \\\\${ctx.serverHostname}\\${ctx.shareName} was renamed with a .locked extension and the share stopped serving. ` +
+      `The host is still on the network and still encrypting.\n\n` +
+      `Work the sequence in order:\n` +
+      `1. Isolate ${ctx.targetHostname} — disable its switch port, or contain it from the NetOps console.\n` +
+      `2. Wipe and rebuild every compromised host from the server console.\n` +
+      `3. Restore ${ctx.serverHostname} from backup.\n\n` +
+      `Anything wiped before the host is isolated gets re-encrypted, and a restore onto an infected host puts the clean copy straight back under the same key.`,
+    requester: (_ctx, org) => ({
+      name: "SOC On-Call",
+      role: "Detection & Response",
+      email: `soc-noreply@${mailDomain(org)}`,
+      department: "Security",
+    }),
+    injectFault: (infra, ctx) => {
+      /*
+       * The fault IS the incident. Written straight onto the draft rather than
+       * through the store, because generation happens before the store exists
+       * — and because everything downstream (compromised state, encrypted
+       * shares, the recovery stage) DERIVES from exactly these four fields.
+       */
+      const now = Date.now();
+      const zero = ctx.targetNodeId as NodeId;
+      const server = ctx.serverNodeId as NodeId;
+
+      /*
+       * PATCH PATIENT ZERO INTO A SWITCH PORT if it is not already on one.
+       *
+       * The recovery sequence asks the operator to isolate it by disabling its
+       * port, and a staff machine that exists on no switch cannot be isolated
+       * that way — the instruction would name a control that does not exist
+       * for this host. Staff endpoints genuinely do plug into access switches,
+       * so putting it on a free port is both realistic and what makes step one
+       * performable. Containment from NetOps still works either way.
+       */
+      const alreadyPatched = (infra.poe?.switches ?? []).some((sw) =>
+        sw.ports.some((p) => p.attachedNodeId === zero),
+      );
+      if (!alreadyPatched) {
+        for (const sw of infra.poe?.switches ?? []) {
+          const free = sw.ports.find((p) => !p.attachedNodeId);
+          if (free) {
+            free.attachedNodeId = zero;
+            free.label = `${ctx.targetHostname} (staff)`;
+            break;
+          }
+        }
+      }
+
+      infra.incident = {
+        startedAt: now,
+        patientZero: zero,
+        compromised: [
+          { nodeId: zero, at: now, vector: "phishing" },
+          { nodeId: server, at: now, vector: "lateral" },
+        ],
+        encryptedShareIds: ctx.shareId ? [ctx.shareId] : [],
+        containedAt: null,
+        resolvedAt: null,
+      };
+    },
+    win: (infra, ctx) => {
+      // Graded on the WORLD, not on a checklist the ticket kept for itself:
+      // every compromised host wiped and restored, and nothing lost. Re-enable
+      // the port halfway through and this correctly stops being satisfied.
+      const inc = infra.incident;
+      if (!inc?.startedAt) return false;
+      if ((infra.backup?.dataLost.length ?? 0) > 0) return false;
+      // Patient zero needs isolating, not wiping — it is a staff endpoint that
+      // goes to the bench. See recoveryStatus for why. Grading it the other way
+      // would make this ticket unresolvable.
+      if (inc.patientZero && !isIsolated(infra, inc.patientZero)) return false;
+      const done = inc.compromised
+        .filter((c) => c.nodeId !== inc.patientZero)
+        .every((c) => !!c.wipedAt && !!c.restoredAt);
+      const server = ctx.serverNodeId as NodeId | undefined;
+      const sharesBack = !server || inc.encryptedShareIds.length === 0;
+      return done && sharesBack;
+    },
+    healthyNode: (_infra, ctx) => ctx.serverNodeId as NodeId | undefined,
   },
 
   "sec-t3-apt": {

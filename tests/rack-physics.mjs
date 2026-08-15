@@ -72,6 +72,22 @@ import {
   levelFor,
 } from "../.test-build/core/traffic.js";
 import {
+  STORAGE_TIERS,
+  backupsCompromised,
+  capacityOf,
+  defaultSizeGb,
+  isProtectable,
+  restoreAvailability,
+  safetyOf,
+  tierById,
+} from "../.test-build/core/backup.js";
+import {
+  incidentHealthPenalty,
+  isIsolated,
+  isolationMethod,
+  recoveryStatus,
+} from "../.test-build/core/incident.js";
+import {
   GROWTH_PHASES,
   addressDemand,
   initialGrowth,
@@ -1211,6 +1227,239 @@ group("Client endpoints skip the rack chain");
   eq("a pinned state overrides the maths", forced.level, "saturated");
   eq("...and is flagged as forced, never passed off as a measurement", forced.forced, true);
   eq("an unforced report is not flagged", r.forced, false);
+}
+
+// ── DR build: backups, compromise and the recovery sequence ─────────────────
+{
+  group("DR — storage capacity");
+
+  const srv = (id, role) => ({
+    nodeId: id, hostname: id, displayName: id, role,
+    connection: { ip: "10.1.1.30", port: 22, protocol: "ssh", reachable: true, online: true, requiresCredentials: true, authenticated: false, latencyMs: 2 },
+    health: { status: "healthy", cpuLoad: 5, memUsedPct: 20, diskUsedPct: 10, uptimeSeconds: 100 },
+  });
+
+  function world(over = {}) {
+    const nodes = structuredClone({
+      "DC-1": srv("DC-1", "domain-controller"),
+      "FS-1": srv("FS-1", "file-server"),
+      "SQL-1": srv("SQL-1", "database"),
+      "WS-1": srv("WS-1", "workstation"),
+    });
+    return {
+      nodes,
+      subnets: [{ cidr: "10.1.1.0/24", label: "Core" }],
+      security: { isolatedNodeIds: [] },
+      ipam: { leases: {}, pools: [], faults: [] },
+      poe: { switches: [] },
+      traffic: { nvr: null, cameras: {}, uplinkMbps: {}, backboneMbps: 1000, baselineMbps: 0 },
+      backup: { tier: "none", policies: {}, dataLost: [], log: [] },
+      incident: { startedAt: null, patientZero: null, compromised: [], encryptedShareIds: [], containedAt: null, resolvedAt: null },
+      ...over,
+    };
+  }
+
+  // Only things worth protecting are offered. A workstation is rebuildable
+  // from an image and does not belong on a backup bill.
+  eq("a domain controller is protectable", isProtectable(srv("x", "domain-controller")), true);
+  eq("a database is protectable", isProtectable(srv("x", "database")), true);
+  eq("a workstation is NOT", isProtectable(srv("x", "workstation")), false);
+  eq("nor is a camera", isProtectable(srv("x", "ip-camera")), false);
+
+  const w = world();
+  w.backup.policies = {
+    "DC-1": { nodeId: "DC-1", schedule: "daily", lastSuccessAt: null, sizeGb: 120 },
+    "FS-1": { nodeId: "FS-1", schedule: "daily", lastSuccessAt: null, sizeGb: 1400 },
+    "SQL-1": { nodeId: "SQL-1", schedule: "off", lastSuccessAt: null, sizeGb: 900 },
+  };
+  w.backup.tier = "nas-2tb";
+
+  const cap = capacityOf(w);
+  eq("only SCHEDULED nodes consume capacity", cap.usedGb, 1520);
+  eq("...against the tier's size", cap.capacityGb, 2048);
+  eq("...and it fits", cap.overCapacity, false);
+
+  // Switching the third node on tips it over — and the tier does NOT refuse.
+  const over = structuredClone(w);
+  over.backup.policies["SQL-1"].schedule = "daily";
+  const cap2 = capacityOf(over);
+  eq("adding the database exceeds the tier", cap2.overCapacity, true);
+  eq("...by the full amount, not a clamped one", cap2.usedGb, 2420);
+
+  group("DR — safety status");
+
+  const safeRows = safetyOf(w, Date.now());
+  const byId = Object.fromEntries(safeRows.map((r) => [r.nodeId, r]));
+  eq("only protectable hosts are listed", safeRows.length, 3);
+  eq("a scheduled job that never ran is 'never-run'", byId["DC-1"].status, "never-run");
+  eq("an unscheduled host is 'unprotected'", byId["SQL-1"].status, "unprotected");
+
+  // A copy older than the schedule allows is STALE, not protected.
+  const stale = structuredClone(w);
+  stale.backup.policies["DC-1"].lastSuccessAt = Date.now() - 50 * 3_600_000;
+  eq("a 50h-old daily copy is stale", safetyOf(stale).find((r) => r.nodeId === "DC-1").status, "stale");
+
+  const fresh = structuredClone(w);
+  fresh.backup.policies["DC-1"].lastSuccessAt = Date.now() - 2 * 3_600_000;
+  eq("a 2h-old daily copy is protected", safetyOf(fresh).find((r) => r.nodeId === "DC-1").status, "protected");
+
+  // Over capacity poisons every row, because the JOBS are failing estate-wide.
+  eq("over capacity shows on the hosts", safetyOf(over).find((r) => r.nodeId === "DC-1").status, "over-capacity");
+
+  // LOST OUTRANKS EVERYTHING. A policy configured after the loss must never
+  // make the row read "Protected" — that would be the most dishonest thing
+  // this screen could say.
+  const lost = structuredClone(fresh);
+  lost.backup.dataLost = ["DC-1"];
+  eq("lost data outranks a healthy policy", safetyOf(lost).find((r) => r.nodeId === "DC-1").status, "lost");
+
+  group("DR — restore availability");
+
+  eq("no storage means no restore", restoreAvailability(world(), "FS-1").possible, false);
+  eq("...and attempting it is DESTRUCTIVE", restoreAvailability(world(), "FS-1").destructive, true);
+  eq("no schedule is also destructive", restoreAvailability(w, "SQL-1").destructive, true);
+  eq("a schedule that never ran is destructive", restoreAvailability(w, "DC-1").destructive, true);
+  eq("a good copy can be restored", restoreAvailability(fresh, "DC-1").possible, true);
+
+  // Over capacity is RECOVERABLE — the copy exists, the tier is just too small.
+  // Marking this destructive would destroy data the operator still has.
+  const overFresh = structuredClone(over);
+  overFresh.backup.policies["DC-1"].lastSuccessAt = Date.now() - 2 * 3_600_000;
+  eq("over capacity blocks a restore", restoreAvailability(overFresh, "DC-1").possible, false);
+  eq("...but is NOT destructive", restoreAvailability(overFresh, "DC-1").destructive, false);
+
+  group("DR — the offsite tier is the one that survives");
+
+  const hit = structuredClone(fresh);
+  hit.incident = { startedAt: Date.now(), patientZero: "WS-1", compromised: [{ nodeId: "FS-1", at: Date.now(), vector: "lateral" }], encryptedShareIds: [], containedAt: null, resolvedAt: null };
+  eq("an on-premises NAS is reached by the incident", backupsCompromised(hit), true);
+
+  const offsite = structuredClone(hit);
+  offsite.backup.tier = "offsite-96tb";
+  eq("offsite replication is not", backupsCompromised(offsite), false);
+  eq("...and no storage at all cannot be 'compromised'", backupsCompromised(world()), false);
+  eq("a clean estate never reports compromised backups", backupsCompromised(fresh), false);
+}
+
+{
+  group("DR — isolation is a question, not a flag");
+
+  const base = {
+    nodes: {},
+    subnets: [],
+    security: { isolatedNodeIds: [] },
+    ipam: { leases: {}, pools: [], faults: [] },
+    poe: { switches: [{ id: "sw1", name: "SW1", mgmtIp: "10.1.1.2", standard: "at", budgetW: 100, ports: [{ n: 1, enabled: true, poeEnabled: true, priority: "high", attachedNodeId: "MAC-1" }] }] },
+    traffic: { nvr: null, cameras: {}, uplinkMbps: {}, backboneMbps: 1000, baselineMbps: 0 },
+    backup: { tier: "none", policies: {}, dataLost: [], log: [] },
+    incident: { startedAt: null, patientZero: null, compromised: [], encryptedShareIds: [], containedAt: null, resolvedAt: null },
+  };
+
+  eq("a live host is not isolated", isIsolated(base, "MAC-1"), false);
+
+  // BOTH mechanisms count, and neither is privileged.
+  const viaPort = structuredClone(base);
+  viaPort.poe.switches[0].ports[0].enabled = false;
+  eq("a disabled switch port isolates", isIsolated(viaPort, "MAC-1"), true);
+  eq("...and the method is reported honestly", isolationMethod(viaPort, "MAC-1"), "port");
+
+  const viaContain = structuredClone(base);
+  viaContain.security.isolatedNodeIds = ["MAC-1"];
+  eq("a NetOps containment isolates", isIsolated(viaContain, "MAC-1"), true);
+  eq("...and reports its own method", isolationMethod(viaContain, "MAC-1"), "containment");
+
+  // Undoing it un-isolates — the flag a stored boolean would have left stuck.
+  const undone = structuredClone(viaPort);
+  undone.poe.switches[0].ports[0].enabled = true;
+  eq("re-enabling the port ends isolation", isIsolated(undone, "MAC-1"), false);
+}
+
+{
+  group("DR — the recovery sequence");
+
+  function inc(over = {}) {
+    const now = Date.now();
+    return {
+      nodes: {},
+      subnets: [],
+      security: { isolatedNodeIds: [] },
+      ipam: { leases: {}, pools: [], faults: [] },
+      poe: { switches: [{ id: "sw1", name: "SW1", mgmtIp: "10.1.1.2", standard: "at", budgetW: 100, ports: [{ n: 1, enabled: true, poeEnabled: true, priority: "high", attachedNodeId: "MAC-1" }] }] },
+      traffic: { nvr: null, cameras: {}, uplinkMbps: {}, backboneMbps: 1000, baselineMbps: 0 },
+      backup: { tier: "nas-8tb", policies: {}, dataLost: [], log: [] },
+      incident: {
+        startedAt: now,
+        patientZero: "MAC-1",
+        compromised: [
+          { nodeId: "MAC-1", at: now, vector: "phishing" },
+          { nodeId: "FS-1", at: now, vector: "lateral" },
+        ],
+        encryptedShareIds: ["shr-1"],
+        containedAt: null,
+        resolvedAt: null,
+      },
+      ...over,
+    };
+  }
+
+  const spreading = inc();
+  eq("an un-isolated incident is spreading", recoveryStatus(spreading).stage, "spreading");
+  eq("...and the next step is isolation", recoveryStatus(spreading).nextApp, "switches");
+
+  const isolated = structuredClone(spreading);
+  isolated.poe.switches[0].ports[0].enabled = false;
+  eq("isolating advances the stage", recoveryStatus(isolated).stage, "isolated");
+  eq("...and points at the server console next", recoveryStatus(isolated).nextApp, "gateway");
+
+  /*
+   * PATIENT ZERO IS NOT WIPED HERE, on purpose. A staff endpoint is not a
+   * Remote Gateway target, so there is no session to open and no wipe to
+   * perform — isolating it is the whole of the operator's job on that host.
+   * Only the SERVER is wiped and restored. Found by playing the loop: the
+   * earlier rule left the sequence stuck with an instruction that could not be
+   * carried out anywhere in the product.
+   */
+  const wiped = structuredClone(isolated);
+  wiped.incident.compromised = wiped.incident.compromised.map((c) =>
+    c.nodeId === "MAC-1" ? c : { ...c, wipedAt: Date.now() },
+  );
+  eq("wiping every host advances again", recoveryStatus(wiped).stage, "wiped");
+  eq("...and sends the operator to the backup panel", recoveryStatus(wiped).nextApp, "backup");
+
+  const restored = structuredClone(wiped);
+  restored.incident.compromised = restored.incident.compromised.map((c) =>
+    c.nodeId === "MAC-1" ? c : { ...c, restoredAt: Date.now() },
+  );
+  eq("restoring the server finishes the sequence", recoveryStatus(restored).stage, "restored");
+  eq(
+    "...without ever wiping patient zero, which has no console to wipe from",
+    restored.incident.compromised.find((c) => c.nodeId === "MAC-1").wipedAt,
+    undefined,
+  );
+  eq("...with nothing left to do", recoveryStatus(restored).nextAction, null);
+
+  // THE REGRESSION THAT MATTERS. Re-enabling the port mid-recovery genuinely
+  // puts an infected host back on the network, so the stage must fall back.
+  // A stored stage counter would have happily stayed at "wiped".
+  const reopened = structuredClone(wiped);
+  reopened.poe.switches[0].ports[0].enabled = true;
+  eq("re-enabling the port drops back to spreading", recoveryStatus(reopened).stage, "spreading");
+
+  // Data loss is terminal and outranks having wiped everything.
+  const lostWorld = structuredClone(wiped);
+  lostWorld.backup.dataLost = ["FS-1"];
+  eq("lost data ends the sequence at 'lost'", recoveryStatus(lostWorld).stage, "lost");
+
+  group("DR — health penalties");
+
+  // Every step of the operator's work has to move the number, or the first two
+  // steps read as ceremony.
+  eq("spreading costs the most", incidentHealthPenalty("spreading"), 45);
+  eq("isolating helps", incidentHealthPenalty("isolated") < incidentHealthPenalty("spreading"), true);
+  eq("wiping helps more", incidentHealthPenalty("wiped") < incidentHealthPenalty("isolated"), true);
+  eq("a finished recovery costs nothing", incidentHealthPenalty("restored"), 0);
+  eq("a clean estate costs nothing", incidentHealthPenalty("clean"), 0);
+  eq("losing the data still hurts", incidentHealthPenalty("lost") > 0, true);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

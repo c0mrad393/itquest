@@ -126,6 +126,14 @@
   --danger-text: 252 145 141;   /* 8.1:1 */
   --danger-base: 248 96 92;
   --danger-deep: 61 18 17;
+  /*
+   * INK ON A DANGER FILL. In dark mode --danger-base is a LIGHT red, so white
+   * on it measures 3.08:1 — which is what the notification badge was doing.
+   * Near-black gets 9.4:1 on the same fill. Split per theme for the same
+   * reason --brand-on exists: a fill and the text on it are two decisions,
+   * and assuming white works on every accent is how badges end up unreadable.
+   */
+  --danger-on: 26 10 10;
 
   --info-text: 130 183 255;     /* 9.0:1 */
   --info-base: 82 154 255;
@@ -215,6 +223,7 @@
   --danger-text: 179 35 31;     /* 6.8:1 · 6.1:1 */
   --danger-base: 197 40 36;
   --danger-deep: 253 236 236;
+  --danger-on: 255 255 255;     /* 6.1:1 on the light-mode fill */
 
   --info-text: 19 88 184;       /* 6.8:1 · 6.1:1 */
   --info-base: 24 96 200;

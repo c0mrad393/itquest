@@ -73,6 +73,9 @@ export interface TicketDynamicContext {
   // ── Directory & file shares (v0.5.0) ──
   /** Share the request is about. */
   shareId?: string;
+  /** The host serving the affected share — the one that gets restored. */
+  serverHostname?: string;
+  serverNodeId?: NodeId;
   shareName?: string;
   sharePath?: string;
   /** Access level the requester must end up with. */

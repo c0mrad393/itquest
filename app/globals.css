@@ -43,7 +43,7 @@
     @apply btn text-gray-300 hover:bg-gray-500/15 hover:text-gray-100;
   }
   .btn-danger {
-    @apply btn bg-danger text-white hover:brightness-110;
+    @apply btn bg-danger text-danger-on hover:brightness-110;
   }
   .btn-sm {
     @apply px-2 py-1 text-[11px];

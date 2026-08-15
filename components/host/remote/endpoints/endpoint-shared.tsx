@@ -178,7 +178,7 @@ function FilePreview({ item, user, onClose }: { item: DesktopItem; user: string;
           <button
             onClick={onClose}
             aria-label="Close"
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-danger hover:text-white"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-danger hover:text-danger-on"
           >
             <AppIcon id="x" size={13} />
           </button>

@@ -39,6 +39,8 @@ import { AppIcon } from "@/components/ui/app-icons";
 import type { HostAppIconId } from "@/lib/core";
 import { Term } from "@/components/ui/Tooltip";
 import type { GlossaryKey } from "@/lib/core";
+import { isIsolated } from "@/lib/core";
+import { IconAlert, IconCheck } from "@/components/ui/icons";
 
 type SectionId = "overview" | "directory" | "policies" | "shares" | "services" | "events";
 
@@ -112,13 +114,88 @@ export default function AdminCenter({ nodeId }: { nodeId: string }) {
 
       {/* ── Section ──────────────────────────────────────────────────────── */}
       <div className="min-w-0 flex-1">
-        {active === "overview" && <Overview nodeId={nodeId} />}
+        {active === "overview" && (
+          <>
+            <CompromiseBanner nodeId={nodeId} />
+            <Overview nodeId={nodeId} />
+          </>
+        )}
         {active === "directory" && <DirectoryConsole embedded />}
         {active === "policies" && <FleetPolicies />}
         {active === "shares" && <SharedDrives embedded />}
         {active === "services" && <ServicesPanel nodeId={nodeId} />}
         {active === "events" && <EventViewer nodeId={nodeId} />}
       </div>
+    </div>
+  );
+}
+
+// ── Compromise (DR build) ───────────────────────────────────────────────────
+
+/**
+ * The wipe control, on the machine being wiped.
+ *
+ * DELIBERATELY NOT IN THE BACKUP PANEL. Wiping a host is something you do AT
+ * the host — the operator has to open a session to the compromised server to
+ * do it, which is both how it works in life and the thing that makes the
+ * three steps feel like three different places rather than three buttons in a
+ * row. The Backup panel tells you the step; this is where the step happens.
+ *
+ * The refusal when patient zero is still live comes from the store, not from a
+ * disabled button, so the reason is stated rather than merely implied.
+ */
+function CompromiseBanner({ nodeId }: { nodeId: string }) {
+  const infra = useInfraStore((s) => s.infra);
+  const wipe = useInfraStore((s) => s.incidentWipe);
+  const [err, setErr] = useState<string | null>(null);
+
+  const rec = infra.incident?.compromised.find((c) => c.nodeId === nodeId);
+  if (!rec) return null;
+
+  const zero = infra.incident.patientZero;
+  const contained = !zero || isIsolated(infra, zero);
+
+  if (rec.wipedAt && rec.restoredAt) {
+    return (
+      <div className="flex items-center gap-2 border-b border-accent/40 bg-accent/[0.08] px-4 py-2 text-[11px] text-accent-strong">
+        <IconCheck size={12} className="shrink-0" />
+        This host was wiped and restored from backup. It is clean.
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-b border-danger/50 bg-danger/[0.09] px-4 py-2.5">
+      <div className="flex items-center gap-2">
+        <IconAlert size={13} className="shrink-0 text-danger-strong" />
+        <span className="text-[12px] font-semibold text-gray-100">
+          {rec.wipedAt ? "Wiped — awaiting restore" : "This host is compromised"}
+        </span>
+        {!rec.wipedAt && (
+          <button
+            onClick={() => setErr(wipe(nodeId))}
+            className="btn-danger btn-sm ml-auto"
+            title={contained ? undefined : "Patient zero is still on the network"}
+          >
+            Wipe and rebuild
+          </button>
+        )}
+      </div>
+
+      <p className="mt-1 text-[11px] leading-relaxed text-gray-300">
+        {rec.wipedAt
+          ? "The operating system has been reinstalled and the encrypted volumes are gone. Restore it from Backup & Recovery to bring the data back."
+          : `Files are encrypted and the host is not serving. Wiping reinstalls it from scratch — every byte on it goes, which is why the restore point matters.${
+              contained ? "" : ` ${zero} is still on the network; wiping now just gets re-encrypted.`
+            }`}
+      </p>
+
+      {err && (
+        <p className="mt-1.5 flex items-start gap-1.5 rounded border border-danger/40 bg-danger/10 px-2 py-1.5 text-[11px] leading-relaxed text-danger-strong">
+          <IconAlert size={11} className="mt-px shrink-0" />
+          {err}
+        </p>
+      )}
     </div>
   );
 }

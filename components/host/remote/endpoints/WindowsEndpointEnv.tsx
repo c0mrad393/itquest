@@ -175,7 +175,7 @@ function WinWindow({
       <div className={`flex items-center gap-2 border-b px-3 py-1.5 text-xs ${dark ? "border-edge bg-panelalt" : "border-gray-200 bg-gray-100"}`}>
         <AppIcon id={win.icon} size={13} />
         <span className={`truncate font-semibold ${dark ? "text-gray-200" : "text-gray-700"}`}>{win.title}</span>
-        <button onClick={onClose} className="ml-auto flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-danger hover:text-white">✕</button>
+        <button onClick={onClose} className="ml-auto flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-danger hover:text-danger-on">✕</button>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
     </div>

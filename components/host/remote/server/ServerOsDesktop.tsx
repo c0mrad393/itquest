@@ -343,7 +343,7 @@ function NestedWindow({
         <button onClick={onMaximize} aria-label="Maximize" className="px-1.5 text-gray-400 hover:text-gray-100">
           <span className="block h-2 w-2 border border-current" />
         </button>
-        <button onClick={onClose} aria-label="Close" className="px-1.5 text-gray-400 hover:bg-danger hover:text-white">
+        <button onClick={onClose} aria-label="Close" className="px-1.5 text-gray-400 hover:bg-danger hover:text-danger-on">
           <span className="block text-[11px] leading-none">&times;</span>
         </button>
       </div>

@@ -167,7 +167,7 @@ export default function SettingsApp() {
           <div className="flex items-center gap-2">
             <button
               onClick={resetSimulation}
-              className="rounded-md bg-danger px-3 py-1.5 text-xs font-semibold text-white hover:brightness-110"
+              className="rounded-md bg-danger px-3 py-1.5 text-xs font-semibold text-danger-on hover:brightness-110"
             >
               Yes, wipe everything
             </button>

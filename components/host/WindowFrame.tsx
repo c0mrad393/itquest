@@ -124,7 +124,7 @@ function CtrlBtn({
       // `text-current/70` rather than a fixed grey: on a remote title bar the
       // controls inherit the banner's light-on-dark ink in BOTH themes.
       className={`flex h-9 w-11 items-center justify-center opacity-70 transition hover:opacity-100 ${
-        danger ? "hover:bg-danger hover:text-white" : "hover:bg-gray-500/20"
+        danger ? "hover:bg-danger hover:text-danger-on" : "hover:bg-gray-500/20"
       }`}
     >
       {children}

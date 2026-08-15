@@ -60,6 +60,21 @@ interface TicketStore {
    */
   spawnIncident: (familyId: string, infra: InfrastructureState) => Ticket | null;
   /**
+   * Spawn ONE named template, optionally running its fault injection.
+   *
+   * `spawnIncident` deliberately skips `injectFault`, because a reactive
+   * incident describes a world that has ALREADY failed. The Dev spawner needs
+   * the opposite: nothing has failed yet, and for systemic templates — the
+   * ransomware event above all — the fault IS the thing under test. Without
+   * this, spawning ransomware from the bench would produce a ticket describing
+   * an encryption event that never happened.
+   */
+  spawnTemplate: (
+    templateId: string,
+    infra: InfrastructureState,
+    opts?: { injectFault?: boolean },
+  ) => Ticket | null;
+  /**
    * Close a ticket without meeting its win-condition — the external contractor
    * path. Flagged so the reconciler and the operator both know it was bought,
    * not solved: no XP is awarded for these.
@@ -162,6 +177,29 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
     // trip a breaker the operator may have already reset.
     const built = buildTicket(template, infra, rng);
     if (!built) return null;
+    const ticket: Ticket = { ...built.ticket, mailOnly: false, status: "new" };
+    set((s) => ({
+      tickets: [...s.tickets, ticket],
+      mailThreads: built.emails.length ? { ...s.mailThreads, [ticket.id]: built.emails } : s.mailThreads,
+    }));
+    return ticket;
+  },
+
+  spawnTemplate: (templateId, infra, opts = {}) => {
+    const library = ticketLibrary(infra);
+    const template = library[templateId];
+    if (!template) return null;
+
+    const rng = mulberry32((infra.org.seed ^ Date.now()) >>> 0);
+    const built = buildTicket(template, infra, rng);
+    if (!built) return null;
+
+    if (opts.injectFault && built.injectFault) {
+      // Through the same path the queue generator uses, so a bench-spawned
+      // fault is indistinguishable from one the world was born with.
+      useInfraStore.getState().setInfra(applyQueueFaults(infra, [built.injectFault]));
+    }
+
     const ticket: Ticket = { ...built.ticket, mailOnly: false, status: "new" };
     set((s) => ({
       tickets: [...s.tickets, ticket],

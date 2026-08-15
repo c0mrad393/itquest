@@ -39,6 +39,7 @@ import {
 import { xpForLevel } from "@/lib/scenario/scoring";
 import { IconAlert, IconBolt, IconCheck, IconPlus, IconWrench, IconX } from "@/components/ui/icons";
 import NetworkBench from "./devtools/NetworkBench";
+import TicketBench from "./devtools/TicketBench";
 
 type Tab = "progress" | "tickets" | "faults" | "network";
 
@@ -88,7 +89,7 @@ export default function DebugPanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {tab === "progress" && <Progression say={say} />}
-        {tab === "tickets" && <TicketSpawner say={say} />}
+        {tab === "tickets" && <TicketBench say={say} />}
         {tab === "faults" && <FaultInjector say={say} />}
         {tab === "network" && <NetworkBench say={say} />}
       </div>
@@ -202,66 +203,6 @@ function Progression({ say }: { say: (s: string) => void }) {
           ).level} runs the real milestone — hiring, new OUs and the project ticket.
         </p>
       </section>
-    </div>
-  );
-}
-
-// ── Ticket spawner ──────────────────────────────────────────────────────────
-
-function TicketSpawner({ say }: { say: (s: string) => void }) {
-  const infra = useInfraStore((s) => s.infra);
-  const spawn = useTicketStore((s) => s.spawnIncident);
-  const [family, setFamily] = useState("");
-
-  /** Family ids, deduplicated from the generated library. */
-  const families = useMemo(() => {
-    const lib = ticketLibrary(infra);
-    const ids = new Set<string>();
-    for (const t of Object.values(lib)) {
-      // Procedural ids are `<family>-<tierNumber>-<variant>`, e.g.
-      // `gen-lockout-1-3`; hand-authored ones are whole families of one. Both
-      // collapse to something `spawnIncident` can take.
-      const m = /^(gen-.+?)-\d+-\d+$/.exec(t.id);
-      ids.add(m ? m[1] : t.id);
-    }
-    return [...ids].sort();
-  }, [infra]);
-
-  function fire() {
-    if (!family) return;
-    const t = spawn(family, infra);
-    if (t) {
-      useDialogueStore.getState().syncConversations();
-      useNotificationStore.getState().push({
-        kind: "info",
-        title: `${t.code} injected`,
-        body: t.title,
-        badge: "Debug",
-      });
-      say(`spawned ${family} -> ${t.code}`);
-    } else {
-      say(`${family}: already open, or no valid context`);
-    }
-  }
-
-  return (
-    <div className="space-y-2">
-      <Head>Spawn a ticket family</Head>
-      <select
-        value={family}
-        onChange={(e) => setFamily(e.target.value)}
-        className="w-full rounded border border-edge bg-panel px-2 py-1 font-mono text-[10px] text-gray-200"
-      >
-        <option value="">Pick a family&hellip; ({families.length})</option>
-        {families.map((f) => (
-          <option key={f} value={f}>{f}</option>
-        ))}
-      </select>
-      <Btn onClick={fire} icon={<IconPlus size={10} />}>Inject</Btn>
-      <p className="text-[9px] leading-relaxed text-gray-600">
-        Spawns through the same path a reactive incident uses, so the ticket is bound to this world and its
-        win-condition grades normally. One live ticket per family — inject again after resolving it.
-      </p>
     </div>
   );
 }

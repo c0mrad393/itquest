@@ -125,6 +125,7 @@ const config: Config = {
         warn: v("warn-base"),
         "warn-strong": v("warn-text"),
         danger: v("danger-base"),
+        "danger-on": v("danger-on"),
         "danger-strong": v("danger-text"),
 
         /**

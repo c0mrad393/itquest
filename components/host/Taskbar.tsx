@@ -114,7 +114,7 @@ export default function Taskbar({
             >
               <AppIcon id={meta.iconId} size={APP_ICON_SIZE.taskbar} />
               {badge != null && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[9px] font-bold text-white">
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[9px] font-bold text-danger-on">
                   {badge}
                 </span>
               )}

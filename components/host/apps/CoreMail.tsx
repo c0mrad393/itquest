@@ -122,7 +122,7 @@ export default function CoreMail() {
             <AppIcon id={f.iconId} size={14} />
             <span>{f.label}</span>
             {f.id === "inbox" && unread > 0 && (
-              <span className="ml-auto rounded-full bg-danger px-1.5 text-[10px] font-bold text-white">
+              <span className="ml-auto rounded-full bg-danger px-1.5 text-[10px] font-bold text-danger-on">
                 {unread}
               </span>
             )}

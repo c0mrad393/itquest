@@ -517,7 +517,7 @@ function ModalShell({ title, onClose, children }: { title: string; onClose: () =
       <div className="flex max-h-full w-[560px] flex-col overflow-hidden rounded-lg border border-edge bg-panel shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex shrink-0 items-center gap-2 border-b border-edge bg-panelalt px-3 py-2 text-xs">
           <span className="font-semibold text-gray-100">{title}</span>
-          <button onClick={onClose} aria-label="Close" className="ml-auto flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-danger hover:text-white"><IconX size={12} /></button>
+          <button onClick={onClose} aria-label="Close" className="ml-auto flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-danger hover:text-danger-on"><IconX size={12} /></button>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
       </div>

@@ -8,6 +8,8 @@
  */
 
 import type { LinuxNodeState } from "./linux";
+import type { BackupState } from "./backup";
+import type { IncidentState } from "./incident";
 import type { TrafficState } from "./traffic";
 import type { PoeState } from "./poe";
 import type { IpamState } from "./ipam";
@@ -159,6 +161,16 @@ export interface InfrastructureState {
    * and link capacities; every load figure and the saturation state derive.
    */
   traffic: TrafficState;
+  /**
+   * Backup policy, purchased storage and the permanent data-loss record
+   * (DR build). Capacity, safety and whether a restore is possible all derive.
+   */
+  backup: BackupState;
+  /**
+   * An active ransomware compromise, if any. Stores what happened; the
+   * recovery STAGE and whether isolation is in force are derived.
+   */
+  incident: IncidentState;
 
   loadedAt: number;
 }

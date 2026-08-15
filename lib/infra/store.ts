@@ -36,6 +36,14 @@ import type { IpamState, NetworkFault, PoePort, PoePriority } from "@/lib/core";
 import { detectConflicts, isValidIp, portOfNode, switchById } from "@/lib/core";
 import type { VideoProfileId } from "@/lib/core";
 import { DEFAULT_PROFILE } from "@/lib/core";
+import type { BackupSchedule, RestoreEvent, StorageTierId } from "@/lib/core";
+import {
+  backupsCompromised,
+  capacityOf,
+  defaultSizeGb,
+  isIsolated,
+  restoreAvailability,
+} from "@/lib/core";
 import { nextFreeIp, nextRackName, provisionNode } from "@/lib/datacenter/seed";
 import type { ShippingMethod } from "@/lib/core";
 import type { AetherVNode, AuditEvent, ShieldRule, VNodeSize, VNodeStatus } from "@/lib/core";
@@ -184,6 +192,38 @@ interface InfraStore {
   devSpawnCamera: (switchId: string, port: number | null, profile: VideoProfileId) => string | null;
   /** Create a recorder and make it the estate's NVR. */
   devSpawnNvr: () => string | null;
+
+  // ── Backup and recovery (DR build) ───────────────────────────────────────
+  /** Set a node's backup schedule. Does NOT run a job — see backupRunNow. */
+  backupSetSchedule: (nodeId: NodeId, schedule: BackupSchedule) => void;
+  /**
+   * Record the purchased tier. The BUDGET is debited by the caller, which owns
+   * the money; this owns the estate. Splitting them keeps a failed debit from
+   * silently granting storage.
+   */
+  backupSetTier: (tier: StorageTierId) => void;
+  /**
+   * Run every scheduled job now. Returns how many succeeded — jobs fail when
+   * the tier is missing or too small, exactly as they would in life.
+   */
+  backupRunNow: () => { ok: number; failed: number };
+  /**
+   * Restore a node from backup.
+   *
+   * Returns null on success or the reason it was refused. Attempting a restore
+   * with no copy in existence marks the data PERMANENTLY lost — that is the
+   * consequence the whole feature exists to teach, and it is why the UI has to
+   * warn before the click rather than after.
+   */
+  backupRestore: (nodeId: NodeId) => string | null;
+
+  // ── Incident response ────────────────────────────────────────────────────
+  /** Begin a compromise. Used by the ransomware template's fault injection. */
+  incidentStart: (patientZero: NodeId, spreadTo: NodeId[], shareIds: string[]) => void;
+  /** Wipe and rebuild a compromised host. Step two of the sequence. */
+  incidentWipe: (nodeId: NodeId) => string | null;
+  /** Clear a resolved incident once every host is restored. */
+  incidentClear: () => void;
 
   /**
    * Group membership (v0.5.0). Addressed by DOMAIN rather than by node — the
@@ -2678,8 +2718,225 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
     return null;
   },
 
+
+  // ── Backup and recovery (DR build) ───────────────────────────────────────
+
+  backupSetSchedule: (nodeId, schedule) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      const prev = s.infra.backup.policies[nodeId];
+      return {
+        infra: {
+          ...s.infra,
+          backup: {
+            ...s.infra.backup,
+            policies: {
+              ...s.infra.backup.policies,
+              [nodeId]: {
+                nodeId,
+                schedule,
+                // A previous successful copy SURVIVES the schedule being
+                // switched off and back on — turning a job off does not delete
+                // what it already wrote, and clearing this would quietly
+                // destroy a restore point with a dropdown.
+                lastSuccessAt: prev?.lastSuccessAt ?? null,
+                sizeGb: prev?.sizeGb ?? (node ? defaultSizeGb(node) : 400),
+              },
+            },
+          },
+        },
+      };
+    }),
+
+  backupSetTier: (tier) =>
+    set((s) => ({ infra: { ...s.infra, backup: { ...s.infra.backup, tier } } })),
+
+  backupRunNow: () => {
+    const infra = get().infra;
+    const cap = capacityOf(infra);
+    const scheduled = Object.values(infra.backup.policies).filter((p) => p.schedule !== "off");
+
+    // The whole run fails when there is nowhere to write or not enough room.
+    // Partial success would be kinder and would misrepresent how these jobs
+    // actually behave: a full target fails the set, not the tail of it.
+    const viable = cap.tier.capacityGb > 0 && !cap.overCapacity;
+    if (!viable) return { ok: 0, failed: scheduled.length };
+
+    const now = Date.now();
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        backup: {
+          ...s.infra.backup,
+          policies: Object.fromEntries(
+            Object.entries(s.infra.backup.policies).map(([id, p]) => [
+              id,
+              p.schedule === "off" ? p : { ...p, lastSuccessAt: now },
+            ]),
+          ),
+        },
+      },
+    }));
+    return { ok: scheduled.length, failed: 0 };
+  },
+
+  backupRestore: (nodeId) => {
+    const infra = get().infra;
+    const avail = restoreAvailability(infra, nodeId);
+
+    if (!avail.possible) {
+      /*
+       * THE DESTRUCTIVE PATH. No copy exists, so this is not a restore that
+       * failed — it is the moment the data stops existing. Marked one-way, and
+       * logged, because a player has to be able to look back and see that the
+       * loss was caused by never having configured the thing rather than by
+       * the click that revealed it.
+       */
+      if (avail.destructive) {
+        set((st) => ({
+          infra: {
+            ...st.infra,
+            backup: {
+              ...st.infra.backup,
+              dataLost: [...new Set([...st.infra.backup.dataLost, nodeId])],
+              log: [
+                restoreEvent(nodeId, false, avail.reason ?? "No backup existed."),
+                ...st.infra.backup.log,
+              ].slice(0, 40),
+            },
+          },
+        }));
+        return `Data lost. ${avail.reason} Nothing was recoverable.`;
+      }
+      set((st) => ({
+        infra: {
+          ...st.infra,
+          backup: {
+            ...st.infra.backup,
+            log: [restoreEvent(nodeId, false, avail.reason ?? "Refused."), ...st.infra.backup.log].slice(0, 40),
+          },
+        },
+      }));
+      return avail.reason;
+    }
+
+    // The backups themselves are on the same network unless the tier is
+    // offsite — which is how most real recoveries fail, and why the expensive
+    // tier is the one that earns its price.
+    if (backupsCompromised(infra)) {
+      set((st) => ({
+        infra: {
+          ...st.infra,
+          backup: {
+            ...st.infra.backup,
+            dataLost: [...new Set([...st.infra.backup.dataLost, nodeId])],
+            log: [
+              restoreEvent(nodeId, false, "On-premises backup storage was encrypted by the same incident."),
+              ...st.infra.backup.log,
+            ].slice(0, 40),
+          },
+        },
+      }));
+      return "The backup storage was on the same network and has been encrypted too. Offsite replication is the only tier this incident cannot reach.";
+    }
+
+    const now = Date.now();
+    set((st) => ({
+      infra: {
+        ...st.infra,
+        backup: {
+          ...st.infra.backup,
+          log: [restoreEvent(nodeId, true, "Restored from the last good copy."), ...st.infra.backup.log].slice(0, 40),
+        },
+        incident: {
+          ...st.infra.incident,
+          compromised: st.infra.incident.compromised.map((c) =>
+            c.nodeId === nodeId ? { ...c, restoredAt: now } : c,
+          ),
+          // Shares served by a restored host come back with it.
+          encryptedShareIds: st.infra.incident.encryptedShareIds.filter((id) => {
+            const share = Object.values(st.infra.nodes).flatMap((n) => n.shares ?? []).find((sh) => sh.id === id);
+            return share?.serverNodeId !== nodeId;
+          }),
+        },
+      },
+    }));
+    return null;
+  },
+
+  // ── Incident response ────────────────────────────────────────────────────
+
+  incidentStart: (patientZero, spreadTo, shareIds) =>
+    set((s) => {
+      const now = Date.now();
+      return {
+        infra: {
+          ...s.infra,
+          incident: {
+            startedAt: now,
+            patientZero,
+            compromised: [
+              { nodeId: patientZero, at: now, vector: "phishing" as const },
+              ...spreadTo.map((id) => ({ nodeId: id, at: now, vector: "lateral" as const })),
+            ],
+            encryptedShareIds: shareIds,
+            containedAt: null,
+            resolvedAt: null,
+          },
+        },
+      };
+    }),
+
+  incidentWipe: (nodeId) => {
+    const infra = get().infra;
+    const rec = infra.incident.compromised.find((c) => c.nodeId === nodeId);
+    if (!rec) return "That host is not compromised.";
+    if (rec.wipedAt) return "That host has already been wiped.";
+
+    /*
+     * ORDER IS ENFORCED HERE, not just described in the UI. Wiping a host that
+     * is still on the network gets it re-encrypted within minutes, so the
+     * action is refused rather than performed and quietly undone. Refusing
+     * teaches the rule; silently reverting teaches that the game is broken.
+     */
+    if (infra.incident.patientZero && !isIsolated(infra, infra.incident.patientZero)) {
+      return `${infra.incident.patientZero} is still on the network. Isolate it first — anything wiped now is re-encrypted within minutes.`;
+    }
+
+    const now = Date.now();
+    set((st) => ({
+      infra: {
+        ...st.infra,
+        incident: {
+          ...st.infra.incident,
+          containedAt: st.infra.incident.containedAt ?? now,
+          compromised: st.infra.incident.compromised.map((c) =>
+            c.nodeId === nodeId ? { ...c, wipedAt: now } : c,
+          ),
+        },
+      },
+    }));
+    return null;
+  },
+
+  incidentClear: () =>
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        incident: { ...s.infra.incident, resolvedAt: Date.now() },
+      },
+    })),
+
   reset: () => set({ infra: generateWorld(freshSeed(), 1) }),
 }));
+
+let restoreSeq = 0;
+
+function restoreEvent(nodeId: NodeId, ok: boolean, detail: string): RestoreEvent {
+  restoreSeq += 1;
+  return { id: `rst-${Date.now().toString(36)}-${restoreSeq}`, at: Date.now(), nodeId, ok, detail };
+}
+
 
 /** A minimal edge node for the bench — the same shape the seeder produces. */
 function devEdgeNode(

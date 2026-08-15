@@ -40,6 +40,8 @@ export * from "./glossary";
 export * from "./poe";
 export * from "./ipam";
 export * from "./traffic";
+export * from "./backup";
+export * from "./incident";
 
 // Reused primitives (canonical definitions live in lib/vm/types).
 export type {

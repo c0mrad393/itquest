@@ -54,7 +54,15 @@ export default function RemoteGateway() {
       <div className="grid flex-1 gap-3 overflow-y-auto term-scroll p-4 md:grid-cols-2">
         {targets.map((entry) => {
           const node = entry.node;
-          const h = HEALTH[node.health.status];
+          /*
+           * A compromised host is NEVER "Healthy", whatever its stored health
+           * says. That field describes CPU and disk; it knows nothing about
+           * encryption, and showing green beside a live ransomware incident is
+           * the most misleading thing this card could do.
+           */
+          const h = entry.compromised
+            ? { label: "Compromised", dot: "bg-danger", text: "text-danger-strong" }
+            : HEALTH[node.health.status];
           const session = sessionFor(entry.nodeId);
           // Physical reality decides, not a list captured at world generation.
           const canConnect = entry.connectable;

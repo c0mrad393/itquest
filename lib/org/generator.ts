@@ -64,6 +64,7 @@ export function departmentsFor(phase: GrowthPhase): typeof DEPARTMENTS {
 import { createInventory } from "@/lib/inventory/seed";
 import { buildDatacenter } from "@/lib/datacenter/seed";
 import { buildAccessLayer, buildIpam } from "@/lib/network/seed";
+import { createIncidentState, defaultSizeGb, isProtectable } from "@/lib/core";
 import { seedPolicies, seedShares } from "@/lib/directory/seed";
 import { createCloudState } from "@/lib/cloud/seed";
 
@@ -1095,6 +1096,24 @@ export function generateWorld(seed: number, phase: GrowthPhase = 1): Infrastruct
     poe: access.poe,
     ipam: buildIpam(subnets, nodes),
     traffic: access.traffic,
+    /*
+     * Backups start OFF, with a policy row per protectable node carrying its
+     * real footprint. The rows exist so the operator can see what protection
+     * would cost before buying anything; none of them are scheduled, because
+     * an estate that begins protected has nothing to teach about the day it
+     * is not.
+     */
+    backup: {
+      tier: "none",
+      policies: Object.fromEntries(
+        Object.values(nodes)
+          .filter(isProtectable)
+          .map((n) => [n.nodeId, { nodeId: n.nodeId, schedule: "off" as const, lastSuccessAt: null, sizeGb: defaultSizeGb(n) }]),
+      ),
+      dataLost: [],
+      log: [],
+    },
+    incident: createIncidentState(),
     loadedAt: now,
   };
 }

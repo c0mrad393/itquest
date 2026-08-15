@@ -30,6 +30,7 @@
 
 import type { InfrastructureState, TargetNode } from "./infrastructure";
 import { poeLiveness } from "./poe";
+import { isCompromised } from "./incident";
 import type { NodeId, NodeRole } from "./nodes";
 import { isRackable, locationOf, serverLiveness } from "./datacenter";
 import type { ActiveDirectoryState, ADGroup, ADUser } from "./windows";
@@ -147,6 +148,29 @@ export function reachNode(
       layer: "network",
       reason: `${node.hostname} is isolated from the network by an active containment.`,
       remedy: "Lift the isolation in the NetOps Console once the incident is closed.",
+    };
+  }
+
+  /*
+   * COMPROMISE IS A SERVICE-LEVEL FAILURE, NOT A HOST-LEVEL ONE (corrected).
+   *
+   * The first cut of this returned unreachable for the whole node, which was
+   * both wrong and self-defeating: a ransomware-hit server is still powered
+   * and still answers RDP — that is precisely how an operator gets in to WIPE
+   * it — and marking it unreachable made step two of the recovery sequence
+   * impossible to perform. What is dead is the file service.
+   *
+   * So it fails only when a SERVICE is being asked for. `reachNode(infra,
+   * node)` with no service named still says yes, and the Remote Gateway can
+   * still open a session.
+   */
+  if (serviceNames.length > 0 && isCompromised(infra, node.nodeId)) {
+    return {
+      reachable: false,
+      node,
+      layer: "service",
+      reason: `${node.hostname} is compromised — its files are encrypted and it is not serving.`,
+      remedy: "Isolate patient zero, wipe this host, then restore it from backup.",
     };
   }
 
@@ -279,6 +303,13 @@ export interface GatewayTarget {
   reason: string | null;
   /** "Rack 01 · U4" for racked hosts; empty for endpoints. */
   location: string;
+  /**
+   * Mid-incident. Deliberately does NOT clear `connectable`: the operator has
+   * to open a session to a compromised host in order to wipe it, so the row
+   * carries a warning badge and stays openable. Its SERVICES are what fail —
+   * see the service check in reachNode.
+   */
+  compromised: boolean;
 }
 
 /**
@@ -305,15 +336,32 @@ export function gatewayTargets(infra: InfrastructureState): GatewayTarget[] {
     if (at) {
       const life = serverLiveness(at.rack, at.device, node, infra.nodes);
       const isolated = infra.security.isolatedNodeIds.includes(node.nodeId);
+      /*
+       * DRIFT FIX. This function predates both the PoE layer and the incident
+       * layer, so it was still answering "is this host live?" with only the
+       * rack's opinion — a compromised file server mid-encryption listed as
+       * "Healthy · reachable" while the Backup panel two windows away called
+       * it encrypted. Two views of one fact disagreeing is the exact bug the
+       * v0.4.0 unification and the Build 1 Monitor fix both existed to remove,
+       * so the checks are added HERE rather than patched into the gateway UI.
+       */
+      const poe = poeLiveness(infra.poe, node.nodeId, infra.nodes);
+      const hit = isCompromised(infra, node.nodeId);
       // A dark server is not listed as "offline" — it is not listed as
       // reachable. The gateway shows what the estate HAS, greyed out with the
       // reason, so a disappearing row never looks like a bug.
       out.push({
         nodeId: node.nodeId,
         node,
-        connectable: life.live && !isolated,
-        reason: isolated ? "isolated by containment" : life.reason,
+        // Still connectable ON PURPOSE — wiping it requires a session to it.
+        connectable: life.live && !isolated && poe.live,
+        reason: isolated
+            ? "isolated by containment"
+            : !poe.live
+              ? poe.reason
+              : life.reason,
         location: `${at.rack.name} · U${at.device.uStart}`,
+        compromised: hit,
       });
       continue;
     }
@@ -322,18 +370,23 @@ export function gatewayTargets(infra: InfrastructureState): GatewayTarget[] {
     const listed = infra.gateway.some((g) => g.nodeId === node.nodeId);
     if (!listed) continue;
     const isolated = infra.security.isolatedNodeIds.includes(node.nodeId);
+    const poeE = poeLiveness(infra.poe, node.nodeId, infra.nodes);
+    const hitE = isCompromised(infra, node.nodeId);
     out.push({
       nodeId: node.nodeId,
       node,
-      connectable: node.connection.online && node.connection.reachable && !isolated,
+      connectable: node.connection.online && node.connection.reachable && !isolated && poeE.live,
       reason: isolated
-        ? "isolated by containment"
-        : !node.connection.online
-          ? "powered down"
-          : !node.connection.reachable
-            ? "no network path"
-            : null,
+          ? "isolated by containment"
+          : !poeE.live
+            ? poeE.reason
+            : !node.connection.online
+              ? "powered down"
+              : !node.connection.reachable
+                ? "no network path"
+                : null,
       location: "",
+      compromised: hitE,
     });
   }
 

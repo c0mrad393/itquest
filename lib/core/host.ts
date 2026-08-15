@@ -27,6 +27,7 @@ export type HostAppId =
   | "serverman" // Server Manager — logical estate, maintenance and migration
   | "netops" // Network topology console (link optimization)
   | "switches" // Managed PoE switches, port state and IP allocation
+  | "backup" // Backup policy, storage purchase and disaster recovery
   | "monitor" // Infrastructure metrics dashboard (observability)
   | "aethercloud" // AetherCloud Engine — hybrid cloud console
   | "procurement" // Vendor storefront — spends IT Budget
@@ -247,6 +248,19 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     description: "Managed PoE switches: port state, power budget and IP allocation.",
     defaultSize: { w: 1020, h: 660 },
     minSize: { w: 760, h: 480 },
+    singleton: true,
+    pinnedToTaskbar: false,
+    showOnDesktop: false,
+  },
+  backup: {
+    id: "backup",
+    title: "Backup & Recovery",
+    iconId: "shield",
+    category: "work",
+    group: "infrastructure",
+    description: "Backup schedules, storage capacity and disaster recovery.",
+    defaultSize: { w: 900, h: 660 },
+    minSize: { w: 620, h: 460 },
     singleton: true,
     pinnedToTaskbar: false,
     showOnDesktop: false,

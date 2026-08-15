@@ -48,6 +48,7 @@
 import type { NodeId } from "./nodes";
 import type { InfrastructureState, TargetNode } from "./infrastructure";
 import { poeLiveness } from "./poe";
+import { STAGE_META, incidentHealthPenalty, recoveryStatus } from "./incident";
 import { detectConflicts, effectiveIp, subnetOf, type IpConflict } from "./ipam";
 
 // ── Video profiles ──────────────────────────────────────────────────────────
@@ -472,6 +473,23 @@ export function estateHealth(infra: InfrastructureState, report: TrafficReport):
   if (critical > 0) {
     score -= Math.min(25, critical * 8);
     notes.push(`${critical} host${critical === 1 ? "" : "s"} critical.`);
+  }
+
+  /*
+   * The incident penalty COMPOUNDS with congestion rather than replacing it,
+   * for the same reason every other penalty here does: an estate that is both
+   * saturated and mid-ransomware is in worse shape than one with either alone,
+   * and a score that took the max would say otherwise.
+   */
+  const stage = recoveryStatus(infra).stage;
+  const incidentPenalty = incidentHealthPenalty(stage);
+  if (incidentPenalty > 0) {
+    score -= incidentPenalty;
+    notes.push(
+      stage === "lost"
+        ? "Data permanently lost — no backup existed."
+        : `Ransomware incident — ${STAGE_META[stage].label.toLowerCase()}.`,
+    );
   }
 
   const dark = report.cameras.filter((c) => !c.streaming).length;
