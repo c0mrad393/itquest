@@ -40,8 +40,9 @@ import { xpForLevel } from "@/lib/scenario/scoring";
 import { IconAlert, IconBolt, IconCheck, IconPlus, IconWrench, IconX } from "@/components/ui/icons";
 import NetworkBench from "./devtools/NetworkBench";
 import TicketBench from "./devtools/TicketBench";
+import ShellBench from "./devtools/ShellBench";
 
-type Tab = "progress" | "tickets" | "faults" | "network";
+type Tab = "shell" | "progress" | "tickets" | "faults" | "network";
 
 export default function DebugPanel({
   open,
@@ -50,7 +51,9 @@ export default function DebugPanel({
   open: boolean;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<Tab>("progress");
+  // Shell first: it is the tab an engineer opens the panel for, and the
+  // world benches are the ones a designer goes looking for.
+  const [tab, setTab] = useState<Tab>("shell");
   const [log, setLog] = useState<string[]>([]);
 
   useEffect(() => {
@@ -66,7 +69,7 @@ export default function DebugPanel({
   if (!open) return null;
 
   return (
-    <div className="fixed bottom-16 right-3 z-[60] flex max-h-[70vh] w-[30rem] flex-col overflow-hidden rounded-lg border border-amber-500/40 bg-panel/95 shadow-2xl backdrop-blur">
+    <div className="fixed bottom-16 right-3 z-[60] flex max-h-[74vh] w-[30rem] flex-col overflow-hidden rounded-lg border border-amber-500/40 bg-panel/95 shadow-2xl backdrop-blur">
       <div className="flex shrink-0 items-center gap-2 border-b border-amber-500/30 bg-amber-500/[0.07] px-3 py-2">
         <IconWrench size={13} className="text-amber-300" />
         <span className="text-[11px] font-semibold text-amber-200">DevTools</span>
@@ -81,6 +84,7 @@ export default function DebugPanel({
       </div>
 
       <div className="flex shrink-0 border-b border-edge">
+        <TabBtn active={tab === "shell"} onClick={() => setTab("shell")}>Shell</TabBtn>
         <TabBtn active={tab === "progress"} onClick={() => setTab("progress")}>Progression</TabBtn>
         <TabBtn active={tab === "tickets"} onClick={() => setTab("tickets")}>Tickets</TabBtn>
         <TabBtn active={tab === "faults"} onClick={() => setTab("faults")}>Faults</TabBtn>
@@ -88,6 +92,7 @@ export default function DebugPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        {tab === "shell" && <ShellBench say={say} />}
         {tab === "progress" && <Progression say={say} />}
         {tab === "tickets" && <TicketBench say={say} />}
         {tab === "faults" && <FaultInjector say={say} />}

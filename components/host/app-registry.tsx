@@ -20,6 +20,7 @@ import CoreMail from "./apps/CoreMail";
 import NetOpsConsole from "./apps/NetOpsConsole";
 import Leaderboard from "./apps/Leaderboard";
 import AppearanceApp from "./apps/AppearanceApp";
+import EnterpriseGateway from "./apps/EnterpriseGateway";
 import SettingsApp from "./apps/SettingsApp";
 import ProfileApp from "./apps/ProfileApp";
 import Wiki from "./apps/Wiki";
@@ -66,6 +67,8 @@ export function renderHostApp(appId: HostAppId): React.ReactNode {
       return <Wiki />;
     case "leaderboard":
       return <Leaderboard />;
+    case "enterprise":
+      return <EnterpriseGateway />;
     case "appearance":
       return <AppearanceApp />;
     case "settings":

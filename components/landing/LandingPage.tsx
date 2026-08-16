@@ -47,6 +47,8 @@ import { hasSavedGame, savedProfile, useSessionStore } from "@/lib/host/session"
 import {
   IconActivity,
   IconBolt,
+  IconCheck,
+  IconLock,
   IconCart,
   IconChevronRight,
   IconShield,
@@ -379,6 +381,60 @@ export default function LandingPage() {
               </article>
             );
           })}
+        </div>
+      </section>
+
+      {/* ── Tiers ───────────────────────────────────────────────────────── */}
+      <section className="relative mx-auto w-full max-w-7xl px-6 pb-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {/* What exists today. Deliberately first and deliberately plain —
+              the free tier IS the product right now, and framing it as the
+              lesser half of a comparison would be a lie about what ships. */}
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 backdrop-blur-xl">
+            <div className="flex items-center gap-2">
+              <h3 className="text-[15px] font-semibold text-white">Single operator</h3>
+              <span className="rounded-full border border-[#34d399]/40 bg-[#10b981]/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#6ee7b7]">
+                Available now
+              </span>
+            </div>
+            <p className="mt-2 text-[13px] leading-relaxed text-slate-400">
+              The whole simulation. Every app, every incident class, the full progression from
+              intern to running the estate. Runs in your browser, saves locally, costs nothing.
+            </p>
+            <ul className="mt-4 space-y-1.5 text-[12px] text-slate-400">
+              {["Complete ticket, hardware and network engines", "Disaster recovery and ransomware scenarios", "Local save — no account required"].map((f) => (
+                <li key={f} className="flex items-start gap-2">
+                  <IconCheck size={12} className="mt-0.5 shrink-0 text-[#6ee7b7]" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* The unbuilt tier. No price, no upgrade button — a paywall for
+              something that does not exist should not be able to take a click
+              that goes nowhere. */}
+          <div className="relative overflow-hidden rounded-2xl border border-dashed border-white/15 bg-white/[0.02] p-6 backdrop-blur-xl">
+            <div className="flex items-center gap-2">
+              <IconLock size={13} className="text-slate-500" />
+              <h3 className="text-[15px] font-semibold text-slate-300">Enterprise</h3>
+              <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                Coming soon
+              </span>
+            </div>
+            <p className="mt-2 text-[13px] leading-relaxed text-slate-500">
+              For teams training together. Not built yet, not purchasable, and nothing below is
+              available on any plan today — this is a statement of intent, not a product page.
+            </p>
+            <ul className="mt-4 space-y-1.5 text-[12px] text-slate-500">
+              {["Multi-seat estates and shift handover", "Custom scenario authoring", "Cohort reporting and assessment export", "SSO, audit logs and server-side accounts"].map((f) => (
+                <li key={f} className="flex items-start gap-2">
+                  <IconLock size={11} className="mt-0.5 shrink-0 text-slate-600" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </section>
 
