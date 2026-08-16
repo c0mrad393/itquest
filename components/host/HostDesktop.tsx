@@ -27,6 +27,8 @@ import { applyProfileToHost, useSessionStore } from "@/lib/host/session";
 import { useThemeStore } from "@/lib/host/theme";
 import DebugPanel from "./DebugPanel";
 import CommandPalette from "./CommandPalette";
+import TutorialDirector from "./TutorialDirector";
+import TutorialOverlay from "./TutorialOverlay";
 
 export default function HostDesktop() {
   const windows = useHostStore((s) => s.windows);
@@ -114,6 +116,8 @@ export default function HostDesktop() {
       <NetworkEngine />
       <HardwareDispatchEngine />
       <TelemetryEngine />
+      {/* Decides which tour is running; renders nothing itself. */}
+      <TutorialDirector />
 
       {/* Desktop icons */}
 
@@ -139,6 +143,10 @@ export default function HostDesktop() {
 
       {/* Taskbar */}
       <Taskbar devToolsOpen={devToolsOpen} onToggleDevTools={() => setDevToolsOpen((v) => !v)} />
+
+      {/* The spotlight sits above everything, taskbar included — it has to be
+          able to dim and to highlight the Start button like anything else. */}
+      <TutorialOverlay />
     </div>
   );
 }

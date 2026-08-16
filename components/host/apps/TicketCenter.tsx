@@ -95,7 +95,14 @@ export default function TicketCenter() {
 
       {/* Split: list + detail */}
       <div className="flex min-h-0 flex-1">
-        <div className="w-[46%] overflow-y-auto term-scroll border-r border-edge">
+        {/* The tutorial spotlights the whole queue rather than a single row:
+            which ticket is first depends on the generated world, and pointing
+            at "the one at the top" would highlight a different incident every
+            new game. */}
+        <div
+          data-tutorial-target="ticket-queue"
+          className="w-[46%] overflow-y-auto term-scroll border-r border-edge"
+        >
           {/*
             Two very different empties wearing the same words before v0.9.0.
             "Nothing matches your filters" is a thing the operator did and can
@@ -289,7 +296,10 @@ function TicketDetail({ ticket }: { ticket: Ticket }) {
       </Field>
 
       {/* Actions */}
-      <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-edge pt-3">
+      <div
+        data-tutorial-target="ticket-actions"
+        className="mt-2 flex flex-wrap items-center gap-2 border-t border-edge pt-3"
+      >
         {ticket.status === "new" && (
           <button
             onClick={onAccept}

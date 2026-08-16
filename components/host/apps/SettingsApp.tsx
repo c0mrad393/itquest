@@ -17,6 +17,8 @@ import Avatar from "../Avatar";
 import { AppIcon } from "@/components/ui/app-icons";
 import { HOST_WALLPAPERS, type WallpaperFamily } from "@/lib/host/wallpapers";
 import { jobTitle } from "@/lib/progression/tracks";
+import { useTutorialStore } from "@/lib/tutorial/store";
+import { TUTORIAL_SEQUENCES } from "@/lib/tutorial/flow";
 
 const FAMILY_LABEL: Record<WallpaperFamily, string> = {
   gradient: "Gradients",
@@ -32,6 +34,8 @@ export default function SettingsApp() {
   const soundEnabled = useHostStore((s) => s.host.soundEnabled);
   const setSoundEnabled = useHostStore((s) => s.setSoundEnabled);
   const [confirmingReset, setConfirmingReset] = useState(false);
+  const resetTutorials = useTutorialStore((s) => s.resetTutorials);
+  const seenTours = useTutorialStore((s) => s.completedSequences.length);
   const [lastSaved, setLastSaved] = useState<number | null>(() =>
     typeof window === "undefined" ? null : savedAt(),
   );
@@ -154,6 +158,30 @@ export default function SettingsApp() {
           className="mt-3 rounded-md border border-info/50 bg-info/10 px-3 py-1.5 text-xs font-semibold text-info hover:bg-info/20"
         >
           Save now
+        </button>
+      </Section>
+
+      {/*
+        Guided tours.
+
+        Deliberately NOT in the danger zone: replaying the tour is harmless and
+        reversible, and burying it next to "wipe everything" would stop anyone
+        touching it. Tour progress lives outside the save (see
+        lib/tutorial/progress.ts), so resetting the simulation does not bring
+        the tours back and this is the only control that does.
+      */}
+      <Section title="Guided tours">
+        <p className="mb-2 text-[11px] leading-relaxed text-gray-500">
+          {seenTours === 0
+            ? "No tours completed yet. The first-shift walkthrough runs automatically on a new operator's first ticket."
+            : `${seenTours} of ${TUTORIAL_SEQUENCES.length} completed. Replaying them costs nothing — they only ever point at real controls.`}
+        </p>
+        <button
+          onClick={resetTutorials}
+          disabled={seenTours === 0}
+          className="rounded-md border border-edge px-3 py-1.5 text-xs font-semibold text-gray-200 hover:bg-panelalt disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          Replay guided tours
         </button>
       </Section>
 

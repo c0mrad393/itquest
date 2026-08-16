@@ -273,7 +273,10 @@ function HealthCard({ score, notes }: { score: number; notes: string[] }) {
   const C = 2 * Math.PI * R;
 
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-edge bg-surface/70 p-4 shadow-panel backdrop-blur-xl transition hover:border-edge-strong">
+    <div
+      data-tutorial-target="dash-health"
+      className="group relative overflow-hidden rounded-2xl border border-edge bg-surface/70 p-4 shadow-panel backdrop-blur-xl transition hover:border-edge-strong"
+    >
       <div className="flex items-center gap-4">
         <div className="relative h-[76px] w-[76px] shrink-0">
           <svg viewBox="0 0 76 76" className="h-full w-full -rotate-90">
@@ -452,6 +455,11 @@ function AppTile({
     <button
       onClick={onOpen}
       title={description}
+      // One attribute here gives the tutorial a handle on EVERY app tile
+      // (`app-tile-itsm`, `app-tile-hardwarelab`, …) rather than needing a
+      // hand-placed marker per app that someone has to remember to add when
+      // the next app ships.
+      data-tutorial-target={`app-tile-${id}`}
       className="group flex items-center gap-2.5 rounded-xl border border-edge bg-surface/70 px-3 py-2.5 text-left shadow-panel backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:border-brand-fill/60 hover:bg-surface/90 hover:shadow-lg focus-visible:border-brand-fill active:translate-y-0"
     >
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-3 text-gray-300 transition duration-200 group-hover:scale-105 group-hover:bg-brand-soft/20 group-hover:text-brand-text">
