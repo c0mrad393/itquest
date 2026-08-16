@@ -1,5 +1,5 @@
 /**
- * TriageOS — Desktop wallpaper catalogue (personalization)
+ * ITQuest — Desktop wallpaper catalogue (personalization)
  * =======================================================
  * The operator's own workstation background. Pure data: each entry is a CSS
  * `background` value, so a wallpaper is just a string on `HostWorkstationState`

@@ -1,5 +1,5 @@
 /**
- * TriageOS — Ransomware compromise and the recovery sequence (DR build)
+ * ITQuest — Ransomware compromise and the recovery sequence (DR build)
  * =====================================================================
  * The one incident in the game where the order of operations is the whole
  * exercise. Isolate, then wipe, then restore. Do them out of order and you

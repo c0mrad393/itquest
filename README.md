@@ -1,4 +1,4 @@
-# TriageOS — IT Operations & Cybersecurity Simulator
+# ITQuest — IT Operations & Cybersecurity Simulator
 
 A gamified, nested-OS simulation of enterprise IT work. You play an IT/security
 engineer at a Windows-11-style **host workstation** (Level 0), receiving tickets

@@ -1,5 +1,5 @@
 /**
- * TriageOS — macOS node model
+ * ITQuest — macOS node model
  * ===========================
  * Client Macs in the generated fleet. Deliberately lighter than the Windows
  * model: enough state to drive the endpoint environment's Activity Monitor

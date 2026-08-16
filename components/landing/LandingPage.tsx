@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Landing page
+ * ITQuest — Landing page
  * =======================
  * The thirty seconds before anyone plays anything. Its whole job is to make
  * the DEPTH legible: this is not a clicker with server graphics, it is a
@@ -235,7 +235,7 @@ export default function LandingPage() {
         <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-[#67e8f9] backdrop-blur-xl">
           <IconBolt size={16} />
         </span>
-        <span className="text-[15px] font-bold tracking-tight text-white">TriageOS</span>
+        <span className="text-[15px] font-bold tracking-tight text-white">ITQuest</span>
         <span className="hidden rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[10px] text-slate-400 sm:inline">
           {VERSION}
         </span>
@@ -407,7 +407,7 @@ export default function LandingPage() {
         <div className="mx-auto flex max-w-7xl flex-col items-center gap-3 px-6 py-7 text-[11px] text-slate-500 sm:flex-row">
           <span className="flex items-center gap-2">
             <IconBolt size={12} className="text-[#22d3ee]/70" />
-            <span className="font-medium text-slate-400">TriageOS</span>
+            <span className="font-medium text-slate-400">ITQuest</span>
             <span className="font-mono">{VERSION}</span>
           </span>
 

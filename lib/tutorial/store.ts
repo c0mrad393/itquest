@@ -1,5 +1,5 @@
 /**
- * TriageOS — Tutorial store
+ * ITQuest — Tutorial store
  * =========================
  * Which tour is running, how far through it the operator is, and which tours
  * they have already been through.

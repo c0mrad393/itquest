@@ -1,5 +1,5 @@
 /**
- * TriageOS — Ticket store (Level 0 ITSM)
+ * ITQuest — Ticket store (Level 0 ITSM)
  * ======================================
  * Holds the operator's ticket queue, selection, and (procedural content engine)
  * the matrix-generated starter queue for the current world. Tier 2/3 tickets

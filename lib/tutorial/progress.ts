@@ -1,5 +1,5 @@
 /**
- * TriageOS — Tutorial progress persistence
+ * ITQuest — Tutorial progress persistence
  * ========================================
  * Which tours the operator has already been through.
  *

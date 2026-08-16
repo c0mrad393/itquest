@@ -1,5 +1,5 @@
 /**
- * TriageOS — Company Wiki content
+ * ITQuest — Company Wiki content
  * ===============================
  * The in-world IT documentation portal. Deliberately NOT a solution book:
  * articles describe standards, conventions and procedures the way a real

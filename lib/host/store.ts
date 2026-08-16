@@ -1,5 +1,5 @@
 /**
- * TriageOS — Host Desktop store (Level 0 window manager + shell state)
+ * ITQuest — Host Desktop store (Level 0 window manager + shell state)
  * ===================================================================
  * Owns presentation state for the operator's Windows-11 workstation: open
  * windows (geometry / z-order / mode), Start-menu visibility, and the host
@@ -17,7 +17,7 @@ import type {
   ConnectionProtocol,
   NodeId,
 } from "@/lib/core";
-import type { ManagedWindow, WindowRect } from "./windows";
+import { applyResize, clampPosition, type ManagedWindow, type WindowRect } from "./windows";
 import { createHostWorkstation } from "./seed";
 import type { HostWorkstationState } from "@/lib/core";
 import { levelForXp } from "@/lib/scenario/scoring";
@@ -89,6 +89,13 @@ interface HostStore {
   spendBudget: (amount: number) => boolean;
   /** Record a purchased software licence (idempotent). */
   grantLicense: (id: string) => void;
+}
+
+/** The windows layer: the viewport minus the taskbar. */
+function desktopBounds() {
+  const vw = typeof window !== "undefined" ? window.innerWidth : 1440;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 860;
+  return { w: vw, h: vh - TASKBAR_H };
 }
 
 function centeredRect(w: number, h: number, offset: number): WindowRect {
@@ -252,30 +259,40 @@ export const useHostStore = create<HostStore>((set, get) => ({
       } as Partial<HostStore>;
     }),
 
+  /*
+   * Both of these now defer to the PURE rules in windows.ts, and that matters
+   * more than it looks.
+   *
+   * This action used to clamp the whole frame inside the viewport while the
+   * drag gesture in WindowFrame clamped only enough title bar to stay
+   * grabbable. Two rules for one question: the gesture let the operator push a
+   * window past the right edge, and the commit on pointerup yanked it back. A
+   * visible snap at the end of every drag, caused entirely by the rule living
+   * in two places.
+   *
+   * The looser rule won. "Cannot be lost off-screen" is the real requirement
+   * and GRAB_MARGIN satisfies it; refusing to let a window overhang at all
+   * fights an operator who is deliberately parking one half-off to see the
+   * panel behind it.
+   */
   move: (instanceId, x, y) =>
-    set((s) => {
-      // Strictly contain windows within the desktop so they can't be lost
-      // off-screen: clamp the top-left so the whole frame stays above the
-      // taskbar and inside the viewport (or pinned to 0 if larger than it).
-      const vw = typeof window !== "undefined" ? window.innerWidth : 1440;
-      const vh = typeof window !== "undefined" ? window.innerHeight : 860;
-      return {
-        windows: s.windows.map((w) => {
-          if (w.instanceId !== instanceId) return w;
-          const maxX = Math.max(0, vw - w.w);
-          const maxY = Math.max(0, vh - TASKBAR_H - w.h);
-          return {
-            ...w,
-            x: Math.min(Math.max(0, x), maxX),
-            y: Math.min(Math.max(0, y), maxY),
-          };
-        }),
-      };
-    }),
+    set((s) => ({
+      windows: s.windows.map((w) =>
+        w.instanceId === instanceId ? { ...w, ...clampPosition(x, y, w, desktopBounds()) } : w,
+      ),
+    })),
 
   resize: (instanceId, rect) =>
     set((s) => ({
-      windows: s.windows.map((w) => (w.instanceId === instanceId ? { ...w, ...rect } : w)),
+      windows: s.windows.map((w) => {
+        if (w.instanceId !== instanceId) return w;
+        // Re-run the constraints even though the gesture already applied them:
+        // this action is public, and a caller that has not read windows.ts
+        // should not be able to mint a 40px-wide window.
+        const safe = applyResize({ x: rect.x, y: rect.y, w: w.w, h: w.h }, "se",
+          rect.w - w.w, rect.h - w.h, desktopBounds());
+        return { ...w, ...safe, ...clampPosition(rect.x, rect.y, safe, desktopBounds()) };
+      }),
     })),
 
   focusTarget: null,

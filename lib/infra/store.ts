@@ -1,5 +1,5 @@
 /**
- * TriageOS — Infrastructure store (global multi-node state)
+ * ITQuest — Infrastructure store (global multi-node state)
  * ========================================================
  * The authoritative InfrastructureState: every target node, keyed by NodeId.
  * Both the CLI interpreter and the GUI node panels read/mutate here, so a change

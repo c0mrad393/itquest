@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Local operator session (v0.7.0)
+ * ITQuest — Local operator session (v0.7.0)
  * ==========================================
  * Replaces the whole authentication layer: a Supabase client, email/password
  * and Google sign-in, a profiles table with RLS, a guest fallback, a QA "God

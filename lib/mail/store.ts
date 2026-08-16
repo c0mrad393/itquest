@@ -1,5 +1,5 @@
 /**
- * TriageOS — CoreMail store (corporate mailbox)
+ * ITQuest — CoreMail store (corporate mailbox)
  * =============================================
  * The Outlook-style inbox. Two mail sources:
  *   - Internal: generated from the org's 100+ directory (staff IT requests).

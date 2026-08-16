@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Infrastructure telemetry
+ * ITQuest — Infrastructure telemetry
  * ===================================
  * Rolling time-series behind the Monitor app.
  *

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Level 0 Host Desktop (DeskOS 12)
+ * ITQuest — Level 0 Host Desktop (DeskOS 12)
  * ============================================
  * The operator's full-screen workstation shell: wallpaper, desktop icons, the
  * open host-app windows (managed by the host store), the Start menu, and the
@@ -27,6 +27,8 @@ import { applyProfileToHost, useSessionStore } from "@/lib/host/session";
 import { useThemeStore } from "@/lib/host/theme";
 import DebugPanel from "./DebugPanel";
 import CommandPalette from "./CommandPalette";
+import DesktopIcons from "./DesktopIcons";
+import { useSkinStore } from "@/lib/host/skins";
 import TutorialDirector from "./TutorialDirector";
 import TutorialOverlay from "./TutorialOverlay";
 
@@ -44,6 +46,10 @@ export default function HostDesktop() {
   useEffect(() => hydrate(), [hydrate]);
   // Reads storage, applies the class, and follows the OS while set to system.
   const initTheme = useThemeStore((s) => s.init);
+  // The skin is a second, orthogonal dimension to light/dark — see
+  // lib/host/skins.ts. It stamps `data-skin` on <html>, the theme stamps a
+  // class, and neither can clobber the other.
+  const initSkin = useSkinStore((s) => s.init);
   const resolvedTheme = useThemeStore((s) => s.resolved);
 
   /*
@@ -56,6 +62,7 @@ export default function HostDesktop() {
     ? { backgroundColor: paperCss }
     : { backgroundImage: paperCss, backgroundSize: paper.size ?? "cover" };
   useEffect(() => initTheme(), [initTheme]);
+  useEffect(() => initSkin(), [initSkin]);
   useEffect(() => {
     if (ready) void applyProfileToHost(profile);
   }, [ready, profile]);
@@ -103,7 +110,7 @@ export default function HostDesktop() {
       {/* Brand watermark */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <span className="select-none text-[9vw] font-black tracking-tight text-gray-50/[0.04]">
-          TriageOS
+          ITQuest
         </span>
       </div>
 
@@ -119,7 +126,8 @@ export default function HostDesktop() {
       {/* Decides which tour is running; renders nothing itself. */}
       <TutorialDirector />
 
-      {/* Desktop icons */}
+      {/* Desktop icons — draggable, grid-snapped, persisted outside the save. */}
+      <DesktopIcons />
 
       {/* Windows layer */}
       {/* Windows layer. `pointer-events-none` so empty desktop space stays

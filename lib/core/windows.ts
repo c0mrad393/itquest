@@ -1,5 +1,5 @@
 /**
- * TriageOS — Windows node model
+ * ITQuest — Windows node model
  * =============================
  * A simulated Windows 11 workstation or Windows Server, including the
  * enterprise-management surfaces the GUI panels drive: Active Directory

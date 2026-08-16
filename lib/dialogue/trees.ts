@@ -1,5 +1,5 @@
 /**
- * TriageOS — Dialogue trees (authored per scenario)
+ * ITQuest — Dialogue trees (authored per scenario)
  * =================================================
  * The customer opens with `start`; each operator option advances to another
  * customer node (or null to await the technical resolution). `meter`/`csat`

@@ -1,5 +1,5 @@
 /**
- * TriageOS — Customer personas
+ * ITQuest — Customer personas
  * ============================
  * Each ticket references one persona by id. Baseline emotion sets the opening
  * tone; the dialogue store evolves it from there.

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — DeskOS 12 Taskbar
+ * ITQuest — DeskOS 12 Taskbar
  * -----------------------------
  * Centered app cluster (Win11 layout): Start button + pinned apps (from
  * HOST_APP_REGISTRY) with running/active indicators, plus a right-aligned

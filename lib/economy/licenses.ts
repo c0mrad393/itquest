@@ -1,5 +1,5 @@
 /**
- * TriageOS — Software licence catalogue
+ * ITQuest — Software licence catalogue
  * =====================================
  * Licences are permanent, operator-owned unlocks bought with IT Budget. Each
  * one has to change something the player can SEE, or it is just a paywall:

@@ -1,5 +1,5 @@
 /**
- * TriageOS — The ambient ticket engine (polish pass)
+ * ITQuest — The ambient ticket engine (polish pass)
  * ==================================================
  * The service desk never runs out of work. Before this file, this one did.
  *

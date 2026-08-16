@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — System audio engine
+ * ITQuest — System audio engine
  * ==============================
  * Every UI sound is SYNTHESISED at play time with the Web Audio API. Nothing is
  * fetched and nothing is bundled: a cue is a few oscillators, an envelope and a

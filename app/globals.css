@@ -399,3 +399,59 @@ html:has(.landing-root) {
 @media (prefers-reduced-motion: reduce) {
   .detail-in { animation: none; }
 }
+
+/* While a window is being dragged or resized, nothing else on the page should
+   select text or light up a hover state as the window sweeps across it. The
+   class is added to <body> for the duration of the gesture. */
+body.wm-gesture,
+body.wm-gesture * {
+  user-select: none !important;
+}
+body.wm-gesture iframe {
+  pointer-events: none;
+}
+
+/* ── Boot sequence ──────────────────────────────────────────────────────────
+   Each log line fades and slides in on its own delay, set inline from the
+   pure script in lib/host/boot.ts. No JS drives the text — one timeout ends
+   the whole sequence, which is why the timing can be asserted in the spec. */
+@keyframes bootLine {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.boot-line {
+  animation: bootLine 180ms ease-out both;
+}
+
+/* The progress bar is driven by the same budget as the script. */
+@keyframes bootBar {
+  from { width: 0%; }
+  to   { width: 100%; }
+}
+.boot-bar {
+  animation: bootBar 3400ms cubic-bezier(0.4, 0.05, 0.2, 1) both;
+}
+
+/* CRT scanlines: a repeating gradient, kept far under the text. */
+.boot-scan {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgb(255 255 255 / 0.9) 0px,
+    rgb(255 255 255 / 0.9) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+@keyframes bootLeave {
+  to { opacity: 0; transform: scale(1.015); }
+}
+.boot-leave {
+  animation: bootLeave 260ms ease-in both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-line, .boot-bar, .boot-leave { animation: none; }
+  .boot-line { opacity: 1; transform: none; }
+  .boot-bar { width: 100%; }
+}

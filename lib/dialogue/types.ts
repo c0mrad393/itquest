@@ -1,5 +1,5 @@
 /**
- * TriageOS — Dialogue & persona types
+ * ITQuest — Dialogue & persona types
  * ===================================
  * Customer personas hold an emotional state that shifts with the operator's
  * responses, SLA pressure, and incident resolution. Dialogue is a small

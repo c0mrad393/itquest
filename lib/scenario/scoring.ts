@@ -1,5 +1,5 @@
 /**
- * TriageOS — Resolution scoring
+ * ITQuest — Resolution scoring
  * =============================
  * Turns a resolved ticket + its conversation outcome into XP. Reward scales
  * with SLA compliance and final CSAT, so speed AND customer handling matter.

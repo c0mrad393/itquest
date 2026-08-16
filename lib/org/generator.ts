@@ -1,5 +1,5 @@
 /**
- * TriageOS — Procedural Organization Generator
+ * ITQuest — Procedural Organization Generator
  * ============================================
  * Builds a complete, unique world from a single seed: company profile, scale
  * matrix, node fleet (3 → 12 machines), randomized hostnames/IP schemas, a

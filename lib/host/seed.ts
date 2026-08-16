@@ -1,5 +1,5 @@
 /**
- * TriageOS — Host workstation seed
+ * ITQuest — Host workstation seed
  * ================================
  * The operator's Level-0 workstation profile. (The ticket queue is now minted
  * by the procedural TicketFactory in lib/tickets/factory.ts.)

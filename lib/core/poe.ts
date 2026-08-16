@@ -1,5 +1,5 @@
 /**
- * TriageOS — Managed PoE switches (Build 1)
+ * ITQuest — Managed PoE switches (Build 1)
  * =========================================
  * Power over Ethernet, modelled the way it actually bites: a switch has a
  * power BUDGET, the devices hanging off it have a DRAW, and when the second

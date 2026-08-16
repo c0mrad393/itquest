@@ -1,5 +1,5 @@
 /**
- * TriageOS — SLA clock store
+ * ITQuest — SLA clock store
  * ==========================
  * Holds a shared `now` that the SlaEngine advances every second, so every SLA
  * countdown in the app re-renders live. Also remembers which tickets have

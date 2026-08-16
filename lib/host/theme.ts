@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Theme engine (v0.9.0)
+ * ITQuest — Theme engine (v0.9.0)
  * ================================
  * Three states, not two: light, dark, and SYSTEM. System is the default and it
  * stays live — if the operator's OS flips to dark at sunset, so does this,

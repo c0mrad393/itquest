@@ -1,5 +1,5 @@
 /**
- * TriageOS — Ticket model (ITSM)
+ * ITQuest — Ticket model (ITSM)
  * ==============================
  * The unit of work. A ticket binds a narrative (requester + persona + SLA) to a
  * technical scenario running on one or more nodes of the InfrastructureState.

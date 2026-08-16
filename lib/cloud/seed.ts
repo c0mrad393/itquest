@@ -1,5 +1,5 @@
 /**
- * TriageOS — AetherCloud tenant seed
+ * ITQuest — AetherCloud tenant seed
  * ==================================
  * Every generated world gets a small cloud footprint, so the console is never
  * an empty shell: one AVN in the estate's home region, a couple of vNodes, a

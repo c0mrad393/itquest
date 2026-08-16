@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Dev Tools session state (Build 3)
+ * ITQuest — Dev Tools session state (Build 3)
  * ============================================
  * The stress-bench knobs: bitrate multipliers, forced congestion, and whether
  * the bandwidth debugger is pinned open.

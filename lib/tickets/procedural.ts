@@ -1,5 +1,5 @@
 /**
- * TriageOS — Procedural ticket engine
+ * ITQuest — Procedural ticket engine
  * ===================================
  * Scales the content library past 100 scenarios without 100 hand-written
  * objects, and — more importantly — without 100 near-identical ones.

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Operations Dashboard (home)
+ * ITQuest — Operations Dashboard (home)
  * ======================================
  * The screen the operator lands on. Three jobs, in this order:
  *

@@ -1,5 +1,5 @@
 /**
- * TriageOS — Tutorial flow (pure)
+ * ITQuest — Tutorial flow (pure)
  * ===============================
  * The sequences, and the decisions that drive them. No React, no stores, no
  * DOM — every function here is a pure read of a narrow world snapshot, so the

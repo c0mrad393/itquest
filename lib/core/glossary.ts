@@ -1,5 +1,5 @@
 /**
- * TriageOS — Jargon glossary (v0.9.1)
+ * ITQuest — Jargon glossary (v0.9.1)
  * ===================================
  * One sentence per term, in the words an experienced colleague would actually
  * use while leaning over your desk. Not a dictionary: every entry answers

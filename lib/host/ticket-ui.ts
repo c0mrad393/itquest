@@ -1,5 +1,5 @@
 /**
- * TriageOS — Ticket presentation helpers (pure)
+ * ITQuest — Ticket presentation helpers (pure)
  * =============================================
  * Shared color/label maps and SLA math used by the Ticket Center list + detail.
  * No JSX here — just data, so it stays trivially testable.

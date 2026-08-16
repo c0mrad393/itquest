@@ -1,5 +1,5 @@
 /**
- * TriageOS — Linux node model
+ * ITQuest — Linux node model
  * ===========================
  * A simulated Linux instance (web servers, app servers, DBs). Reuses the proven
  * POSIX primitives from `lib/vm/types` so the existing CLI interpreter and

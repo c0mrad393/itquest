@@ -1,5 +1,5 @@
 /**
- * TriageOS — Session persistence (Phase 6)
+ * ITQuest — Session persistence (Phase 6)
  * ========================================
  * Serializes the live simulation to LocalStorage and hydrates it on boot.
  * Everything persisted is plain JSON — a guarantee designed in since Phase 1

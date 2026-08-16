@@ -1,5 +1,5 @@
 /**
- * TriageOS — Linux node ⇄ interpreter adapter
+ * ITQuest — Linux node ⇄ interpreter adapter
  * ===========================================
  * Re-points the proven Phase-1 CLI engine at a node inside InfrastructureState.
  * The interpreter operates on a flat VMState; a LinuxNodeState carries the same

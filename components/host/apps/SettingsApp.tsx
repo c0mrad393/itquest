@@ -217,7 +217,7 @@ export default function SettingsApp() {
       </Section>
 
       <div className="text-[10px] text-gray-600">
-        TriageOS · client-side simulation · Next.js 14 + Zustand
+        ITQuest · client-side simulation · Next.js 14 + Zustand
       </div>
     </div>
   );

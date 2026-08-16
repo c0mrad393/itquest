@@ -1,5 +1,5 @@
 /**
- * TriageOS — Host app icon mapper
+ * ITQuest — Host app icon mapper
  * ===============================
  * The single bridge between the serializable `HostAppIconId` keys stored in the
  * app registry / window manager and the React SVG components that draw them.

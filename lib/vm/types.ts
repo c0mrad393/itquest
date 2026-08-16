@@ -1,5 +1,5 @@
 /**
- * TriageOS — Virtual Machine State Model
+ * ITQuest — Virtual Machine State Model
  * ---------------------------------------
  * This is the authoritative, shared model of a single simulated host.
  *

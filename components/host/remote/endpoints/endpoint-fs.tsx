@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Interactive endpoint file system
+ * ITQuest — Interactive endpoint file system
  * ===========================================
  * A small window manager (useEndpointWM) plus the window bodies that make the
  * mini Windows/macOS desktops feel real:

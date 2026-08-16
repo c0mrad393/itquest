@@ -1,5 +1,5 @@
 /**
- * TriageOS — Enterprise file shares (v0.5.0)
+ * ITQuest — Enterprise file shares (v0.5.0)
  * ==========================================
  * Server-side SMB shares with an access control list bound to Enterprise Directory Services
  * security groups. This is the other half of the access-request loop: adding a

@@ -1,5 +1,5 @@
 /**
- * TriageOS — Company growth phases (v0.6.0)
+ * ITQuest — Company growth phases (v0.6.0)
  * =========================================
  * Every previous release handed the player a 320-person enterprise on turn
  * one: three racks, twelve servers, a directory the size of a small town. It

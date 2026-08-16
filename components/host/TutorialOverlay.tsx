@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Tutorial overlay (spotlight)
+ * ITQuest — Tutorial overlay (spotlight)
  * =======================================
  * Dims the workstation, cuts a hole over the element the current step is
  * about, and floats a glass card next to it. Presentation and measurement

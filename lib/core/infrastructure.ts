@@ -1,5 +1,5 @@
 /**
- * TriageOS — Global Infrastructure State
+ * ITQuest — Global Infrastructure State
  * ======================================
  * The single authoritative model of an entire client environment: a map of
  * independently-tracked nodes plus the topology that connects them. This is the

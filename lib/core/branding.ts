@@ -1,5 +1,5 @@
 /**
- * TriageOS — Product naming (v0.8.0)
+ * ITQuest — Product naming (v0.8.0)
  * ==================================
  * The estate runs fictional software. Every product a real sysadmin would
  * recognise has a parody name here, and this module is the ONLY place those

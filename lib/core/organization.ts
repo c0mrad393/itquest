@@ -1,5 +1,5 @@
 /**
- * TriageOS — Organization & topology models (procedural world)
+ * ITQuest — Organization & topology models (procedural world)
  * ============================================================
  * Every user gets a generated org: identity, scale, and a network topology.
  * The OrganizationProfile is embedded in InfrastructureState so it persists

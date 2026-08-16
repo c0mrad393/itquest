@@ -1,5 +1,5 @@
 /**
- * TriageOS — Network share + local disk helpers
+ * ITQuest — Network share + local disk helpers
  * ==============================================
  * The live status of a mapped drive is DERIVED from the backing file server,
  * not stored, so it reflects reality: if the server goes offline or its SMB

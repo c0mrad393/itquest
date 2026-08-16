@@ -1,5 +1,5 @@
 /**
- * TriageOS — The live hint engine (polish pass)
+ * ITQuest — The live hint engine (polish pass)
  * =============================================
  * Hints that read the ESTATE, not the template.
  *

@@ -1,5 +1,5 @@
 /**
- * TriageOS — Store-room seed
+ * ITQuest — Store-room seed
  * ==========================
  * The starting asset catalogue and an empty rack.
  *

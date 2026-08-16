@@ -1,5 +1,5 @@
 /**
- * TriageOS — Ticket Factory
+ * ITQuest — Ticket Factory
  * =========================
  * Turns matrix templates into concrete, world-bound tickets. For each template
  * it binds a TicketDynamicContext (random AD user, hostname, VLAN, attacker IP),

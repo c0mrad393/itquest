@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Fullscreen (HTML5 Fullscreen API)
+ * ITQuest — Fullscreen (HTML5 Fullscreen API)
  * ============================================
  * Lets the shell take over the monitor so it reads as a real OS rather than a
  * page. Kept in one module because the API is still vendor-prefixed on Safari

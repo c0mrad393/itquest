@@ -1,5 +1,5 @@
 /**
- * TriageOS — Root session state (composition root)
+ * ITQuest — Root session state (composition root)
  * ================================================
  * Ties the layers together into the single object the app persists and hydrates.
  * The scenario, dialogue, and gamification ENGINES arrive in Phases 5–6; here we

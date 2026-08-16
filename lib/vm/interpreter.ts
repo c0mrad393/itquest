@@ -1,5 +1,5 @@
 /**
- * TriageOS — CLI Interpreter
+ * ITQuest — CLI Interpreter
  * --------------------------
  * A sandboxed command engine. It NEVER shells out. Each command is a pure-ish
  * function (VMState, argv) => { result, next } where `next` is the new VMState

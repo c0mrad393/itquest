@@ -1,5 +1,5 @@
 /**
- * TriageOS — Centralized Fleet Policies (v0.8.0)
+ * ITQuest — Centralized Fleet Policies (v0.8.0)
  * ==============================================
  * The Group Policy analogue, with the part that actually teaches something:
  * RESOLUTION. Anyone can attach a setting to a container. The skill worth

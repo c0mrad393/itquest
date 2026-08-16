@@ -1,5 +1,5 @@
 /**
- * TriageOS — Node primitives (shared base)
+ * ITQuest — Node primitives (shared base)
  * ========================================
  * Common identity, connectivity, and health shared by every target machine in
  * the simulated infrastructure, regardless of OS. Concrete node shapes

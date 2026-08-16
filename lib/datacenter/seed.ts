@@ -1,5 +1,5 @@
 /**
- * TriageOS — Datacenter floor seed (v0.4.0)
+ * ITQuest — Datacenter floor seed (v0.4.0)
  * =========================================
  * Builds the physical half of a generated world: three racks on the floor,
  * every infrastructure node bolted into one of them, powered, and patched into

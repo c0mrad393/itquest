@@ -177,6 +177,9 @@ const config: Config = {
       borderRadius: {
         // A slightly softer default: the old UI was all hard 4px corners.
         DEFAULT: "0.375rem",
+        // Window and panel rounding, so a SKIN can square everything off from
+        // one token instead of a sweep through every rounded-* utility.
+        wm: "var(--wm-radius)",
       },
       boxShadow: {
         panel:

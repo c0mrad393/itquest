@@ -1,5 +1,5 @@
 /**
- * TriageOS — Seeded RNG (procedural generation core)
+ * ITQuest — Seeded RNG (procedural generation core)
  * ==================================================
  * mulberry32: tiny, fast, deterministic. Every OrgGenerator run is a pure
  * function of its seed, so a user's world can be regenerated bit-identically

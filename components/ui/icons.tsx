@@ -1,5 +1,5 @@
 /**
- * TriageOS — SVG icon set
+ * ITQuest — SVG icon set
  * =======================
  * A small, dependency-free stroke-icon set (Lucide-style geometry) used by the
  * AssetManager and Rack Simulator. Every icon inherits `currentColor` and sizes

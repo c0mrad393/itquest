@@ -1,5 +1,5 @@
 /**
- * TriageOS — Filesystem helpers
+ * ITQuest — Filesystem helpers
  * -----------------------------
  * Pure path-resolution and node-lookup utilities over the FsNode tree.
  * These never mutate; command implementations clone + mutate through the store.

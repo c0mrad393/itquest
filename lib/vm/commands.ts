@@ -1,5 +1,5 @@
 /**
- * TriageOS — Command implementations (Linux flavor)
+ * ITQuest — Command implementations (Linux flavor)
  * -------------------------------------------------
  * The initial command set covering Helpdesk → Sysadmin → NetOps troubleshooting.
  * Every mutating command clones VMState with structuredClone and returns `next`.

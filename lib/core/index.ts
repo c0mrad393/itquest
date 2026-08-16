@@ -1,5 +1,5 @@
 /**
- * TriageOS — Core type layer (barrel)
+ * ITQuest — Core type layer (barrel)
  * ===================================
  * Single import surface for the whole domain model. Prefer importing from
  * "@/lib/core" so call sites don't couple to file layout.

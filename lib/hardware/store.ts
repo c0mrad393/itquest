@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Field Ops / Dispatch store
+ * ITQuest — Field Ops / Dispatch store
  * =====================================
  * Session state for the Hardware Lab: which workshop steps a ticket has
  * completed (provisioning), and the live field-dispatch countdowns. When a

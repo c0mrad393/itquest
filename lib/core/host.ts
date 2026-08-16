@@ -1,5 +1,5 @@
 /**
- * TriageOS — Level 0 Host Workstation & App Registry
+ * ITQuest — Level 0 Host Workstation & App Registry
  * ==================================================
  * Models the IT specialist's own Windows-11 workstation: the operator profile,
  * shell chrome, and the catalog of first-class host applications (ITSM, Mail,
@@ -35,6 +35,7 @@ export type HostAppId =
   | "wiki" // Company Wiki / intranet documentation portal
   | "leaderboard" // Global ranking
   | "settings" // Host settings
+  | "appearance" // Skin, theme, wallpaper and desktop shortcuts
   | "profile"; // Account & profile management (identity layer)
 
 export type HostAppCategory = "work" | "system";
@@ -409,6 +410,19 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     singleton: true,
     pinnedToTaskbar: false,
     showOnDesktop: true,
+  },
+  appearance: {
+    id: "appearance",
+    title: "Appearance",
+    iconId: "gear",
+    category: "system",
+    group: "system",
+    description: "Skin, light and dark, wallpaper, and which shortcuts sit on the desktop.",
+    defaultSize: { w: 720, h: 600 },
+    minSize: { w: 460, h: 380 },
+    singleton: true,
+    pinnedToTaskbar: false,
+    showOnDesktop: false,
   },
   settings: {
     id: "settings",

@@ -1,5 +1,5 @@
 /**
- * TriageOS — Name & data pools (procedural generation)
+ * ITQuest — Name & data pools (procedural generation)
  * ====================================================
  * Word banks the OrgGenerator draws from: company names per sector, human
  * names, departments/titles, and mail flavor text.

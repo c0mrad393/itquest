@@ -1,5 +1,5 @@
 /**
- * TriageOS — PoE switch and edge-device seeding (Build 1)
+ * ITQuest — PoE switch and edge-device seeding (Build 1)
  * =======================================================
  * Builds the access layer: one or two managed PoE switches, the cameras,
  * access points and phones hanging off them, and the address leases for the

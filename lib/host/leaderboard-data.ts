@@ -1,5 +1,5 @@
 /**
- * TriageOS — Leaderboard field (shared)
+ * ITQuest — Leaderboard field (shared)
  * =====================================
  * Seeded rival roster + rank math, shared by the Leaderboard app and the
  * Profile app's gamification dashboard. Static until multiplayer sync lands.

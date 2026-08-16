@@ -1,5 +1,5 @@
 /**
- * TriageOS — Server rack & network infrastructure models
+ * ITQuest — Server rack & network infrastructure models
  * ======================================================
  * The physical layer (what is mounted in which U, what is cabled to what,
  * what is powered) plus the logical layer (switch VLANs / interfaces, server

@@ -1,5 +1,5 @@
 /**
- * TriageOS — Hardware inventory models
+ * ITQuest — Hardware inventory models
  * ====================================
  * The IT store room: every physical asset the operator can allocate, from
  * mice and patch cables to switches and rack servers. Lives inside

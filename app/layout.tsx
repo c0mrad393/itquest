@@ -3,7 +3,7 @@ import "./globals.css";
 import { THEME_BOOT_SCRIPT } from "@/lib/host/theme";
 
 export const metadata: Metadata = {
-  title: "TriageOS — IT Operations & Cyber Simulation",
+  title: "ITQuest — IT Operations & Cyber Simulation",
   description:
     "A gamified IT Operations & Cybersecurity simulation platform with a dual CLI/GUI troubleshooting workspace.",
 };

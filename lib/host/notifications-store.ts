@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Notification centre
+ * ITQuest — Notification centre
  * ==============================
  * Windows-style toasts plus the Action Center history behind them. Toasts are
  * transient (auto-dismiss); the history persists for the session so the player

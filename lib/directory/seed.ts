@@ -1,5 +1,5 @@
 /**
- * TriageOS — Enterprise share seed (v0.5.0)
+ * ITQuest — Enterprise share seed (v0.5.0)
  * =========================================
  * The share layout a real file server accumulates: one departmental area per
  * team, a couple of cross-cutting shares that several teams need, and a public

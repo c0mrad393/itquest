@@ -1,5 +1,5 @@
 /**
- * TriageOS — Cascade failures (QA phase 2)
+ * ITQuest — Cascade failures (QA phase 2)
  * ========================================
  * One root cause; several symptoms; a fix that has to happen in a particular
  * order across several apps.

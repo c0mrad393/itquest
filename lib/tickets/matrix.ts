@@ -1,5 +1,5 @@
 /**
- * TriageOS — Ticket Content Matrix (procedural content engine)
+ * ITQuest — Ticket Content Matrix (procedural content engine)
  * ============================================================
  * The single registry of ticket templates, 3 per category across Tiers 1-3.
  * Replaces the old SCENARIOS map: each template owns its classification,

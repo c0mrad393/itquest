@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Toasts + Action Center
+ * ITQuest — Toasts + Action Center
  * =================================
  * `ToastHost` slides Windows-style toasts in from the bottom-right, above the
  * taskbar. `ActionCenter` is the panel behind the taskbar bell, listing the

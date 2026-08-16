@@ -1,5 +1,5 @@
 /**
- * TriageOS — Hardware Provisioning models (v2)
+ * ITQuest — Hardware Provisioning models (v2)
  * ============================================
  * A hyper-realistic, multi-stage provisioning pipeline. Each hardware/software
  * ticket maps to a HardwareJob whose `stages` drive the Workshop:

@@ -1,5 +1,5 @@
 /**
- * TriageOS — Skill tracks & career specialisation
+ * ITQuest — Skill tracks & career specialisation
  * ===============================================
  * XP is no longer a single number. Every resolved ticket also credits ONE
  * skill track, and the operator's job title is derived from where that

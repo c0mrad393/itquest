@@ -1,5 +1,5 @@
 /**
- * TriageOS — IP address management and conflict detection (Build 1)
+ * ITQuest — IP address management and conflict detection (Build 1)
  * =================================================================
  * Who holds which address, whether they were given it or took it, and every
  * way that can go wrong.

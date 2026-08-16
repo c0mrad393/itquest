@@ -3,7 +3,7 @@
 /**
  * WikiDoc — the documentation renderer.
  * =====================================
- * A small, dependency-free Markdown subset, styled to the TriageOS surface
+ * A small, dependency-free Markdown subset, styled to the ITQuest surface
  * rather than to a generic prose theme. Supported:
  *
  *   # ## ###        headings

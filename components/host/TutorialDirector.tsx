@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Tutorial director (headless)
+ * ITQuest — Tutorial director (headless)
  * =======================================
  * The one place that connects the pure tour rules to the live simulation. It
  * renders nothing: it watches state, decides which tour should be running and

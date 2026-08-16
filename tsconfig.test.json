@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "jsx": "preserve"
   },
-  "include": ["lib/core/rack.ts", "lib/core/datacenter.ts", "lib/core/fileshares.ts", "lib/core/directory.ts", "lib/core/growth.ts", "lib/core/policy.ts", "lib/core/poe.ts", "lib/core/ipam.ts", "lib/core/traffic.ts", "lib/core/backup.ts", "lib/core/incident.ts", "lib/tickets/ambient.ts", "lib/progression/unlocks.ts", "lib/tickets/hints.ts", "lib/core/cascade.ts", "lib/hardware/types.ts", "lib/tutorial/flow.ts"]
+  "include": ["lib/core/rack.ts", "lib/core/datacenter.ts", "lib/core/fileshares.ts", "lib/core/directory.ts", "lib/core/growth.ts", "lib/core/policy.ts", "lib/core/poe.ts", "lib/core/ipam.ts", "lib/core/traffic.ts", "lib/core/backup.ts", "lib/core/incident.ts", "lib/tickets/ambient.ts", "lib/progression/unlocks.ts", "lib/tickets/hints.ts", "lib/core/cascade.ts", "lib/hardware/types.ts", "lib/tutorial/flow.ts", "lib/host/windows.ts", "lib/host/boot.ts", "lib/host/desktop-icons.ts"]
 }

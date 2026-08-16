@@ -1,5 +1,5 @@
 /**
- * TriageOS — Operator avatar palette
+ * ITQuest — Operator avatar palette
  * ==================================
  * All that survives of the identity layer after v0.7.0 removed accounts:
  * the palette the Profile app offers and the check that tells a palette id

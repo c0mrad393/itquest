@@ -1,5 +1,5 @@
 /**
- * TriageOS — Endpoint visual + desktop models (immersion layer)
+ * ITQuest — Endpoint visual + desktop models (immersion layer)
  * ============================================================
  * Per-endpoint presentation state generated once by the OrgGenerator, so every
  * Windows/Mac machine looks distinct: a wallpaper (28 variations), a light/dark

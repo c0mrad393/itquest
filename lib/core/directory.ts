@@ -1,5 +1,5 @@
 /**
- * TriageOS — Service reachability & the enterprise directory (v0.5.0)
+ * ITQuest — Service reachability & the enterprise directory (v0.5.0)
  * ==================================================================
  * v0.4.0 unified the physical and logical halves of a SERVER. This module does
  * the same thing one layer up: it makes every application in the OS answer to

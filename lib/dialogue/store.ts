@@ -1,5 +1,5 @@
 /**
- * TriageOS — Dialogue store
+ * ITQuest — Dialogue store
  * =========================
  * One Conversation per ticket. Operator replies advance the tree and move the
  * emotion meter + CSAT; system events (accepted / resolved / SLA warning /

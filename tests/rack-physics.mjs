@@ -1,5 +1,5 @@
 /**
- * TriageOS — datacentre physics & unification spec (v0.3.1, extended v0.4.0)
+ * ITQuest — datacentre physics & unification spec (v0.3.1, extended v0.4.0)
  * =========================================================================
  * Exercises the pure model layer in `lib/core/rack.ts` and
  * `lib/core/datacenter.ts` — the same functions the Datacenter Floor and the
@@ -139,6 +139,10 @@ import {
   sequenceById,
   stepAt,
 } from "../.test-build/tutorial/flow.js";
+
+import { MIN_W, MIN_H, GRAB_MARGIN, applyResize, clampPosition } from "../.test-build/host/windows.js";
+import { BOOT_LINES, BOOT_TOTAL_MS, BOOT_BUDGET_MS, bootLineDelay } from "../.test-build/host/boot.js";
+import { placeIcon, reflow, autoArrange, gridFor, pxToCell, cellToPx } from "../.test-build/host/desktop-icons.js";
 
 let pass = 0;
 let fail = 0;
@@ -2024,6 +2028,107 @@ group("Client endpoints skip the rack chain");
          s.when({ ...fresh, openAppIds: [a] }))), true);
   eq("out-of-range indices return null, not a crash", stepAt(boot, 99), null);
   eq("negative indices too", stepAt(boot, -1), null);
+}
+
+// ── Window manager geometry ────────────────────────────────────────────────
+{
+  group("WM — resize constraints");
+  const B = { w: 1440, h: 812 };
+  const start = { x: 200, y: 100, w: 600, h: 400 };
+
+  eq("dragging the east edge widens only", JSON.stringify(applyResize(start, "e", 120, 0, B)),
+     JSON.stringify({ x: 200, y: 100, w: 720, h: 400 }));
+  eq("dragging the west edge moves the origin too", JSON.stringify(applyResize(start, "w", -100, 0, B)),
+     JSON.stringify({ x: 100, y: 100, w: 700, h: 400 }));
+
+  // The bug this guards: when width bottoms out on a west drag, x must stop
+  // with it or the window slides sideways while refusing to shrink.
+  const squashed = applyResize(start, "w", 999, 0, B);
+  eq("width stops at the minimum", squashed.w, MIN_W);
+  eq("and the right edge stays put", squashed.x + squashed.w, start.x + start.w);
+
+  const squashedN = applyResize(start, "n", 0, 999, B);
+  eq("height stops at the minimum", squashedN.h, MIN_H);
+  eq("and the bottom edge stays put", squashedN.y + squashedN.h, start.y + start.h);
+
+  eq("a window cannot exceed the desktop width", applyResize(start, "e", 5000, 0, B).w, B.w);
+  eq("nor its height", applyResize(start, "s", 0, 5000, B).h, B.h);
+  eq("a north drag cannot push the title bar off the top",
+     applyResize(start, "n", 0, -9999, B).y, 0);
+
+  group("WM — position clamping keeps a window grabbable");
+  const r = { x: 0, y: 0, w: 600, h: 400 };
+  eq("a window may hang off the left, but not entirely",
+     clampPosition(-9999, 50, r, B).x, GRAB_MARGIN - r.w);
+  eq("and off the right the same way", clampPosition(9999, 50, r, B).x, B.w - GRAB_MARGIN);
+  eq("the top is hard-clamped at zero", clampPosition(50, -9999, r, B).y, 0);
+  eq("the bottom keeps the title bar reachable", clampPosition(50, 9999, r, B).y, B.h - GRAB_MARGIN);
+  eq("a legal position is left alone", JSON.stringify(clampPosition(300, 200, r, B)),
+     JSON.stringify({ x: 300, y: 200 }));
+
+  group("Boot — the script fits its budget");
+  eq("the sequence stays inside the promised window", BOOT_TOTAL_MS <= BOOT_BUDGET_MS, true);
+  eq("and is long enough to read", BOOT_TOTAL_MS > 1500, true);
+  eq("delays increase monotonically",
+     BOOT_LINES.every((_, i) => i === 0 || bootLineDelay(i) > bootLineDelay(i - 1)), true);
+  eq("no line is instant", BOOT_LINES.every((l) => l.ms > 0), true);
+  eq("every line reports a status", BOOT_LINES.every((l) => l.status.length > 0), true);
+  // Equal gaps read as an animation rather than as a machine.
+  eq("pacing varies", new Set(BOOT_LINES.map((l) => l.ms)).size > 4, true);
+
+  group("Desktop icons — grid placement");
+  const G = { cols: 6, rows: 5 };
+  const base = [
+    { app: "a", col: 0, row: 0 },
+    { app: "b", col: 0, row: 1 },
+    { app: "c", col: 1, row: 0 },
+  ];
+
+  const moved = placeIcon(base, "a", 3, 3, G.cols, G.rows);
+  eq("an icon lands on the cell it was dropped on",
+     JSON.stringify(moved.find((i) => i.app === "a")), JSON.stringify({ app: "a", col: 3, row: 3 }));
+  eq("nothing else moved", moved.filter((i) => i.app !== "a").every((i) =>
+     base.some((b) => b.app === i.app && b.col === i.col && b.row === i.row)), true);
+
+  // Dropping onto an occupied cell displaces the occupant rather than bouncing.
+  const collided = placeIcon(base, "a", 1, 0, G.cols, G.rows);
+  eq("the dropped icon wins the cell",
+     JSON.stringify(collided.find((i) => i.app === "a")), JSON.stringify({ app: "a", col: 1, row: 0 }));
+  const displaced = collided.find((i) => i.app === "c");
+  eq("the occupant is displaced, not deleted", !!displaced, true);
+  eq("and lands adjacent, not at the origin",
+     Math.max(Math.abs(displaced.col - 1), Math.abs(displaced.row - 0)), 1);
+
+  const cells = collided.map((i) => `${i.col}:${i.row}`);
+  eq("no two icons ever share a cell", new Set(cells).size, cells.length);
+
+  eq("drops are clamped into the grid",
+     JSON.stringify(placeIcon(base, "a", 99, 99, G.cols, G.rows).find((i) => i.app === "a")),
+     JSON.stringify({ app: "a", col: G.cols - 1, row: G.rows - 1 }));
+
+  group("Desktop icons — reflow and tidy");
+  const wide = [
+    { app: "a", col: 5, row: 0 },
+    { app: "b", col: 0, row: 0 },
+  ];
+  const narrow = reflow(wide, 2, 4);
+  eq("an icon outside the new grid is re-homed", narrow.every((i) => i.col < 2 && i.row < 4), true);
+  eq("one that still fits does not move",
+     JSON.stringify(narrow.find((i) => i.app === "b")), JSON.stringify({ app: "b", col: 0, row: 0 }));
+  const reCells = narrow.map((i) => `${i.col}:${i.row}`);
+  eq("reflow never collides", new Set(reCells).size, reCells.length);
+
+  const tidied = autoArrange(base, 2);
+  eq("tidy packs column-major", JSON.stringify(tidied.map((i) => `${i.col}:${i.row}`)),
+     JSON.stringify(["0:0", "0:1", "1:0"]));
+
+  group("Desktop icons — grid maths");
+  eq("a narrow desktop still has one column", gridFor(40, 40).cols >= 1, true);
+  const px = cellToPx(2, 3);
+  eq("cell -> pixel -> cell round-trips", JSON.stringify(pxToCell(px.x, px.y)),
+     JSON.stringify({ col: 2, row: 3 }));
+  eq("negative pixels clamp to the origin", JSON.stringify(pxToCell(-500, -500)),
+     JSON.stringify({ col: 0, row: 0 }));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

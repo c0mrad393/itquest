@@ -1,5 +1,5 @@
 /**
- * TriageOS — Company expansion (v0.6.0)
+ * ITQuest — Company expansion (v0.6.0)
  * =====================================
  * What actually happens when the company reaches a milestone.
  *

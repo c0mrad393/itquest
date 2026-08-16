@@ -1,4 +1,4 @@
-import HostDesktop from "@/components/host/HostDesktop";
+import DeskOSShell from "@/components/host/DeskOSShell";
 
 /**
  * /desktop — the Level-0 host workstation.
@@ -8,5 +8,5 @@ import HostDesktop from "@/components/host/HostDesktop";
  * mount and gets on with it.
  */
 export default function DesktopPage() {
-  return <HostDesktop />;
+  return <DeskOSShell />;
 }

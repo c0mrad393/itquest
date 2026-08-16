@@ -1,5 +1,5 @@
 /**
- * TriageOS — Seed VM
+ * ITQuest — Seed VM
  * ------------------
  * A deterministic starting VMState used for local dev and as the template for
  * the first authored scenario:

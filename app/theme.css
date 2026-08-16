@@ -1,5 +1,5 @@
 /**
- * TriageOS — Theme tokens (v0.9.1)
+ * ITQuest — Theme tokens (v0.9.1)
  * ================================
  * THE ARCHITECTURAL TRICK, because it is worth understanding before editing
  * anything below:
@@ -303,4 +303,116 @@ body {
 :focus-visible {
   outline: 2px solid rgb(var(--ring));
   outline-offset: 2px;
+}
+
+/**
+ * ── SKINS ────────────────────────────────────────────────────────────────────
+ *
+ * A skin is ORTHOGONAL to light/dark (see lib/host/skins.ts). It overrides only
+ * the tokens that carry personality — brand hue, edges, radius, taskbar
+ * opacity, chrome font — and leaves the surface lightness to the theme, so
+ * every skin works in both without a second palette.
+ *
+ * Selectors are `[data-skin]` on <html>, an attribute rather than a class so
+ * the skin and theme appliers can never clobber one another's writes.
+ *
+ * The three tokens below are NEW and consumed by the desktop chrome:
+ *   --wm-radius        window and panel corner rounding
+ *   --taskbar-alpha    taskbar translucency
+ *   --chrome-font      the font stack for shell chrome (not app content)
+ */
+:root {
+  --wm-radius: 10px;
+  --taskbar-alpha: 0.7;
+  --chrome-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+}
+
+/* ── Cyber Hacker ───────────────────────────────────────────────────────────
+   Terminal green with no rounding and an almost-solid taskbar. It does NOT
+   force dark surfaces: an operator on light mode chose that, and a skin is a
+   taste setting, not an override of an accessibility one. */
+[data-skin="cyber"] {
+  --wm-radius: 2px;
+  --taskbar-alpha: 0.94;
+  --chrome-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --brand-fill: 22 163 104;
+  --brand-fill-hover: 30 190 122;
+  --brand-on: 3 18 11;
+  --brand-text: 52 224 154;
+  --brand-soft: 34 224 138;
+  --ring: 52 224 154;
+}
+[data-skin="cyber"].theme-dark {
+  --surface-sunken: 3 10 7;
+  --surface: 7 18 13;
+  --surface-2: 11 26 19;
+  --surface-3: 16 36 26;
+  --edge: 26 66 47;
+  --edge-strong: 40 104 74;
+  --brand-text: 74 240 170;
+}
+[data-skin="cyber"].theme-light {
+  /* The hue stays; the surfaces stay light. */
+  --brand-text: 8 102 62;
+}
+
+/* ── Clean Corporate ────────────────────────────────────────────────────────
+   Steel blue, softer shadows, slightly larger radius. The quiet one. */
+[data-skin="corporate"] {
+  --wm-radius: 12px;
+  --taskbar-alpha: 0.82;
+
+  --brand-fill: 45 104 190;
+  --brand-fill-hover: 58 124 214;
+  --brand-on: 255 255 255;
+  --brand-text: 138 178 240;
+  --brand-soft: 59 113 201;
+  --ring: 138 178 240;
+  --shadow-strength: 0.28;
+}
+[data-skin="corporate"].theme-light {
+  --brand-text: 27 78 152;
+}
+
+/* ── High Contrast ──────────────────────────────────────────────────────────
+   The one skin that touches the neutral ramp, because raising separation IS
+   the point of it. Translucency goes to zero: a frosted panel is a contrast
+   reduction dressed as a texture, and this skin exists for people who cannot
+   afford one. */
+[data-skin="contrast"] {
+  --wm-radius: 4px;
+  --taskbar-alpha: 1;
+  --shadow-strength: 0.85;
+
+  --brand-fill: 0 82 204;
+  --brand-fill-hover: 0 98 235;
+  --brand-on: 255 255 255;
+  --ring: 255 212 0;
+}
+[data-skin="contrast"].theme-dark {
+  --surface-sunken: 0 0 0;
+  --surface: 8 8 10;
+  --surface-2: 18 18 22;
+  --surface-3: 30 30 36;
+  --edge: 92 92 104;
+  --edge-strong: 140 140 156;
+  --g-400: 190 198 210;
+  --g-500: 176 185 199;
+  --g-600: 166 176 191;
+  --brand-text: 255 212 0;
+  --brand-soft: 255 212 0;
+}
+[data-skin="contrast"].theme-light {
+  --surface-sunken: 255 255 255;
+  --surface: 255 255 255;
+  --surface-2: 246 247 250;
+  --surface-3: 236 238 244;
+  --edge: 120 124 136;
+  --edge-strong: 70 74 86;
+  --g-400: 62 68 80;
+  --g-500: 48 54 66;
+  --g-600: 38 44 55;
+  --brand-text: 0 62 158;
+  --brand-soft: 0 82 204;
 }

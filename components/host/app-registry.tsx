@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TriageOS — Host app component registry
+ * ITQuest — Host app component registry
  * ======================================
  * Binds each declarative `HostAppId` (from HOST_APP_REGISTRY data) to the React
  * component that renders its window body. Kept separate from the data registry
@@ -19,6 +19,7 @@ import Mail from "./apps/Mail";
 import CoreMail from "./apps/CoreMail";
 import NetOpsConsole from "./apps/NetOpsConsole";
 import Leaderboard from "./apps/Leaderboard";
+import AppearanceApp from "./apps/AppearanceApp";
 import SettingsApp from "./apps/SettingsApp";
 import ProfileApp from "./apps/ProfileApp";
 import Wiki from "./apps/Wiki";
@@ -65,6 +66,8 @@ export function renderHostApp(appId: HostAppId): React.ReactNode {
       return <Wiki />;
     case "leaderboard":
       return <Leaderboard />;
+    case "appearance":
+      return <AppearanceApp />;
     case "settings":
       return <SettingsApp />;
     case "profile":
