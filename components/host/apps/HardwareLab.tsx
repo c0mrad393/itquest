@@ -104,7 +104,7 @@ export default function HardwareLab() {
 
       {view === "tickets" ? (
         <div className="flex min-h-0 flex-1">
-          <div className="w-64 shrink-0 overflow-y-auto border-r border-edge">
+          <div data-tutorial-target="lab-queue" className="w-64 shrink-0 overflow-y-auto border-r border-edge">
             {hardware.length === 0 && (
               <EmptyState
                 compact

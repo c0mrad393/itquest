@@ -209,7 +209,12 @@ export function TicketHints({ ticket }: { ticket: Ticket }) {
             >
               <AppIcon id="eye" size={12} />
               Need a hint?
-              <span className="font-mono text-[10px] font-normal text-info/70">
+              {/* NOT `text-info/70`. The alpha read as a de-emphasised price
+                  tag and measured 3.41:1 at 10px — under AA, on the one label
+                  that tells the operator a hint costs them XP. A cost the
+                  player cannot read is a cost they did not agree to, so it
+                  takes the full-strength ink. */}
+              <span className="font-mono text-[10px] font-normal text-info-strong">
                 −{Math.round(HINT_PENALTY_PER_STEP * 100)}%
               </span>
             </button>

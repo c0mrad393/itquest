@@ -386,3 +386,16 @@ html:has(.landing-root) {
   }
   .tut-ring::after { opacity: 0.5; }
 }
+
+/* Ticket detail pane entrance. Keyed on the ticket id at the call site, so
+   switching requests replays this — the pane reads as a different document
+   arriving rather than text being swapped in place. */
+@keyframes detailIn {
+  from { opacity: 0; transform: translateY(4px); }
+}
+.detail-in {
+  animation: detailIn 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .detail-in { animation: none; }
+}

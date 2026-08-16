@@ -41,14 +41,30 @@ export interface TicketFilters {
   showClosed: boolean;
 }
 
+/**
+ * How much of a ticket to show.
+ *
+ * "essentials" is the DEFAULT and the beginner's view: who asked, what broke,
+ * how long is left. "advanced" adds routing tags, affected nodes, difficulty
+ * tiers, scoring and the filter rail.
+ *
+ * It is a view preference, not a filter, but it lives here for the same reason
+ * the filters do — it belongs to the session rather than to any one window, so
+ * closing and reopening the app must not silently drop an operator back into
+ * the beginner view after they have chosen otherwise.
+ */
+export type TicketDensity = "essentials" | "advanced";
+
 interface TicketStore {
   tickets: Ticket[];
   /** Escalating CoreMail threads for mail-origin tickets, keyed by ticket id. */
   mailThreads: Record<string, EmailBeat[]>;
   selectedId: string | null;
   filters: TicketFilters;
+  density: TicketDensity;
 
   select: (id: string | null) => void;
+  setDensity: (d: TicketDensity) => void;
   setFilter: <K extends keyof TicketFilters>(key: K, value: TicketFilters[K]) => void;
   setStatus: (id: string, status: TicketStatus) => void;
   accept: (id: string, assignee: string) => void;
@@ -127,8 +143,11 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
   mailThreads: seed.mailThreads,
   selectedId: seed.selectedId,
   filters: { track: "all", severity: "all", category: "all", query: "", showClosed: false },
+  density: "essentials",
 
   select: (id) => set({ selectedId: id }),
+
+  setDensity: (density) => set({ density }),
 
   setFilter: (key, value) => set((s) => ({ filters: { ...s.filters, [key]: value } })),
 

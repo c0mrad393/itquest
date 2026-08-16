@@ -63,7 +63,11 @@
  * for whom that action becomes impossible.
  */
 
-export type TutorialSequenceId = "first_boot" | "hardware_unlocked";
+export type TutorialSequenceId =
+  | "first_boot"
+  | "ticketing_intro"
+  | "gateway_intro"
+  | "hardware_intro";
 
 /**
  * Icon keys rather than components, so this module stays free of JSX and the
@@ -76,7 +80,9 @@ export type TutorialIconId =
   | "list"
   | "check"
   | "bolt"
-  | "wrench";
+  | "wrench"
+  | "sliders"
+  | "remote";
 
 /**
  * The narrow slice of live state the tutorial is allowed to read.
@@ -137,12 +143,17 @@ export interface TutorialSequence {
 const OWNED = new Set(["accepted", "in_progress", "resolved", "closed"]);
 
 export const TUTORIAL_SEQUENCES: TutorialSequence[] = [
+  /*
+   * ── THE GLOBAL INTRO ─────────────────────────────────────────────────────
+   * The shell, and only the shell. It used to run all the way through reading
+   * and accepting a ticket, which meant a six-step tour before the operator
+   * had touched anything, teaching the Ticket Center to someone who had not
+   * yet seen it. Those steps now live in `ticketing_intro`, where they fire
+   * against the real screen.
+   */
   {
     id: "first_boot",
     title: "First shift",
-    // The only tour that runs unprompted, and only for someone who has not
-    // started working yet. Level 1 with nothing resolved is as close as this
-    // app gets to "has never played".
     when: (w) => w.level === 1 && w.resolvedCount === 0,
     steps: [
       {
@@ -151,7 +162,7 @@ export const TUTORIAL_SEQUENCES: TutorialSequence[] = [
         icon: "compass",
         side: "bottom",
         title: "This is DeskOS",
-        body: "You are the IT department at Sterling Trust. Every part of this estate is a real system with real state — power budgets, address space, backup tiers. Six screens and you will have closed your first ticket.",
+        body: "You are the IT department at Sterling Trust. Every part of this estate is a real system with real state — power budgets, address space, backup tiers. Three screens and you are working.",
       },
       {
         id: "health",
@@ -171,13 +182,52 @@ export const TUTORIAL_SEQUENCES: TutorialSequence[] = [
         done: (w) => w.openAppIds.includes("itsm"),
       },
       {
-        id: "select-ticket",
+        id: "handoff",
+        target: null,
+        icon: "bolt",
+        side: "bottom",
+        title: "Nothing else to memorise",
+        body: "Every app introduces itself the first time you open it, and never again. Learn each one when you actually need it rather than up front — and skip any of them with Escape.",
+      },
+    ],
+  },
+
+  /*
+   * ── JUST-IN-TIME APP TOURS ───────────────────────────────────────────────
+   *
+   * "The very first time the operator opens app X" needs NO new state to
+   * track, which is worth saying plainly because the obvious implementation
+   * adds a `hasSeenTicketingTutorial` flag per app and a place to set it.
+   *
+   * `when` is a live predicate and completion is already persisted, so
+   * `openAppIds.includes("itsm")` is true whenever the app is open and the
+   * tour is only ever eligible while it is NOT in `completedSequences`. The
+   * two together mean it fires on the first open and never again — the
+   * completion record IS the "has seen it" flag, for every app, for free.
+   *
+   * They cannot interrupt each other or the global intro either: the director
+   * only starts a sequence when nothing is active.
+   */
+  {
+    id: "ticketing_intro",
+    title: "The queue",
+    when: (w) => w.openAppIds.includes("itsm"),
+    steps: [
+      {
+        id: "queue",
         target: "ticket-queue",
         icon: "list",
         side: "right",
-        title: "Pick your first request",
-        body: "Each row is a person waiting on you, with an SLA clock already running. Open the one closest to breaching — severity and time left are both on the row.",
-        done: (w) => w.selectedTicketId !== null,
+        title: "Everything waiting on you",
+        body: "One row per person, ordered as they arrived, each with an SLA clock already running. The coloured dot is severity — start with the reds.",
+      },
+      {
+        id: "density",
+        target: "ticket-density",
+        icon: "sliders",
+        side: "bottom",
+        title: "Essentials now, everything later",
+        body: "The queue opens in Essentials: who asked, what broke, how long you have. Advanced adds routing tags, affected nodes, difficulty tiers and scoring — useful once the estate is large, noise before then. Switch whenever.",
       },
       {
         id: "accept",
@@ -185,7 +235,7 @@ export const TUTORIAL_SEQUENCES: TutorialSequence[] = [
         icon: "check",
         side: "top",
         title: "Take ownership",
-        body: "Accepting a ticket assigns it to you and starts your clock on it. Read the report first — the symptom the user describes is often two steps downstream of the actual fault.",
+        body: "Accepting assigns the ticket to you and starts your clock on it. Read the report first — the symptom the user describes is often two steps downstream of the actual fault.",
         done: (w) =>
           w.selectedTicketId !== null && OWNED.has(w.ticketStatus[w.selectedTicketId] ?? "new"),
       },
@@ -195,33 +245,55 @@ export const TUTORIAL_SEQUENCES: TutorialSequence[] = [
         icon: "wrench",
         side: "top",
         title: "Nothing here closes the ticket",
-        body: "There is no resolve button, and that is the point. Go and fix the thing the ticket is about — reseat the module, free the port, restore the share — and the ticket closes itself, paying out XP and budget when the estate agrees it is fixed.",
+        body: "There is no resolve button, and that is the point. Go and fix the thing the ticket is about — reseat the module, free the port, restore the share — and it closes itself, paying out XP and budget when the estate agrees it is fixed.",
       },
     ],
   },
+
   {
-    id: "hardware_unlocked",
-    title: "The bench",
-    // Fires the first time the operator can actually use the bench, which is
-    // the moment the lesson is worth anything.
-    when: (w) => w.level >= 3,
+    id: "gateway_intro",
+    title: "Remote access",
+    when: (w) => w.openAppIds.includes("gateway"),
     steps: [
       {
-        id: "bench-open",
-        target: "app-tile-hardwarelab",
-        icon: "wrench",
-        side: "top",
-        title: "The Hardware Lab is open to you",
-        body: "Physical faults cannot be fixed from a terminal. The bench is where you open the chassis, seat the part, flash firmware and image a disk.",
-        done: (w) => w.openAppIds.includes("hardwarelab"),
+        id: "targets",
+        target: "gateway-targets",
+        icon: "remote",
+        side: "right",
+        title: "Every machine you can reach",
+        body: "Servers open an RDP desktop, Linux hosts open a shell. A machine missing from this list is not hiding — it is unreachable, and working out why is usually the ticket.",
       },
       {
-        id: "bench-deeplink",
+        id: "nested",
+        target: null,
+        icon: "bolt",
+        side: "bottom",
+        title: "A session is a real desktop",
+        body: "What opens is a working environment inside your own, with its own file system, services and terminal. The banner along the top is there so you never lose track of which machine you are typing into.",
+      },
+    ],
+  },
+
+  {
+    id: "hardware_intro",
+    title: "The bench",
+    when: (w) => w.openAppIds.includes("hardwarelab"),
+    steps: [
+      {
+        id: "jobs",
+        target: "lab-queue",
+        icon: "wrench",
+        side: "right",
+        title: "Jobs, not tickets",
+        body: "This queue is derived from what the open tickets physically need — a DIMM, a fan, a re-image. Nothing appears here that you could have fixed from a terminal.",
+      },
+      {
+        id: "deeplink",
         target: null,
         icon: "bolt",
         side: "bottom",
         title: "Let the ticket drive",
-        body: "Hardware tickets carry a button that opens the bench with the right device already selected. Use it rather than hunting the hostname — it is the same door, and it cannot pick the wrong machine.",
+        body: "Hardware tickets carry a button that opens the bench with the right device already selected. Use it rather than hunting the hostname — same door, and it cannot pick the wrong machine.",
       },
     ],
   },

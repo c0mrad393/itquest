@@ -113,7 +113,7 @@ export function Segmented<T extends string>({
           aria-pressed={value === o.value}
           className={`rounded px-2 py-1 text-[10px] font-medium transition ${
             value === o.value
-              ? "bg-info/20 text-info"
+              ? "bg-info/20 text-info-strong"
               : "text-gray-400 hover:bg-gray-500/10 hover:text-gray-200"
           }`}
         >
@@ -131,6 +131,14 @@ export function FilterBar({ children }: { children: React.ReactNode }) {
   );
 }
 
+/*
+ * `-strong` rather than the base ink on the ACTIVE state.
+ *
+ * `text-info` on `bg-info/20` measured 4.40:1 in light mode — a miss of a
+ * tenth, on the one chip in each group that says where you are. The `-strong`
+ * token exists precisely for ink sitting on its own family's tint, and it is
+ * the difference between 4.40 and comfortably over AA in both themes.
+ */
 export function Chip({
   active,
   onClick,
@@ -146,7 +154,7 @@ export function Chip({
       aria-pressed={active}
       className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition ${
         active
-          ? "bg-info/20 text-info ring-1 ring-info/40"
+          ? "bg-info/20 text-info-strong ring-1 ring-info/40"
           : "text-gray-400 hover:bg-gray-500/10 hover:text-gray-200"
       }`}
     >

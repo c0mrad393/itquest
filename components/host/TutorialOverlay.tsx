@@ -65,6 +65,8 @@ import {
   IconCompass,
   IconHealth,
   IconList,
+  IconRemoteIn,
+  IconSliders,
   IconTicket,
   IconWrench,
   IconX,
@@ -80,6 +82,8 @@ const TUTORIAL_ICONS: Record<TutorialIconId, (p: IconProps) => JSX.Element> = {
   check: IconCheck,
   bolt: IconBolt,
   wrench: IconWrench,
+  sliders: IconSliders,
+  remote: IconRemoteIn,
 };
 
 /** Breathing room between the highlighted element and the edge of the hole. */

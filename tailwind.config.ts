@@ -127,6 +127,16 @@ const config: Config = {
         danger: v("danger-base"),
         "danger-on": v("danger-on"),
         "danger-strong": v("danger-text"),
+        /*
+         * Violet had a family but no short names, so `text-violet-strong`
+         * produced NO class at all and the element silently inherited its
+         * parent's ink — the same fallthrough that made light mode unreadable
+         * in v0.9.1, just quieter, because inheriting usually looks plausible.
+         * Only the `-strong` alias is added here: `violet` itself is defined
+         * below as a full 50-950 family, and a duplicate key in this literal
+         * would be silently overwritten by it.
+         */
+        "violet-strong": v("violet-text"),
 
         /**
          * Raw Tailwind family names, remapped wholesale onto the semantic

@@ -51,7 +51,10 @@ export default function RemoteGateway() {
         <span className="ml-auto text-[11px] text-gray-500">Remote Gateway · RDP / SSH</span>
       </div>
 
-      <div className="grid flex-1 gap-3 overflow-y-auto term-scroll p-4 md:grid-cols-2">
+      <div
+        data-tutorial-target="gateway-targets"
+        className="grid flex-1 gap-3 overflow-y-auto term-scroll p-4 md:grid-cols-2"
+      >
         {targets.map((entry) => {
           const node = entry.node;
           /*

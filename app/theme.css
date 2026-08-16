@@ -212,7 +212,26 @@
    * surface-3; passing only against pure white is how a palette ends up
    * "technically compliant" and still unreadable in half the app.
    */
-  --accent-text: 11 122 85;     /* 5.3:1 white · 4.8:1 sunken */
+  /*
+   * Darkened from `11 122 85` (emerald-700-ish) to emerald-800.
+   *
+   * The old value measured 5.3:1 on plain white and was signed off on that
+   * basis, but almost nothing uses it on plain white: `.chip-ok`, the tier
+   * badges and every other success indicator paint it on a 15% tint of its
+   * OWN family, which darkens the ground underneath it. Measured there it was
+   * 3.79:1 — and it could not be rescued by thinning the tint, because even at
+   * zero tint on a selected row it reached only 4.60:1.
+   *
+   * Green is the worst-behaved hue for this: at equal lightness it carries
+   * more luminance than red or violet, so the same nominal shade that passes
+   * for `--danger-text` fails here. It needs to be genuinely darker, not
+   * merely "the 700 of its ramp" for symmetry with the others.
+   *
+   * Now 7.7:1 on white, 6.2:1 on its own tint, 5.4:1 on a tinted selected row.
+   * Text-only token — nothing fills with it, so darkening cannot strand a
+   * light foreground on top.
+   */
+  --accent-text: 6 95 70;       /* 7.7:1 white · 6.2:1 on accent/15 */
   --accent-base: 10 125 85;
   --accent-deep: 231 247 239;
 

@@ -1937,7 +1937,7 @@ group("Client endpoints skip the rack chain");
 
 // ── Onboarding — tour eligibility and progression ──────────────────────────
 {
-  group("Onboarding — sequence eligibility");
+  group("Onboarding — global intro eligibility");
 
   const fresh = {
     level: 1,
@@ -1949,46 +1949,60 @@ group("Client endpoints skip the rack chain");
 
   eq("a brand-new operator gets the first-shift tour", eligibleSequence(fresh, []), "first_boot");
   eq("having seen it, they are not offered it again", eligibleSequence(fresh, ["first_boot"]), null);
+  eq("it stops being eligible once work has been resolved",
+     sequenceById("first_boot").when({ ...fresh, resolvedCount: 1 }), false);
+  eq("and once past level 1", sequenceById("first_boot").when({ ...fresh, level: 2 }), false);
 
-  // The bench tour waits for the level that makes it useful, and is not
-  // offered while first_boot is still outstanding — declaration order decides.
-  const l3 = { ...fresh, level: 3, resolvedCount: 4 };
-  eq("first_boot is not eligible once work has started", TUTORIAL_SEQUENCES[0].when(l3), false);
-  eq("the bench tour waits for level 3", TUTORIAL_SEQUENCES[1].when({ ...fresh, level: 2 }), false);
-  eq("and fires at level 3", eligibleSequence(l3, ["first_boot"]), "hardware_unlocked");
-  eq("everything seen means no tour", eligibleSequence(l3, ["first_boot", "hardware_unlocked"]), null);
+  group("Onboarding — just-in-time app tours");
+
+  // The whole point of the JIT design: no per-app "hasSeen" flag exists. The
+  // tour is eligible whenever its app is open, and the completion record is
+  // what stops it firing twice.
+  const itsmOpen = { ...fresh, openAppIds: ["dashboard", "itsm"] };
+  eq("opening the Ticket Center makes its tour eligible",
+     eligibleSequence(itsmOpen, ["first_boot"]), "ticketing_intro");
+  eq("closing it again makes it ineligible",
+     eligibleSequence(fresh, ["first_boot"]), null);
+  eq("and once completed, reopening does NOT re-offer it",
+     eligibleSequence(itsmOpen, ["first_boot", "ticketing_intro"]), null);
+
+  eq("the gateway tour waits for the gateway",
+     eligibleSequence({ ...fresh, openAppIds: ["gateway"] }, ["first_boot"]), "gateway_intro");
+  eq("the bench tour waits for the bench",
+     eligibleSequence({ ...fresh, openAppIds: ["hardwarelab"] }, ["first_boot"]), "hardware_intro");
+  eq("an app with no tour offers nothing",
+     eligibleSequence({ ...fresh, openAppIds: ["monitor"] }, ["first_boot"]), null);
+
+  // The global intro must win while it is still outstanding, even though the
+  // operator has the Ticket Center open — its last step told them to open it.
+  eq("the global intro outranks a JIT tour", eligibleSequence(itsmOpen, []), "first_boot");
+
+  // Two apps open at once resolves by declaration order, never by which store
+  // updated last.
+  eq("two eligible tours resolve deterministically",
+     eligibleSequence({ ...fresh, openAppIds: ["hardwarelab", "gateway"] }, ["first_boot"]),
+     "gateway_intro");
 
   group("Onboarding — step progression is derived, and forward-only");
 
-  const seq = sequenceById("first_boot");
-  eq("the sequence resolves by id", !!seq, true);
+  const boot = sequenceById("first_boot");
+  eq("informational steps never auto-advance", advanceIndex(boot, 0, fresh), 0);
+  eq("an unsatisfied action step holds", advanceIndex(boot, 2, fresh), 2);
+  eq("opening the app advances past it", advanceIndex(boot, 2, itsmOpen), 3);
+  eq("but stops on the closing informational beat",
+     advanceIndex(boot, 2, itsmOpen), boot.steps.length - 1);
 
-  // Steps 0 and 1 are informational: being "already true" is not a concept
-  // there, so derivation must stop on them rather than running the tour off
-  // the end the moment it opens.
-  eq("informational steps never auto-advance", advanceIndex(seq, 0, fresh), 0);
-  eq("nor does the second one", advanceIndex(seq, 1, fresh), 1);
-
-  // Step 2 asks for the Ticket Center. Opening it satisfies the step.
-  const itsmOpen = { ...fresh, openAppIds: ["dashboard", "itsm"] };
-  eq("an unsatisfied action step holds", advanceIndex(seq, 2, fresh), 2);
-  eq("opening the app advances past it", advanceIndex(seq, 2, itsmOpen), 3);
-
-  // The point of deriving rather than listening for a click: it does not
-  // matter HOW the app was opened, only that it is open.
+  const tick = sequenceById("ticketing_intro");
   const selected = { ...itsmOpen, selectedTicketId: "TCK-1", ticketStatus: { "TCK-1": "new" } };
-  eq("selecting a ticket advances again", advanceIndex(seq, 2, selected), 4);
-
-  // Accepting satisfies step 4, and the run stops at step 5 because that one
-  // is informational — the tour must not silently end itself.
   const accepted = { ...selected, ticketStatus: { "TCK-1": "accepted" } };
-  eq("accepting stops at the closing beat", advanceIndex(seq, 2, accepted), 5);
+  eq("the accept step waits on the ticket", advanceIndex(tick, 2, selected), 2);
+  eq("accepting advances it", advanceIndex(tick, 2, accepted), 3);
   eq("resolved counts as owned too",
-     advanceIndex(seq, 4, { ...selected, ticketStatus: { "TCK-1": "resolved" } }), 5);
-
-  // A world that satisfies everything still cannot run past the last step.
+     advanceIndex(tick, 2, { ...selected, ticketStatus: { "TCK-1": "resolved" } }), 3);
+  eq("an unselected ticket cannot satisfy it",
+     advanceIndex(tick, 2, { ...itsmOpen, selectedTicketId: null }), 2);
   eq("the index never exceeds the step count",
-     advanceIndex(seq, 5, accepted) <= seq.steps.length, true);
+     advanceIndex(tick, 3, accepted) <= tick.steps.length, true);
 
   group("Onboarding — shape guarantees");
 
@@ -1998,12 +2012,18 @@ group("Client endpoints skip the rack chain");
      TUTORIAL_SEQUENCES.every((s) => new Set(s.steps.map((st) => st.id)).size === s.steps.length), true);
   eq("sequence ids are unique",
      new Set(TUTORIAL_SEQUENCES.map((s) => s.id)).size, TUTORIAL_SEQUENCES.length);
-  // A tour that ends on an action step can strand the operator if that action
+  // A tour that ends on an action can strand the operator if that action
   // becomes impossible, so every sequence closes on something dismissible.
   eq("every sequence ends on an informational step",
      TUTORIAL_SEQUENCES.every((s) => !isActionStep(s.steps[s.steps.length - 1])), true);
-  eq("out-of-range indices return null, not a crash", stepAt(seq, 99), null);
-  eq("negative indices too", stepAt(seq, -1), null);
+  // Every JIT tour must actually be reachable from an app being open, or it
+  // is dead content that ships and never runs.
+  eq("every non-global tour is triggered by an open app",
+     TUTORIAL_SEQUENCES.filter((s) => s.id !== "first_boot").every((s) =>
+       ["itsm", "gateway", "hardwarelab"].some((a) =>
+         s.when({ ...fresh, openAppIds: [a] }))), true);
+  eq("out-of-range indices return null, not a crash", stepAt(boot, 99), null);
+  eq("negative indices too", stepAt(boot, -1), null);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
