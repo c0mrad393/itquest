@@ -230,25 +230,6 @@ export const HOST_WALLPAPERS: HostWallpaper[] = [
       "linear-gradient(180deg, #f3f8fb 0%, #eef4f9 100%)",
     overlay: false,
   },
-  {
-    id: "blueprint",
-    label: "Blueprint",
-    family: "pattern",
-    css:
-      "linear-gradient(rgba(120,180,255,0.10) 1px, transparent 1px)," +
-      "linear-gradient(90deg, rgba(120,180,255,0.10) 1px, transparent 1px)," +
-      "linear-gradient(rgba(120,180,255,0.05) 1px, transparent 1px)," +
-      "linear-gradient(90deg, rgba(120,180,255,0.05) 1px, transparent 1px)," +
-      "linear-gradient(180deg, #0a1524 0%, #0d1c30 100%)",
-    lightCss:
-      "linear-gradient(rgba(37,99,168,0.11) 1px, transparent 1px)," +
-      "linear-gradient(90deg, rgba(37,99,168,0.11) 1px, transparent 1px)," +
-      "linear-gradient(rgba(37,99,168,0.055) 1px, transparent 1px)," +
-      "linear-gradient(90deg, rgba(37,99,168,0.055) 1px, transparent 1px)," +
-      "linear-gradient(180deg, #eef4fb 0%, #e6eef8 100%)",
-    size: "96px 96px, 96px 96px, 16px 16px, 16px 16px, 100% 100%",
-    overlay: false,
-  },
 
 ];
 

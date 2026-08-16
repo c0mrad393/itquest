@@ -158,3 +158,47 @@ export const EDGE_CURSOR: Record<ResizeEdge, string> = {
   nw: "nwse-resize",
   se: "nwse-resize",
 };
+
+/**
+ * Where a window opens.
+ *
+ * Pure, because the old inline version had two bugs that only appear on a
+ * small display or with many windows open, which is exactly when nobody is
+ * looking for them:
+ *
+ *   1. The SIZE was never clamped. `defaultSize` runs up to 1100x720, and a
+ *      13-inch laptop's desktop is about 1280x670 once the taskbar is taken
+ *      off — so the tallest apps opened with their footer below the taskbar,
+ *      and nothing brought them back.
+ *   2. The POSITION was clamped only at the low end (`Math.max(margin, …)`).
+ *      The cascade adds up to 112px and can only push right and down, so
+ *      opening several wide apps in a row walked them off the right edge.
+ *
+ * Both are the same underlying mistake — trusting the registry's numbers
+ * against a desktop that might be smaller than they assume.
+ */
+export function openRect(
+  w: number,
+  h: number,
+  offset: number,
+  bounds: Bounds,
+  margin = 16,
+): WindowRect {
+  // Never larger than the desktop it opens into, never below the minimum.
+  const width = Math.max(MIN_W, Math.min(w, bounds.w - margin * 2));
+  const height = Math.max(MIN_H, Math.min(h, bounds.h - margin * 2));
+
+  // Cascade so a second window of the same app is visibly a second window,
+  // repeating every five so it can never walk away indefinitely.
+  const cascade = (offset % 5) * 28;
+  const x = Math.round((bounds.w - width) / 2) + cascade - 56;
+  const y = Math.round((bounds.h - height) / 2) + cascade - 40;
+
+  // A window OPENS fully on screen. `clampPosition` is deliberately looser —
+  // it permits overhang once the operator has dragged it — but nothing should
+  // arrive already half off the edge.
+  const fit = (v: number, size: number, limit: number) =>
+    Math.round(Math.min(Math.max(v, margin), Math.max(margin, limit - size - margin)));
+
+  return { x: fit(x, width, bounds.w), y: fit(y, height, bounds.h), w: width, h: height };
+}

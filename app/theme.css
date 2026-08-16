@@ -71,7 +71,29 @@
  */
 
 :root,
-.theme-dark {
+.theme-dark,
+/*
+ * ── SHELLS ARE ALWAYS DARK ──────────────────────────────────────────────────
+ *
+ * `.bg-term` is the ground every terminal and shell paints on, and its token
+ * is deliberately dark in BOTH themes — a console is a console. But the TEXT
+ * inside those shells is written with the neutral ramp (`text-gray-400`,
+ * `text-gray-200`), and that ramp INVERTS in light mode. So a light-mode
+ * operator got dark ink on a near-black terminal: technically rendered,
+ * practically invisible, which is exactly what was reported.
+ *
+ * Attaching the dark token set to `.bg-term` itself fixes every shell at once
+ * — the SSH environment, the nested ServerOS terminal, the node terminal and
+ * the connecting screen — and fixes any shell added later for free, because
+ * the thing that makes it a shell is the same thing that pins its tokens.
+ * The alternative was stamping `theme-dark` on four component roots and
+ * remembering to stamp the fifth.
+ *
+ * Custom properties inherit, so this reaches every descendant. Note it must be
+ * the bare class: `bg-term/80` compiles to a different selector, which is why
+ * no terminal uses one.
+ */
+.bg-term {
   color-scheme: dark;
 
   /* Neutral ramp — light-to-dark, the conventional direction. */

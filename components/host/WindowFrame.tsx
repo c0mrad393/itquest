@@ -119,6 +119,34 @@ export default function WindowFrame({ win }: { win: ManagedWindow }) {
 
   function begin(e: React.PointerEvent, kind: "move" | "resize", edge?: ResizeEdge) {
     if (maximized) return;
+
+    /*
+     * ── THE WINDOW-CONTROLS BUG, AND ITS ACTUAL CAUSE ──────────────────────
+     *
+     * A press that starts on a CONTROL is that control's press, not a drag.
+     *
+     * The controls live inside the title bar, so `pointerdown` on the close
+     * button bubbles here and starts a move gesture — which calls
+     * `setPointerCapture` on the TITLE BAR. Capture retargets every later
+     * pointer event to the capturing element, so `pointerup` was delivered to
+     * the title bar too, and a `click` only fires when down and up land on the
+     * same element. The button never got one. Close, minimise and maximise
+     * were all dead, in exactly the way that was reported.
+     *
+     * Maximised windows worked because `begin` returns above this line, so no
+     * capture was ever taken. That was the tell, and I misread it last time as
+     * "the grips disappear when maximised" and went after z-index — which was
+     * a real but separate 3px overlap, and fixing it changed nothing here
+     * because hit-testing was never what was broken. `elementFromPoint` said
+     * the button was on top and it was right; the click was being destroyed
+     * afterwards, by capture.
+     *
+     * The guard is `closest("button")` rather than a check on `e.target`
+     * directly because the press usually lands on the SVG path inside the
+     * button, not the button itself.
+     */
+    if (kind === "move" && (e.target as HTMLElement).closest("button")) return;
+
     e.stopPropagation();
     focus(win.instanceId);
     const start: WindowRect = { x: win.x, y: win.y, w: win.w, h: win.h };

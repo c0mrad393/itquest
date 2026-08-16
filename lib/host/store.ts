@@ -17,7 +17,7 @@ import type {
   ConnectionProtocol,
   NodeId,
 } from "@/lib/core";
-import { applyResize, clampPosition, type ManagedWindow, type WindowRect } from "./windows";
+import { applyResize, clampPosition, openRect, type ManagedWindow, type WindowRect } from "./windows";
 import { createHostWorkstation } from "./seed";
 import type { HostWorkstationState } from "@/lib/core";
 import { levelForXp } from "@/lib/scenario/scoring";
@@ -99,16 +99,7 @@ function desktopBounds() {
 }
 
 function centeredRect(w: number, h: number, offset: number): WindowRect {
-  // Cascade around the viewport center (guarded for SSR).
-  const vw = typeof window !== "undefined" ? window.innerWidth : 1440;
-  const vh = typeof window !== "undefined" ? window.innerHeight : 860;
-  const cascade = (offset % 5) * 28;
-  return {
-    x: Math.max(DESKTOP_MARGIN, Math.round((vw - w) / 2) + cascade - 56),
-    y: Math.max(DESKTOP_MARGIN, Math.round((vh - h) / 2) + cascade - 40),
-    w,
-    h,
-  };
+  return openRect(w, h, offset, desktopBounds());
 }
 
 export const useHostStore = create<HostStore>((set, get) => ({

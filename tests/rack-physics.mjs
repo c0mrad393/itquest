@@ -140,7 +140,7 @@ import {
   stepAt,
 } from "../.test-build/tutorial/flow.js";
 
-import { MIN_W, MIN_H, GRAB_MARGIN, applyResize, clampPosition } from "../.test-build/host/windows.js";
+import { MIN_W, MIN_H, GRAB_MARGIN, applyResize, clampPosition, openRect } from "../.test-build/host/windows.js";
 import { BOOT_LINES, BOOT_TOTAL_MS, BOOT_BUDGET_MS, bootLineDelay } from "../.test-build/host/boot.js";
 import { placeMenu, menuHeight, MENU_W } from "../.test-build/host/context-menu.js";
 import { placeIcon, reflow, autoArrange, gridFor, pxToCell, cellToPx } from "../.test-build/host/desktop-icons.js";
@@ -2171,6 +2171,39 @@ group("Client endpoints skip the rack chain");
      menuHeight([{ id: "s", separator: true }]) < menuHeight([{ id: "a", label: "a" }]), true);
   eq("height grows with entries", menuHeight(items(6)) > menuHeight(items(3)), true);
   eq("an empty menu is just its padding", menuHeight([]), 16);
+}
+
+// ── Window open geometry ───────────────────────────────────────────────────
+{
+  group("WM — a window always opens fully on screen");
+  const big = { w: 1440, h: 812 };
+  const laptop = { w: 1280, h: 670 };   // 13-inch, taskbar removed
+  const tiny = { w: 700, h: 420 };
+
+  const roomy = openRect(1100, 720, 0, big);
+  eq("a window that fits keeps its size", `${roomy.w}x${roomy.h}`, "1100x720");
+  eq("and sits fully inside", roomy.x >= 16 && roomy.x + roomy.w <= big.w - 16, true);
+
+  // The reported bug: the tallest app on a 13-inch display.
+  const squeezed = openRect(1100, 720, 0, laptop);
+  eq("an over-tall window is shrunk to fit", squeezed.h <= laptop.h - 32, true);
+  eq("an over-wide window is shrunk too", squeezed.w <= laptop.w - 32, true);
+  eq("its bottom never falls below the desktop", squeezed.y + squeezed.h <= laptop.h, true);
+  eq("nor its right edge past it", squeezed.x + squeezed.w <= laptop.w, true);
+
+  // The cascade can only add, so opening many wide apps used to walk off-screen.
+  const walked = [0, 1, 2, 3, 4, 5, 9, 19].map((i) => openRect(1080, 700, i, laptop));
+  eq("every cascade step stays on screen",
+     walked.every((r) => r.x >= 0 && r.y >= 0 && r.x + r.w <= laptop.w && r.y + r.h <= laptop.h), true);
+  eq("the cascade repeats rather than drifting forever",
+     JSON.stringify(openRect(1080, 700, 0, laptop)), JSON.stringify(openRect(1080, 700, 5, laptop)));
+
+  // A desktop smaller than the minimum window is degenerate, not a crash.
+  const cramped = openRect(1000, 700, 0, tiny);
+  eq("the minimum is still respected", cramped.w >= MIN_W && cramped.h >= MIN_H, true);
+  eq("and the origin stays sane", cramped.x >= 0 && cramped.y >= 0, true);
+
+  eq("a small app is never inflated", `${openRect(420, 300, 0, big).w}x${openRect(420, 300, 0, big).h}`, "420x300");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
