@@ -250,3 +250,53 @@
     opacity: 0;
   }
 }
+
+/* ── Landing page motion ────────────────────────────────────────────────────
+   Hand-written rather than `animate-in`: that utility comes from
+   tailwindcss-animate, which this project does not install, so those classes
+   would have compiled to nothing and the "cinematic fade-in" would silently
+   not exist. Real keyframes, staggered by an inline delay at the call site. */
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.rise-in {
+  animation: riseIn 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* The pulse on the primary CTA. Deliberately a RING rather than the button
+   itself — scaling the button would move the label under the cursor. */
+@keyframes haloPulse {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50%      { opacity: 0.7;  transform: scale(1.06); }
+}
+.halo-pulse { animation: haloPulse 2.8s ease-in-out infinite; }
+
+/* Slow ambient drift for the background orbs, so the page is never quite
+   static without ever demanding attention. */
+@keyframes orbDrift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(2%, -3%, 0) scale(1.08); }
+}
+.orb-drift { animation: orbDrift 18s ease-in-out infinite; }
+
+/* Respect the setting. Anyone who has asked for less motion gets the layout
+   without the theatre — the page still reads exactly the same. */
+@media (prefers-reduced-motion: reduce) {
+  .rise-in, .halo-pulse, .orb-drift { animation: none; }
+  .rise-in { opacity: 1; transform: none; }
+}
+
+/* Smooth scrolling for the one in-page anchor ("Systems" → the bento grid).
+   Scoped with :has() rather than set on <html> globally, because the landing
+   page is the only surface in this app where the DOCUMENT scrolls — the
+   desktop is a fixed shell, and a global rule there would be a promise made
+   to nothing. Reduced motion opts back out, same as every animation above. */
+html:has(.landing-root) {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html:has(.landing-root) {
+    scroll-behavior: auto;
+  }
+}
