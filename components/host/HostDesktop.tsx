@@ -28,6 +28,10 @@ import { useThemeStore } from "@/lib/host/theme";
 import DebugPanel from "./DebugPanel";
 import CommandPalette from "./CommandPalette";
 import DesktopIcons from "./DesktopIcons";
+import ContextMenu from "./ContextMenu";
+import { useContextMenu } from "@/lib/host/context-menu";
+import { gridFor, useDesktopIconStore } from "@/lib/host/desktop-icons";
+import { IconGrid, IconSliders, IconTerminal } from "@/components/ui/icons";
 import { useSkinStore } from "@/lib/host/skins";
 import TutorialDirector from "./TutorialDirector";
 import TutorialOverlay from "./TutorialOverlay";
@@ -76,6 +80,47 @@ export default function HostDesktop() {
    * operator left it.
    */
   const openApp = useHostStore((s) => s.openApp);
+
+  /*
+   * The wallpaper's own menu.
+   *
+   * Built fresh on each right-click rather than memoised: "Auto-arrange" has
+   * to know how many rows the desktop has RIGHT NOW, and a menu captured at
+   * mount would arrange against the window size from three resizes ago.
+   */
+  const tidyIcons = useDesktopIconStore((s) => s.tidy);
+  const onDesktopContextMenu = useContextMenu(
+    () => [
+      {
+        id: "terminal",
+        label: "Open Terminal",
+        icon: <IconTerminal size={13} />,
+        /*
+         * There is no LOCAL terminal in this product, and that is deliberate
+         * rather than missing: every shell in ITQuest is a shell ON a machine,
+         * reached through the gateway. A local prompt on the ops workstation
+         * would be a terminal that cannot do anything the simulation models.
+         * So this opens the place terminals come from.
+         */
+        onSelect: () => openApp("gateway"),
+      },
+      {
+        id: "arrange",
+        label: "Auto-arrange icons",
+        icon: <IconGrid size={13} />,
+        onSelect: () => tidyIcons(gridFor(window.innerWidth, window.innerHeight - 48).rows),
+      },
+      { id: "sep-1", separator: true },
+      {
+        id: "personalize",
+        label: "Personalize",
+        icon: <IconSliders size={13} />,
+        onSelect: () => openApp("appearance"),
+      },
+    ],
+    "desktop",
+  );
+
   useEffect(() => {
     if (useHostStore.getState().windows.length === 0) openApp("dashboard");
     // Once, on mount.
@@ -86,6 +131,7 @@ export default function HostDesktop() {
     <div className="relative h-screen w-screen overflow-hidden select-none font-sans">
       {/* Wallpaper — chosen in Settings → Personalization, persisted with the save. */}
       <div
+        onContextMenu={onDesktopContextMenu}
         className="absolute inset-0 transition-colors duration-200"
         // `background` (shorthand) alongside `backgroundSize` (longhand) makes
         // React warn on every re-render and can drop the size when the two are
@@ -127,7 +173,7 @@ export default function HostDesktop() {
       <TutorialDirector />
 
       {/* Desktop icons — draggable, grid-snapped, persisted outside the save. */}
-      <DesktopIcons />
+      <DesktopIcons onContextMenu={onDesktopContextMenu} />
 
       {/* Windows layer */}
       {/* Windows layer. `pointer-events-none` so empty desktop space stays
@@ -155,6 +201,11 @@ export default function HostDesktop() {
       {/* The spotlight sits above everything, taskbar included — it has to be
           able to dim and to highlight the Start button like anything else. */}
       <TutorialOverlay />
+
+      {/* One menu for the whole shell. Mounted last so it paints above the
+          taskbar, and driven by its own store so opening it re-renders
+          nothing but itself. */}
+      <ContextMenu />
     </div>
   );
 }

@@ -65,6 +65,7 @@ import { AppHeader, Chip, CountPill, FilterBar, SearchField, Segmented } from ".
 import EmptyState from "@/components/ui/EmptyState";
 import { IconInboxZero, IconSearch, IconTicket } from "@/components/ui/icons";
 import { Term } from "@/components/ui/Tooltip";
+import CopyButton from "@/components/ui/CopyButton";
 import { isHardwareTicket, jobForTicket } from "@/lib/hardware/types";
 
 const SEVERITIES: (TicketSeverity | "all")[] = ["all", "low", "medium", "high", "critical"];
@@ -345,10 +346,18 @@ function TicketDetail({ ticket, pro }: { ticket: Ticket; pro: boolean }) {
   }
 
   return (
-    <div className="detail-in flex flex-col gap-4 p-4">
+    // `selectable`: a ticket is a document. Its description, hostnames and
+    // error strings are the things an operator carries into a terminal, and
+    // the shell's blanket select-none used to make that impossible.
+    <div className="detail-in selectable flex flex-col gap-4 p-4">
       <div>
-        <div className="flex items-center gap-2">
+        <div className="group/code flex items-center gap-2">
           <span className="font-mono text-xs text-gray-500">{ticket.code}</span>
+          <CopyButton
+            value={ticket.code}
+            label="ticket code"
+            className="opacity-0 transition-opacity group-hover/code:opacity-100 focus-visible:opacity-100"
+          />
           {/* Severity stays in both densities — it is the ranking signal.
               Track and priority are routing metadata and go with Advanced. */}
           <span className={`rounded border px-1.5 py-0.5 text-[10px] ${sev.color}`}>{sev.label}</span>
@@ -421,9 +430,15 @@ function TicketDetail({ ticket, pro }: { ticket: Ticket; pro: boolean }) {
               {ticket.targetNodeIds.map((n) => (
                 <span
                   key={n}
-                  className="rounded border border-edge bg-panel px-2 py-0.5 font-mono text-[11px] text-gray-300"
+                  className="group/node inline-flex items-center gap-0.5 rounded border border-edge bg-panel py-0.5 pl-2 pr-0.5 font-mono text-[11px] text-gray-300"
                 >
                   {n}
+                  <CopyButton
+                    value={n}
+                    label="hostname"
+                    size={10}
+                    className="opacity-0 transition-opacity group-hover/node:opacity-100 focus-visible:opacity-100"
+                  />
                 </span>
               ))}
             </div>

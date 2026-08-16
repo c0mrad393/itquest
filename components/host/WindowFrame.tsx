@@ -212,7 +212,24 @@ export default function WindowFrame({ win }: { win: ManagedWindow }) {
           </span>
         )}
 
-        <div className="ml-auto flex items-center">
+        {/*
+          `relative z-20` — ABOVE the resize grips, and this is a bug fix, not
+          a tidy-up.
+
+          The grips are `absolute z-10`; the title bar is a static flex child,
+          so z-10 wins over all of it. Individually the overlaps look trivial —
+          the `n` grip takes the top 3px of every control, `ne` takes a 14px
+          square over the close button's top-right, `e` takes its right 3px —
+          but the close button is the corner-most control, so the corner a user
+          naturally aims for was entirely dead. Maximised windows were
+          unaffected because grips do not render at all there, which is exactly
+          the symptom that got reported.
+
+          Raising the CLUSTER rather than the whole title bar is deliberate:
+          the rest of the top edge should still resize, and nobody wants to
+          drag a window's height from the close button.
+        */}
+        <div className="relative z-20 ml-auto flex items-center">
           <CtrlBtn onClick={() => minimize(win.instanceId)} label="Minimize">
             <svg width="10" height="10" viewBox="0 0 10 10"><rect y="4.5" width="10" height="1" fill="currentColor" /></svg>
           </CtrlBtn>

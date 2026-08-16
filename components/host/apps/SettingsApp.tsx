@@ -18,6 +18,7 @@ import { AppIcon } from "@/components/ui/app-icons";
 import { HOST_WALLPAPERS, type WallpaperFamily } from "@/lib/host/wallpapers";
 import { jobTitle } from "@/lib/progression/tracks";
 import { useTutorialStore } from "@/lib/tutorial/store";
+import AppearanceApp from "./AppearanceApp";
 import { TUTORIAL_SEQUENCES } from "@/lib/tutorial/flow";
 
 const FAMILY_LABEL: Record<WallpaperFamily, string> = {
@@ -34,6 +35,13 @@ export default function SettingsApp() {
   const soundEnabled = useHostStore((s) => s.host.soundEnabled);
   const setSoundEnabled = useHostStore((s) => s.setSoundEnabled);
   const [confirmingReset, setConfirmingReset] = useState(false);
+  /*
+   * Two tabs, and the second one RENDERS THE APPEARANCE APP rather than
+   * duplicating it. Personalization is reachable two ways — from Settings and
+   * from the desktop's Personalize menu — and two copies of a wallpaper grid
+   * is two places to fix the next bug in it.
+   */
+  const [tab, setTab] = useState<"general" | "appearance">("general");
   const resetTutorials = useTutorialStore((s) => s.resetTutorials);
   const seenTours = useTutorialStore((s) => s.completedSequences.length);
   const [lastSaved, setLastSaved] = useState<number | null>(() =>
@@ -49,8 +57,21 @@ export default function SettingsApp() {
     setLastSaved(Date.now());
   }
 
+  if (tab === "appearance") {
+    return (
+      <div className="flex h-full flex-col bg-panel">
+        <Tabs tab={tab} setTab={setTab} />
+        <div className="min-h-0 flex-1">
+          <AppearanceApp embedded />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="h-full space-y-5 overflow-y-auto term-scroll bg-panel p-5 text-sm text-gray-200">
+    <div className="h-full overflow-y-auto term-scroll bg-panel text-sm text-gray-200">
+      <Tabs tab={tab} setTab={setTab} />
+      <div className="space-y-5 p-5">
       {/* Profile */}
       <Section title="Operator profile">
         <div className="flex items-center gap-4">
@@ -219,6 +240,26 @@ export default function SettingsApp() {
       <div className="text-[10px] text-gray-600">
         ITQuest · client-side simulation · Next.js 14 + Zustand
       </div>
+      </div>
+    </div>
+  );
+}
+
+/** The tab strip. Sticky, so it survives a long scroll through Settings. */
+function Tabs({
+  tab,
+  setTab,
+}: {
+  tab: "general" | "appearance";
+  setTab: (t: "general" | "appearance") => void;
+}) {
+  return (
+    <div className="sticky top-0 z-10 flex shrink-0 items-center gap-1 border-b border-edge bg-panel/95 px-3 backdrop-blur">
+      {(["general", "appearance"] as const).map((t) => (
+        <button key={t} onClick={() => setTab(t)} data-active={tab === t} className="tab capitalize">
+          {t}
+        </button>
+      ))}
     </div>
   );
 }

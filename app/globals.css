@@ -455,3 +455,64 @@ body.wm-gesture iframe {
   .boot-line { opacity: 1; transform: none; }
   .boot-bar { width: 100%; }
 }
+
+/* ── Text selection ─────────────────────────────────────────────────────────
+ *
+ * The shell used to be blanket `select-none` (see HostDesktop's root), which
+ * is right for chrome and wrong for content: an operator could not copy a
+ * hostname out of a ticket, an IP out of a panel, or a line out of a log —
+ * the three things this simulation asks them to carry between apps most
+ * often. Blocking that is not "app-like", it is just friction.
+ *
+ * So the rule inverts: chrome opts OUT, content opts IN. `.selectable` marks a
+ * region as copyable, and the elements that are genuinely interactive furniture
+ * — buttons, the taskbar, title bars, labels — stay unselectable so that
+ * dragging across them still drags rather than highlighting.
+ */
+.selectable,
+.selectable * {
+  user-select: text;
+  -webkit-user-select: text;
+}
+/* Controls inside a selectable region are still controls. */
+.selectable button,
+.selectable [role="button"],
+.selectable label {
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* Monospaced data — IPs, hostnames, codes, log lines — is always copyable,
+   wherever it appears, without each call site having to remember. */
+.font-mono {
+  user-select: text;
+  -webkit-user-select: text;
+}
+/* Except where it is a button's label rather than data. */
+button .font-mono,
+[role="button"] .font-mono {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ── Context menu ───────────────────────────────────────────────────────────
+   Snappy: a short scale-and-fade from the corner the menu is anchored to, so
+   it reads as opening FROM the cursor rather than appearing beside it. */
+@keyframes ctxIn {
+  from { opacity: 0; transform: scale(0.96) translateY(-2px); }
+}
+.ctx-in {
+  animation: ctxIn 110ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ctx-in { animation: none; }
+}
+
+/* Terminal output is the canonical thing an operator needs to copy out of, and
+   it is inside a nested remote session where the shell's select-none applies
+   twice over. Marked globally rather than per call site. */
+.term-scroll,
+pre,
+code {
+  user-select: text;
+  -webkit-user-select: text;
+}

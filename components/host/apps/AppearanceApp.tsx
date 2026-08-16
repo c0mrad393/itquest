@@ -32,7 +32,7 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: "dark", label: "Dark" },
 ];
 
-export default function AppearanceApp() {
+export default function AppearanceApp({ embedded = false }: { embedded?: boolean }) {
   const skin = useSkinStore((s) => s.skin);
   const setSkin = useSkinStore((s) => s.setSkin);
   const themePref = useThemeStore((s) => s.preference);
@@ -52,7 +52,9 @@ export default function AppearanceApp() {
 
   return (
     <div className="flex h-full flex-col overflow-y-auto term-scroll bg-panel text-sm text-gray-200">
-      <AppHeader iconId="gear" title="Appearance" subtitle="Skin, theme and desktop" />
+      {/* Suppressed when hosted inside Settings' own tab strip: two stacked
+          headers saying "Appearance" is chrome arguing with itself. */}
+      {!embedded && <AppHeader iconId="gear" title="Appearance" subtitle="Skin, theme and desktop" />}
 
       <div className="flex flex-col gap-4 p-4">
         {/* ── Skin ──────────────────────────────────────────────────────── */}

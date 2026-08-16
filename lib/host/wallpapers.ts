@@ -142,6 +142,114 @@ export const HOST_WALLPAPERS: HostWallpaper[] = [
     size: "60px 60px, auto",
     overlay: false,
   },
+  /*
+   * ── EXPANSION PACK ────────────────────────────────────────────────────────
+   *
+   * All CSS, all zero bytes over the wire. That is not a compromise here: a
+   * gradient scales to any display without a 4K JPEG, re-themes for light mode
+   * from the same declaration, and cannot be the thing that makes a boot feel
+   * slow. An image would have to earn its place against those three, and on a
+   * desktop that is 95% covered by windows, none of these would.
+   *
+   * The same reasoning is why no external image URLs were added. Every one is
+   * a third-party request from a page that currently makes none, a hotlink
+   * that can rot, and a CSP entry — for a texture behind the windows. If you
+   * want photographic wallpapers, the right shape is a few self-hosted,
+   * compressed assets in /public, and I would rather add them deliberately
+   * than link someone else's CDN.
+   */
+  {
+    id: "cyber-mesh",
+    label: "Cyber Mesh",
+    family: "pattern",
+    css:
+      "radial-gradient(circle at 20% 15%, rgba(34,211,238,0.16), transparent 45%)," +
+      "radial-gradient(circle at 82% 78%, rgba(99,102,241,0.18), transparent 48%)," +
+      "linear-gradient(rgba(45,212,191,0.055) 1px, transparent 1px)," +
+      "linear-gradient(90deg, rgba(45,212,191,0.055) 1px, transparent 1px)," +
+      "linear-gradient(160deg, #04120f 0%, #061620 55%, #040d18 100%)",
+    lightCss:
+      "radial-gradient(circle at 20% 15%, rgba(14,165,190,0.12), transparent 45%)," +
+      "radial-gradient(circle at 82% 78%, rgba(99,102,241,0.10), transparent 48%)," +
+      "linear-gradient(rgba(15,118,110,0.07) 1px, transparent 1px)," +
+      "linear-gradient(90deg, rgba(15,118,110,0.07) 1px, transparent 1px)," +
+      "linear-gradient(160deg, #eef6f5 0%, #e6eef6 55%, #eaf0f8 100%)",
+    size: "100% 100%, 100% 100%, 28px 28px, 28px 28px, 100% 100%",
+    overlay: false,
+  },
+  {
+    id: "deep-space",
+    label: "Deep Space",
+    family: "gradient",
+    css:
+      "radial-gradient(1px 1px at 18% 28%, rgba(255,255,255,0.55), transparent)," +
+      "radial-gradient(1px 1px at 62% 14%, rgba(255,255,255,0.4), transparent)," +
+      "radial-gradient(1.5px 1.5px at 78% 62%, rgba(255,255,255,0.5), transparent)," +
+      "radial-gradient(1px 1px at 35% 76%, rgba(255,255,255,0.35), transparent)," +
+      "radial-gradient(ellipse 90% 60% at 50% 8%, rgba(88,60,190,0.35), transparent 70%)," +
+      "linear-gradient(180deg, #060616 0%, #0a0a22 45%, #04040d 100%)",
+    lightCss:
+      "radial-gradient(ellipse 90% 60% at 50% 8%, rgba(129,110,220,0.18), transparent 70%)," +
+      "linear-gradient(180deg, #eeeef8 0%, #e7e7f4 45%, #f2f2f8 100%)",
+    overlay: false,
+  },
+  {
+    id: "corporate-clean",
+    label: "Corporate Clean",
+    family: "gradient",
+    css: "linear-gradient(135deg, #101827 0%, #16223a 48%, #101a2c 100%)",
+    lightCss: "linear-gradient(135deg, #f7f9fc 0%, #eef3fa 48%, #f4f7fc 100%)",
+  },
+  {
+    id: "carbon-weave",
+    label: "Carbon Weave",
+    family: "pattern",
+    css:
+      "repeating-linear-gradient(45deg, rgba(255,255,255,0.022) 0 2px, transparent 2px 6px)," +
+      "repeating-linear-gradient(-45deg, rgba(255,255,255,0.022) 0 2px, transparent 2px 6px)," +
+      "linear-gradient(180deg, #0d0f13 0%, #14171d 100%)",
+    lightCss:
+      "repeating-linear-gradient(45deg, rgba(0,0,0,0.028) 0 2px, transparent 2px 6px)," +
+      "repeating-linear-gradient(-45deg, rgba(0,0,0,0.028) 0 2px, transparent 2px 6px)," +
+      "linear-gradient(180deg, #f4f5f7 0%, #e9ebef 100%)",
+    overlay: false,
+  },
+  {
+    id: "aurora-drift",
+    label: "Aurora Drift",
+    family: "gradient",
+    css:
+      "radial-gradient(ellipse 70% 50% at 15% 20%, rgba(16,185,129,0.28), transparent 60%)," +
+      "radial-gradient(ellipse 60% 45% at 85% 30%, rgba(56,189,248,0.24), transparent 60%)," +
+      "radial-gradient(ellipse 80% 55% at 50% 95%, rgba(139,92,246,0.22), transparent 65%)," +
+      "linear-gradient(180deg, #06121a 0%, #07131f 100%)",
+    lightCss:
+      "radial-gradient(ellipse 70% 50% at 15% 20%, rgba(16,185,129,0.14), transparent 60%)," +
+      "radial-gradient(ellipse 60% 45% at 85% 30%, rgba(56,189,248,0.13), transparent 60%)," +
+      "radial-gradient(ellipse 80% 55% at 50% 95%, rgba(139,92,246,0.12), transparent 65%)," +
+      "linear-gradient(180deg, #f3f8fb 0%, #eef4f9 100%)",
+    overlay: false,
+  },
+  {
+    id: "blueprint",
+    label: "Blueprint",
+    family: "pattern",
+    css:
+      "linear-gradient(rgba(120,180,255,0.10) 1px, transparent 1px)," +
+      "linear-gradient(90deg, rgba(120,180,255,0.10) 1px, transparent 1px)," +
+      "linear-gradient(rgba(120,180,255,0.05) 1px, transparent 1px)," +
+      "linear-gradient(90deg, rgba(120,180,255,0.05) 1px, transparent 1px)," +
+      "linear-gradient(180deg, #0a1524 0%, #0d1c30 100%)",
+    lightCss:
+      "linear-gradient(rgba(37,99,168,0.11) 1px, transparent 1px)," +
+      "linear-gradient(90deg, rgba(37,99,168,0.11) 1px, transparent 1px)," +
+      "linear-gradient(rgba(37,99,168,0.055) 1px, transparent 1px)," +
+      "linear-gradient(90deg, rgba(37,99,168,0.055) 1px, transparent 1px)," +
+      "linear-gradient(180deg, #eef4fb 0%, #e6eef8 100%)",
+    size: "96px 96px, 96px 96px, 16px 16px, 16px 16px, 100% 100%",
+    overlay: false,
+  },
+
 ];
 
 export const DEFAULT_WALLPAPER = "bloom";

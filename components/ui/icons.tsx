@@ -84,6 +84,17 @@ export const IconPlus = (p: IconProps) => (<Svg {...p}><path d="M12 5v14M5 12h14
 export const IconMinus = (p: IconProps) => (<Svg {...p}><path d="M5 12h14" /></Svg>);
 export const IconCheck = (p: IconProps) => (<Svg {...p}><path d="M20 6L9 17l-5-5" /></Svg>);
 export const IconX = (p: IconProps) => (<Svg {...p}><path d="M18 6L6 18M6 6l12 12" /></Svg>);
+/** Two offset sheets — the universal "copy" glyph. */
+export const IconCopy = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="9" y="9" width="11" height="11" rx="2" />
+    <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+  </Svg>
+);
+/** A pointer arrow with a small menu block — used for context-menu affordances. */
+export const IconMenu = (p: IconProps) => (
+  <Svg {...p}><path d="M4 6h16M4 12h16M4 18h10" /></Svg>
+);
 export const IconTrash = (p: IconProps) => (
   <Svg {...p}><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /><path d="M10 11v6M14 11v6" /></Svg>
 );

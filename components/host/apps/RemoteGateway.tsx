@@ -39,6 +39,7 @@ import { computeTraffic, effectiveLatency } from "@/lib/core";
 import { useTrafficOverrides } from "@/lib/host/devtools";
 import { useState } from "react";
 import { Segmented } from "./AppChrome";
+import CopyButton from "@/components/ui/CopyButton";
 
 const HEALTH: Record<HealthStatus, { label: string; dot: string; text: string }> = {
   healthy: { label: "Healthy", dot: "bg-emerald-400", text: "text-emerald-300" },
@@ -123,7 +124,7 @@ export default function RemoteGateway() {
           return (
             <div
               key={entry.nodeId}
-              className="relative flex flex-col gap-3 overflow-hidden rounded-wm border border-edge bg-panelalt p-4 pl-5 transition hover:border-edge-strong"
+              className="selectable relative flex flex-col gap-3 overflow-hidden rounded-wm border border-edge bg-panelalt p-4 pl-5 transition hover:border-edge-strong"
             >
               {/* Reachability as a rail: readable in peripheral vision, which
                   a dot competing with four other small marks is not. */}
@@ -139,9 +140,17 @@ export default function RemoteGateway() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold text-gray-100">{node.displayName}</div>
-                  <div className="font-mono text-[11px] text-gray-500">
-                    {node.hostname} · {node.connection.ip}
-                    {entry.location && <span className="ml-1.5 text-gray-600">{entry.location}</span>}
+                  <div className="group/addr flex items-center gap-1 font-mono text-[11px] text-gray-500">
+                    <span className="truncate">
+                      {node.hostname} · {node.connection.ip}
+                    </span>
+                    <CopyButton
+                      value={node.connection.ip}
+                      label="IP address"
+                      size={10}
+                      className="opacity-0 transition-opacity group-hover/addr:opacity-100 focus-visible:opacity-100"
+                    />
+                    {entry.location && <span className="ml-0.5 shrink-0 text-gray-600">{entry.location}</span>}
                   </div>
                 </div>
                 <span

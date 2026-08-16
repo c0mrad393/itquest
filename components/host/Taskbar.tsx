@@ -14,6 +14,8 @@ import {
   type HostAppId,
 } from "@/lib/core";
 import { useHostStore } from "@/lib/host/store";
+import { useContextMenuStore, type ContextMenuEntry } from "@/lib/host/context-menu";
+import { IconExpand, IconMinus, IconX } from "@/components/ui/icons";
 import { useTicketStore } from "@/lib/host/tickets-store";
 import { useDialogueStore } from "@/lib/dialogue/store";
 import { useMailStore } from "@/lib/mail/store";
@@ -41,6 +43,9 @@ export default function Taskbar({
   const windows = useHostStore((s) => s.windows);
   const startMenuOpen = useHostStore((s) => s.startMenuOpen);
   const toggleStartMenu = useHostStore((s) => s.toggleStartMenu);
+  const minimize = useHostStore((s) => s.minimize);
+  const closeWindow = useHostStore((s) => s.close);
+  const toggleMaximize = useHostStore((s) => s.toggleMaximize);
   const openApp = useHostStore((s) => s.openApp);
   const taskbarActivate = useHostStore((s) => s.taskbarActivate);
   const host = useHostStore((s) => s.host);
@@ -107,6 +112,52 @@ export default function Taskbar({
               onClick={() =>
                 running ? taskbarActivate(instances[0].instanceId) : openApp(appId)
               }
+              /*
+               * Right-click gives the window controls a mouse can otherwise
+               * only reach through the title bar. That matters most for a
+               * window dragged mostly off-screen or buried under three others:
+               * the taskbar is the one place it is always reachable, and
+               * "Close" here is the escape hatch for a window that has become
+               * awkward to get at.
+               *
+               * The store is called directly rather than through the
+               * `useContextMenu` helper because the entries depend on THIS
+               * button's window, and the helper's builder closure would have
+               * to be rebuilt per button anyway.
+               */
+              onContextMenu={(e) => {
+                if (!running) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const win = instances[0];
+                const minimized = win.mode === "minimized";
+                const entries: ContextMenuEntry[] = [
+                  {
+                    id: "toggle",
+                    label: minimized ? "Restore" : "Minimize",
+                    icon: minimized ? <IconExpand size={13} /> : <IconMinus size={13} />,
+                    onSelect: () =>
+                      minimized ? taskbarActivate(win.instanceId) : minimize(win.instanceId),
+                  },
+                  {
+                    id: "maximize",
+                    label: win.mode === "maximized" ? "Restore size" : "Maximize",
+                    icon: <IconExpand size={13} />,
+                    onSelect: () => toggleMaximize(win.instanceId),
+                  },
+                  { id: "sep", separator: true },
+                  {
+                    id: "close",
+                    label: "Close window",
+                    icon: <IconX size={13} />,
+                    danger: true,
+                    onSelect: () => closeWindow(win.instanceId),
+                  },
+                ];
+                useContextMenuStore
+                  .getState()
+                  .openMenu({ x: e.clientX, y: e.clientY, entries, source: "taskbar" });
+              }}
               title={meta.title}
               className={`relative flex h-9 w-9 items-center justify-center rounded-md transition hover:bg-gray-500/15 ${
                 active ? "bg-brand-soft/15 text-brand-text" : "text-gray-300"

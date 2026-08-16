@@ -32,7 +32,20 @@ import {
   useDesktopIconStore,
 } from "@/lib/host/desktop-icons";
 
-export default function DesktopIcons() {
+export default function DesktopIcons({
+  onContextMenu,
+}: {
+  /**
+   * The desktop's own right-click menu.
+   *
+   * It is bound HERE rather than on the wallpaper because this layer sits on
+   * top of it (z-10 over the wallpaper's z-0), so every right-click on empty
+   * desktop space lands on this div and the wallpaper's handler would never
+   * have fired. Windows sit above this layer again, so a right-click on a
+   * window does not reach it — which is the behaviour we want anyway.
+   */
+  onContextMenu?: (e: React.MouseEvent) => void;
+}) {
   const icons = useDesktopIconStore((s) => s.icons);
   const hydrate = useDesktopIconStore((s) => s.hydrate);
   const place = useDesktopIconStore((s) => s.place);
@@ -49,7 +62,7 @@ export default function DesktopIcons() {
   }, []);
 
   return (
-    <div ref={layerRef} className="absolute inset-0 z-10">
+    <div ref={layerRef} onContextMenu={onContextMenu} className="absolute inset-0 z-10">
       {/* Drop preview: a hollow cell showing where the icon will land. */}
       {ghost && (
         <div

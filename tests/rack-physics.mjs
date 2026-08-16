@@ -142,6 +142,7 @@ import {
 
 import { MIN_W, MIN_H, GRAB_MARGIN, applyResize, clampPosition } from "../.test-build/host/windows.js";
 import { BOOT_LINES, BOOT_TOTAL_MS, BOOT_BUDGET_MS, bootLineDelay } from "../.test-build/host/boot.js";
+import { placeMenu, menuHeight, MENU_W } from "../.test-build/host/context-menu.js";
 import { placeIcon, reflow, autoArrange, gridFor, pxToCell, cellToPx } from "../.test-build/host/desktop-icons.js";
 
 let pass = 0;
@@ -2129,6 +2130,47 @@ group("Client endpoints skip the rack chain");
      JSON.stringify({ col: 2, row: 3 }));
   eq("negative pixels clamp to the origin", JSON.stringify(pxToCell(-500, -500)),
      JSON.stringify({ col: 0, row: 0 }));
+}
+
+// ── Context menu placement ─────────────────────────────────────────────────
+{
+  group("Context menu — stays on screen and off the cursor");
+  const V = { w: 1440, h: 900 };
+  const items = (n) => Array.from({ length: n }, (_, i) => ({ id: `i${i}`, label: `Item ${i}` }));
+  const four = items(4);
+  const h = menuHeight(four);
+
+  const mid = placeMenu(400, 300, four, V.w, V.h);
+  eq("a menu with room opens at the cursor", JSON.stringify(mid), JSON.stringify({ x: 400, y: 300 }));
+
+  // The important behaviour: FLIP, not slide. A slid menu leaves the cursor
+  // sitting on top of one of its items.
+  const right = placeMenu(V.w - 5, 300, four, V.w, V.h);
+  eq("near the right edge it flips left of the cursor", right.x + MENU_W <= V.w - 5, true);
+  eq("and keeps its margin", right.x >= 8 && right.x + MENU_W <= V.w - 8, true);
+
+  const bottom = placeMenu(400, V.h - 5, four, V.w, V.h);
+  eq("near the bottom it flips above the cursor", bottom.y + h <= V.h - 5, true);
+  eq("and keeps its margin too", bottom.y >= 8 && bottom.y + h <= V.h - 8, true);
+
+  const corner = placeMenu(V.w - 2, V.h - 2, four, V.w, V.h);
+  eq("in the corner it flips both ways", corner.x < V.w - MENU_W && corner.y < V.h - h, true);
+
+  // A menu taller than the viewport fits on neither side; clamping takes over.
+  const huge = items(60);
+  const clamped = placeMenu(400, 500, huge, V.w, 300);
+  eq("an over-tall menu is clamped, not left off-screen", clamped.y >= 0, true);
+  eq("and pinned to the top margin", clamped.y, 8);
+
+  // Negative or absurd cursor coordinates must not produce a negative origin.
+  const neg = placeMenu(-50, -50, four, V.w, V.h);
+  eq("a cursor off the left never puts the menu off-screen", neg.x >= 0 && neg.y >= 0, true);
+
+  group("Context menu — height accounting");
+  eq("separators are shorter than items",
+     menuHeight([{ id: "s", separator: true }]) < menuHeight([{ id: "a", label: "a" }]), true);
+  eq("height grows with entries", menuHeight(items(6)) > menuHeight(items(3)), true);
+  eq("an empty menu is just its padding", menuHeight([]), 16);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
