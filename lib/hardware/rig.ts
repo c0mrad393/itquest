@@ -31,15 +31,23 @@ export type PartKind = "cpu" | "ram" | "gpu" | "psu" | "storage" | "fan";
 export interface Fastener {
   id: string;
   label: string;
-  /** Screws are driven, clips are closed — `true` means "holding". */
-  kind: "screw" | "clip";
+  /**
+   * Screws are driven, clips and ZIF latches are closed, a caddy handle is
+   * seated — `true` always means "this is still holding the part".
+   *
+   * ZIF is its own kind rather than a clip because the failure mode differs and
+   * the lab has to teach it: a clip resists you, a ZIF latch does not, so
+   * pulling a ribbon against a closed ZIF tears the cable rather than being
+   * merely difficult. The UI reads `kind` to say so.
+   */
+  kind: "screw" | "clip" | "zif" | "handle";
   fastened: boolean;
 }
 
 export interface Cable {
   id: string;
   label: string;
-  kind: "power" | "data";
+  kind: "power" | "data" | "ribbon";
   /** Slot ids this cable runs between. Both ends are on the board or a part. */
   from: string;
   to: string;
@@ -107,9 +115,18 @@ export function blockedReason(rig: Rig, slotId: string): string | null {
 
   const held = slot.fasteners.filter((f) => f.fastened);
   if (held.length) {
+    /*
+     * Ordered by what would break first if ignored. A ZIF latch outranks
+     * everything: pulling a ribbon against a closed latch tears the cable,
+     * which is unrecoverable, where forcing a clip is merely rough.
+     */
+    const zif = held.find((f) => f.kind === "zif");
+    if (zif) return `Flip up ${zif.label} before pulling the ribbon`;
+    const handle = held.find((f) => f.kind === "handle");
+    if (handle) return `Pull ${handle.label} to release the caddy`;
     const clips = held.filter((f) => f.kind === "clip");
+    if (clips.length) return `Release ${clips.length === 1 ? "the clip" : "both clips"} first`;
     const screws = held.filter((f) => f.kind === "screw");
-    if (clips.length) return `Release ${clips.length === 1 ? "the clip" : `both clips`} first`;
     return `Undo ${screws.length === 1 ? "the screw" : `${screws.length} screws`} first`;
   }
 
@@ -385,5 +402,306 @@ export function buildDesktopRig(fault: RigFault = "faulty-ram"): Rig {
     // The replacement stick is already on the bench: this scenario is about the
     // procedure, not about a parts requisition.
     tray: fault === "faulty-ram" ? [{ id: "p-ram-new", kind: "ram", model: "8GB DDR4-3200" }] : [],
+  };
+}
+
+// ── Topologies ──────────────────────────────────────────────────────────────
+
+export type MachineKind = "desktop" | "laptop" | "server";
+
+/**
+ * A laptop, opened from the underside.
+ *
+ * The mechanic that matters here is the ZIF connector: the display and keyboard
+ * hang off flex cables that are held by a latch you flip UP before the ribbon
+ * slides out. It is the single most commonly destroyed thing in laptop repair,
+ * because the ribbon comes away under a closed latch if you pull hard enough —
+ * and then the part is scrap. So the model refuses, and names the latch.
+ */
+export function buildLaptopRig(fault: RigFault = "faulty-ram"): Rig {
+  const zif = (id: string, label: string): Fastener => ({ id, label, kind: "zif", fastened: true });
+  const screw = (id: string, label: string): Fastener => ({ id, label, kind: "screw", fastened: true });
+  const clip = (id: string, label: string): Fastener => ({ id, label, kind: "clip", fastened: true });
+
+  const slots: Slot[] = [
+    {
+      id: "cpu", kind: "cpu", label: "SoC (soldered)", x: 4, y: 3, w: 4, h: 3,
+      // Soldered: no fasteners, and no removal path. Modelled as required so a
+      // learner cannot "fix" a laptop by pulling a CPU that does not come out.
+      part: { id: "l-cpu", kind: "cpu", model: "Core M7-1250U" },
+      fasteners: [], cableIds: [], required: true,
+    },
+    {
+      id: "ram-so", kind: "ram", label: "SO-DIMM", x: 9, y: 2, w: 6, h: 1.6,
+      part: { id: "l-ram", kind: "ram", model: "16GB DDR5-4800", faulty: fault === "faulty-ram" },
+      fasteners: [clip("so-l", "the left clip"), clip("so-r", "the right clip")],
+      cableIds: [], required: true,
+    },
+    {
+      id: "display", kind: "gpu", label: "Display flex", x: 9, y: 4.5, w: 6, h: 1.6,
+      part: { id: "l-disp", kind: "gpu", model: "eDP display panel" },
+      fasteners: [zif("zif-disp", "the display ZIF latch")],
+      cableIds: ["lc-disp"],
+    },
+    {
+      id: "keyboard", kind: "gpu", label: "Keyboard flex", x: 2, y: 7.5, w: 8, h: 1.6,
+      part: { id: "l-kbd", kind: "gpu", model: "Keyboard matrix" },
+      fasteners: [zif("zif-kbd", "the keyboard ZIF latch")],
+      cableIds: ["lc-kbd"],
+    },
+    {
+      id: "m2", kind: "storage", label: "M.2 2280", x: 2, y: 1, w: 1.6, h: 5,
+      part: { id: "l-ssd", kind: "storage", model: "1TB NVMe" },
+      fasteners: [screw("m2-screw", "the retention screw")],
+      cableIds: [],
+    },
+    {
+      id: "battery", kind: "psu", label: "Battery", x: 11, y: 7, w: 5, h: 3,
+      part: { id: "l-bat", kind: "psu", model: "58Wh Li-ion" },
+      fasteners: [screw("bat-s1", "battery screw A"), screw("bat-s2", "battery screw B")],
+      cableIds: ["lc-bat"], required: true,
+    },
+    {
+      id: "fan", kind: "fan", label: "Blower fan", x: 4, y: 7, w: 3, h: 2.4,
+      part: { id: "l-fan", kind: "fan", model: "Thin blower" },
+      fasteners: [screw("lfan-s", "the fan screw")],
+      cableIds: ["lc-fan"],
+    },
+  ];
+
+  const cables: Cable[] = [
+    { id: "lc-disp", label: "the display ribbon", kind: "ribbon", from: "display", to: "cpu", connected: true },
+    { id: "lc-kbd", label: "the keyboard ribbon", kind: "ribbon", from: "keyboard", to: "cpu", connected: true },
+    { id: "lc-bat", label: "the battery connector", kind: "power", from: "battery", to: "cpu", connected: true },
+    {
+      id: "lc-fan", label: "the fan connector", kind: "power", from: "fan", to: "cpu",
+      connected: fault !== "cpu-fan-unplugged",
+    },
+  ];
+
+  return {
+    slots, cables,
+    tray: fault === "faulty-ram" ? [{ id: "l-ram-new", kind: "ram", model: "16GB DDR5-4800" }] : [],
+  };
+}
+
+/**
+ * A 2U rack server, lid off.
+ *
+ * Two sockets and four ECC banks, because the population RULES are the lesson:
+ * a second CPU's memory banks are dead without that CPU, and DIMMs go in
+ * matched pairs from the first slot outward. The drive bays are hot-swap, which
+ * is the other half — a caddy comes out under power once the handle is pulled,
+ * and that is exactly why a server drive swap is not a teardown at all.
+ */
+export function buildServerRig(fault: RigFault = "faulty-ram"): Rig {
+  const screw = (id: string, label: string): Fastener => ({ id, label, kind: "screw", fastened: true });
+  const clip = (id: string, label: string): Fastener => ({ id, label, kind: "clip", fastened: true });
+  const handle = (id: string, label: string): Fastener => ({ id, label, kind: "handle", fastened: true });
+
+  const bank = (n: number, x: number, faulty = false): Slot => ({
+    id: `dimm-${n}`, kind: "ram", label: `DIMM ${n}`, x, y: 1, w: 1.2, h: 5,
+    part: { id: `s-ram${n}`, kind: "ram", model: "32GB ECC RDIMM", faulty },
+    fasteners: [clip(`d${n}-t`, "the upper clip"), clip(`d${n}-b`, "the lower clip")],
+    cableIds: [], required: n === 1,
+  });
+
+  const bay = (n: number, y: number): Slot => ({
+    id: `bay-${n}`, kind: "storage", label: `Bay ${n}`, x: 16, y, w: 2.4, h: 1.6,
+    part: { id: `s-hdd${n}`, kind: "storage", model: "2TB SAS 10K" },
+    // A hot-swap caddy is held by ONE thing: the handle. No cables, because the
+    // backplane is the connector — which is the entire point of hot-swap.
+    fasteners: [handle(`bay${n}-h`, `the bay ${n} handle`)],
+    cableIds: [],
+  });
+
+  const slots: Slot[] = [
+    {
+      id: "cpu0", kind: "cpu", label: "CPU 0", x: 2, y: 1, w: 3.4, h: 3.4,
+      part: { id: "s-cpu0", kind: "cpu", model: "Xenon Gold 6338" },
+      fasteners: [screw("c0-a", "ILM screw A"), screw("c0-b", "ILM screw B")],
+      cableIds: [], required: true,
+    },
+    {
+      id: "cpu1", kind: "cpu", label: "CPU 1", x: 2, y: 5.4, w: 3.4, h: 3.4,
+      part: { id: "s-cpu1", kind: "cpu", model: "Xenon Gold 6338" },
+      fasteners: [screw("c1-a", "ILM screw A"), screw("c1-b", "ILM screw B")],
+      cableIds: [],
+    },
+    bank(1, 6.4, fault === "faulty-ram"),
+    bank(2, 8),
+    bank(3, 9.6),
+    bank(4, 11.2),
+    {
+      id: "psu0", kind: "psu", label: "PSU 0", x: 13, y: 1, w: 2.4, h: 2.4,
+      part: { id: "s-psu0", kind: "psu", model: "800W redundant" },
+      fasteners: [handle("psu0-h", "the PSU 0 handle")],
+      cableIds: ["sc-psu0"], required: true,
+    },
+    {
+      id: "psu1", kind: "psu", label: "PSU 1", x: 13, y: 4, w: 2.4, h: 2.4,
+      part: { id: "s-psu1", kind: "psu", model: "800W redundant" },
+      fasteners: [handle("psu1-h", "the PSU 1 handle")],
+      cableIds: ["sc-psu1"],
+    },
+    bay(0, 1), bay(1, 3), bay(2, 5), bay(3, 7),
+    {
+      id: "fan", kind: "fan", label: "Fan wall", x: 6.4, y: 7, w: 6, h: 2,
+      part: { id: "s-fan", kind: "fan", model: "6x 60mm hot-swap" },
+      fasteners: [],
+      cableIds: ["sc-fan"],
+    },
+  ];
+
+  const cables: Cable[] = [
+    { id: "sc-psu0", label: "the PSU 0 feed", kind: "power", from: "psu0", to: "backplane", connected: true },
+    { id: "sc-psu1", label: "the PSU 1 feed", kind: "power", from: "psu1", to: "backplane", connected: true },
+    {
+      id: "sc-fan", label: "the fan wall header", kind: "power", from: "fan", to: "cpu0",
+      connected: fault !== "cpu-fan-unplugged",
+    },
+  ];
+
+  return {
+    slots, cables,
+    tray: fault === "faulty-ram" ? [{ id: "s-ram-new", kind: "ram", model: "32GB ECC RDIMM" }] : [],
+  };
+}
+
+export function buildRig(kind: MachineKind, fault: RigFault = "faulty-ram"): Rig {
+  if (kind === "laptop") return buildLaptopRig(fault);
+  if (kind === "server") return buildServerRig(fault);
+  return buildDesktopRig(fault);
+}
+
+// ── POST codes and BIOS ─────────────────────────────────────────────────────
+
+/**
+ * A POST halt, in the voice the firmware actually uses.
+ *
+ * Beep codes are paired with the on-screen text because a technician meets both
+ * — the beeps when there is no display yet, the text when there is. Teaching
+ * only the string would leave someone helpless in front of a machine that
+ * cannot draw anything.
+ */
+export interface PostHalt {
+  code: string;
+  beeps: string;
+  screen: string;
+}
+
+export function postHalt(rig: Rig): PostHalt | null {
+  const cpu = rig.slots.find((s) => s.kind === "cpu" && s.required);
+  if (cpu && !cpu.part) {
+    return { code: "0x00", beeps: "continuous", screen: "No processor installed — system halted" };
+  }
+  const ram = rig.slots.filter((s) => s.kind === "ram");
+  const goodRam = ram.filter((s) => s.part && !s.part.faulty && s.fasteners.every((f) => f.fastened));
+  if (ram.length && goodRam.length === 0) {
+    // The classic. One long, two short is the memory code every technician
+    // learns first, and it fires whether the stick is missing OR dead.
+    return { code: "0x53", beeps: "1 long, 2 short", screen: "Memory not detected — check DIMM seating" };
+  }
+  const fanCable = rig.cables.find((c) => c.id.includes("fan"));
+  if (fanCable && !fanCable.connected) {
+    return { code: "0x5A", beeps: "none", screen: "CPU Fan Error. Press F1 to Run SETUP" };
+  }
+  const loose = rig.slots.find((s) => s.part && s.fasteners.some((f) => !f.fastened));
+  if (loose) {
+    return { code: "0x62", beeps: "3 short", screen: `${loose.label} not secured — reseat and retry` };
+  }
+  const power = rig.cables.find((c) => c.kind === "power" && !c.connected);
+  if (power) {
+    return { code: "0x10", beeps: "continuous", screen: `Power fault — ${power.label} is disconnected` };
+  }
+  return null;
+}
+
+export type BootDeviceKind = "disk" | "usb" | "network";
+
+export interface BootDevice {
+  id: string;
+  label: string;
+  kind: BootDeviceKind;
+  /** A blank disk cannot boot — that is why the USB installer exists. */
+  bootable: boolean;
+}
+
+export interface BiosSettings {
+  /** First entry wins. Order IS the setting — no separate priority field. */
+  bootOrder: BootDevice[];
+  virtualization: boolean;
+  secureBoot: boolean;
+}
+
+/** Boot devices DERIVED from what is actually fitted, plus the bench USB. */
+export function biosDevices(rig: Rig, osInstalled: boolean): BootDevice[] {
+  const disks = rig.slots
+    .filter((s) => s.kind === "storage" && s.part)
+    .map((s) => ({
+      id: s.id,
+      label: `${s.part?.model ?? "disk"} (${s.label})`,
+      kind: "disk" as const,
+      bootable: osInstalled,
+    }));
+  return [
+    ...disks,
+    { id: "usb", label: "USB — DeskOS Setup", kind: "usb", bootable: true },
+    { id: "pxe", label: "Network boot (PXE)", kind: "network", bootable: false },
+  ];
+}
+
+export function defaultBios(rig: Rig, osInstalled: boolean): BiosSettings {
+  const devices = biosDevices(rig, osInstalled);
+  return { bootOrder: devices, virtualization: true, secureBoot: true };
+}
+
+export function moveBootDevice(s: BiosSettings, id: string, dir: "up" | "down"): BiosSettings {
+  const at = s.bootOrder.findIndex((d) => d.id === id);
+  const to = dir === "up" ? at - 1 : at + 1;
+  if (at < 0 || to < 0 || to >= s.bootOrder.length) return s;
+  const next = [...s.bootOrder];
+  next.splice(at, 1);
+  next.splice(to, 0, s.bootOrder[at]);
+  return { ...s, bootOrder: next };
+}
+
+/**
+ * What the machine does when the firmware hands off.
+ *
+ * The first BOOTABLE device wins, not simply the first — a disk at the top of
+ * the order with nothing installed on it falls through, which is exactly why
+ * "it boots to the installer every time" is a real complaint and why the fix is
+ * to change the order rather than to reinstall.
+ */
+export function resolveBoot(s: BiosSettings): BootDevice | null {
+  return s.bootOrder.find((d) => d.bootable) ?? null;
+}
+
+/** Specs the OS layer needs, read off the hardware rather than typed in twice. */
+export interface RigSpec {
+  cpuModel: string;
+  cores: number;
+  ramGb: number;
+  diskGb: number;
+}
+
+export function rigSpec(rig: Rig): RigSpec {
+  const cpus = rig.slots.filter((s) => s.kind === "cpu" && s.part);
+  const ram = rig.slots.filter((s) => s.kind === "ram" && s.part && !s.part.faulty);
+  const disks = rig.slots.filter((s) => s.kind === "storage" && s.part);
+  const gbOf = (model: string) => {
+    const m = model.match(/(\d+)\s*(GB|TB)/i);
+    if (!m) return 0;
+    return Number(m[1]) * (m[2].toUpperCase() === "TB" ? 1024 : 1);
+  };
+  return {
+    cpuModel: cpus[0]?.part?.model ?? "unknown",
+    // Two sockets is two physical CPUs; the core count is per-socket and fixed
+    // here because the model does not carry one and inventing a number per
+    // model string would be a lie dressed as detail.
+    cores: cpus.length * 8,
+    ramGb: ram.reduce((a, s) => a + gbOf(s.part?.model ?? ""), 0),
+    diskGb: disks.reduce((a, s) => a + gbOf(s.part?.model ?? ""), 0),
   };
 }

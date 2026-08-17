@@ -47,6 +47,15 @@ import {
 import { nextFreeIp, nextRackName, provisionNode } from "@/lib/datacenter/seed";
 import type { DhcpConfig, DhcpReservation, FirewallRule, IdsState, NatRule, ThreatEvent } from "@/lib/vm/types";
 import { EDGE_GATEWAY_ID, buildEdgeGateway, defaultDhcp, defaultIds, deriveGatewayIp } from "@/lib/network/edge";
+import { buildBenchNode } from "@/lib/hardware/commission";
+
+/** What the bench hands over when a freshly imaged machine is commissioned. */
+type BenchBuildInput = {
+  machine: "desktop" | "laptop" | "server";
+  cpuModel: string;
+  ramGb: number;
+  diskGb: number;
+};
 import type { ShippingMethod } from "@/lib/core";
 import type { AetherVNode, AuditEvent, ShieldRule, VNodeSize, VNodeStatus } from "@/lib/core";
 import type { CommandResult, NodeId } from "@/lib/core";
@@ -291,6 +300,15 @@ interface InfraStore {
    * any version mismatch, so bumping would delete every existing company to
    * add one node.
    */
+  /**
+   * Register a machine built on the hardware bench into the estate.
+   *
+   * The bridge from HardwareState to VMState. Specs are read off the RIG rather
+   * than typed in, so what the operator physically fitted is what the estate
+   * believes it has — leave a stick out before imaging and the node genuinely
+   * comes up with less memory. Returns the hostname so the bench can name it.
+   */
+  commissionBenchMachine: (build: BenchBuildInput) => string;
   ensureEdgeGateway: () => NodeId;
   addFirewallRule: (nodeId: NodeId, rule: FirewallRule) => void;
   updateFirewallRule: (nodeId: NodeId, ruleId: string, patch: Partial<FirewallRule>) => void;
@@ -1397,6 +1415,34 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       clone.health = { ...clone.health, uptimeSeconds: 0 };
       return withNode(s, nodeId, clone);
     }),
+
+  commissionBenchMachine: (build: BenchBuildInput) => {
+    const nodes = get().infra.nodes;
+    const gwIp = deriveGatewayIp(nodes);
+    const base = gwIp.replace(/\.\d+$/, "");
+    /*
+     * Take the first address not already held. The bench does not get to invent
+     * an address that collides — a freshly imaged machine appearing on top of a
+     * live host is a fault, not a commissioning step.
+     */
+    const taken = new Set(
+      Object.values(nodes).flatMap((n) => (n.network?.interfaces ?? []).map((i) => i.ipv4)),
+    );
+    let host = 60;
+    while (taken.has(`${base}.${host}`) && host < 250) host++;
+    const ip = `${base}.${host}`;
+
+    const sample = Object.values(nodes).find((n) => /^[A-Z]{3,5}-/.test(n.hostname));
+    const prefix = sample?.hostname.split("-")[0] ?? "NEW";
+    const seq = Object.keys(nodes).length + 1;
+    const hostname =
+      build.machine === "server" ? `${prefix}-SRV-${seq}` : `${prefix}-WS-${seq}`;
+    const nodeId = hostname.toLowerCase();
+
+    const node = buildBenchNode({ ...build, nodeId, hostname, ip, gateway: gwIp, domain: sample?.domain });
+    set((s) => ({ infra: { ...s.infra, nodes: { ...s.infra.nodes, [nodeId]: node } } }));
+    return hostname;
+  },
 
   ensureEdgeGateway: () => {
     const existing = get().infra.nodes[EDGE_GATEWAY_ID];

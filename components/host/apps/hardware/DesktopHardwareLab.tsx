@@ -28,8 +28,10 @@
 
 import { useState } from "react";
 import { useHardwareStore } from "@/lib/hardware/rig-store";
-import { blockedReason, canRemove, cablesFor, type Fastener, type Slot } from "@/lib/hardware/rig";
+import { blockedReason, canRemove, cablesFor, type Fastener, type MachineKind, type Slot } from "@/lib/hardware/rig";
+import { useInfraStore } from "@/lib/infra/store";
 import { AppIcon } from "@/components/ui/app-icons";
+import { BiosSetupScreen, OsInstallScreen, PostHaltScreen, RunningScreen } from "./BiosScreen";
 
 /** Board grid → SVG units. The model stores grid units; this is the only scale. */
 const U = 26;
@@ -59,8 +61,41 @@ export default function DesktopHardwareLab() {
 
   const [posted, setPosted] = useState<ReturnType<typeof postResult> | null>(null);
 
+  const phase = useHardwareStore((s) => s.phase);
+  const machine = useHardwareStore((s) => s.machine);
+  /*
+   * Read here, NOT inline in the JSX below.
+   *
+   * The firmware phases early-return above, so any hook called further down the
+   * tree runs on some renders and not others — React counts hooks positionally
+   * and throws "rendered fewer hooks than expected" the first time you press
+   * power. Every hook this component needs must be called before the first
+   * early return, unconditionally.
+   */
+  const fault = useHardwareStore((s) => s.fault);
+  const powerOn = useHardwareStore((s) => s.powerOn);
+  const commissionNode = useInfraStore((s) => s.commissionBenchMachine);
+  const [registered, setRegistered] = useState<string | null>(null);
+
   const next = hint();
   const active = rig.slots.find((s) => s.id === selected) ?? null;
+
+  /*
+   * Firmware phases take over the whole surface, exactly as they do on a real
+   * machine: once you press power there is no bench to look at, only what the
+   * box is showing you. Routing here rather than inside the blueprint keeps the
+   * bench a bench.
+   */
+  if (phase === "post-halt") return <PostHaltScreen />;
+  if (phase === "bios") return <BiosSetupScreen />;
+  if (phase === "installing") {
+    return (
+      <OsInstallScreen
+        onCommit={(spec) => setRegistered(commissionNode({ machine, ...spec }))}
+      />
+    );
+  }
+  if (phase === "running") return <RunningScreen hostname={registered} />;
 
   return (
     <div className="theme-dark flex h-full flex-col bg-surface text-gray-100">
@@ -70,14 +105,14 @@ export default function DesktopHardwareLab() {
           <AppIcon id="cpu" size={16} />
         </span>
         <div className="min-w-0">
-          <div className="text-[12px] font-semibold text-gray-100">Bench — ATX desktop</div>
+          <div className="text-[12px] font-semibold text-gray-100">Bench — {machine === "laptop" ? "laptop" : machine === "server" ? "2U server" : "ATX desktop"}</div>
           <div className="truncate text-[10px] text-gray-500">
             {next ? next.hint : "Nothing outstanding. Run POST to confirm."}
           </div>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           <select
-            value={useHardwareStore((s) => s.fault)}
+            value={fault}
             onChange={(e) => {
               const v = e.target.value;
               loadScenario(v === "cpu-fan-unplugged" ? "cpu-fan-unplugged" : v === "none" ? "none" : "faulty-ram");
@@ -89,11 +124,32 @@ export default function DesktopHardwareLab() {
             <option value="cpu-fan-unplugged">Scenario — CPU fan unplugged</option>
             <option value="none">Scenario — healthy machine</option>
           </select>
+          <select
+            value={machine}
+            onChange={(e) => {
+              const v = e.target.value;
+              const kind: MachineKind = v === "laptop" ? "laptop" : v === "server" ? "server" : "desktop";
+              loadScenario(fault, kind);
+              setPosted(null);
+              setRegistered(null);
+            }}
+            className="rounded border border-edge bg-panel px-2 py-1 text-[10px] text-gray-200"
+          >
+            <option value="desktop">ATX desktop</option>
+            <option value="laptop">Laptop</option>
+            <option value="server">2U server</option>
+          </select>
           <button
             onClick={() => setPosted(postResult())}
+            className="rounded border border-edge px-2.5 py-1 text-[10px] text-gray-200 transition-colors hover:bg-gray-500/10"
+          >
+            Dry-run POST
+          </button>
+          <button
+            onClick={powerOn}
             className="rounded border border-info bg-info px-2.5 py-1 text-[10px] text-info-on transition-opacity hover:opacity-90"
           >
-            Power on (POST)
+            Power button
           </button>
         </div>
       </header>
@@ -324,6 +380,15 @@ function SlotShape({
   );
 }
 
+/** The verb that matches the hardware — a latch flips, a handle pulls. */
+function fastenerState(f: Fastener): string {
+  if (!f.fastened) return f.kind === "zif" ? "flipped up" : f.kind === "handle" ? "pulled" : "released";
+  if (f.kind === "clip") return "closed";
+  if (f.kind === "zif") return "latched";
+  if (f.kind === "handle") return "seated";
+  return "driven";
+}
+
 function Inspector({
   slot,
   blocked,
@@ -368,9 +433,7 @@ function Inspector({
                 className={`h-2 w-2 shrink-0 rounded-full ${f.fastened ? "bg-warn" : "bg-ok"}`}
               />
               <span className="min-w-0 flex-1 truncate">{f.label}</span>
-              <span className="shrink-0 text-[9px] text-gray-500">
-                {f.fastened ? (f.kind === "clip" ? "closed" : "driven") : "released"}
-              </span>
+              <span className="shrink-0 text-[9px] text-gray-500">{fastenerState(f)}</span>
             </button>
           ))}
         </section>

@@ -112,6 +112,15 @@ import {
   removePart,
   setCable,
   toggleFastener,
+  buildLaptopRig,
+  buildServerRig,
+  buildRig,
+  postHalt,
+  defaultBios,
+  biosDevices,
+  moveBootDevice,
+  resolveBoot,
+  rigSpec,
 } from "../.test-build/hardware/rig.js";
 import {
   CHAIN_FOR,
@@ -1930,6 +1939,91 @@ group("Client endpoints skip the rack chain");
   // A seated but unsecured part is a fault, not a warning.
   const loose = toggleFastener(buildDesktopRig("none"), "fan", "fan-s1");
   eq("a loose cooler screw fails POST", post(loose).boots, false);
+}
+
+{
+  group("Hardware bench — laptop ZIF connectors");
+
+  let lap = buildLaptopRig("none");
+  // The ribbon must not come away under a closed latch — that is how they tear.
+  eq("a latched display ribbon is held", canRemove(lap, "display"), false);
+  eq("...and the reason names the latch",
+     blockedReason(lap, "display"), "Flip up the display ZIF latch before pulling the ribbon");
+  lap = toggleFastener(lap, "display", "zif-disp");
+  eq("flipping the latch is still not enough while the ribbon is seated", canRemove(lap, "display"), false);
+  eq("...now it asks for the ribbon", blockedReason(lap, "display"), "Disconnect the display ribbon first");
+  lap = setCable(lap, "lc-disp", false);
+  eq("latch up and ribbon out releases the panel", canRemove(lap, "display"), true);
+
+  // The SoC is soldered: no fasteners, but nothing to gain by pulling it.
+  eq("a soldered SoC is required for POST",
+     buildLaptopRig("none").slots.find((s) => s.id === "cpu").required, true);
+
+  group("Hardware bench — server topology and hot-swap");
+
+  const srv = buildServerRig("none");
+  eq("the server has two sockets", srv.slots.filter((s) => s.kind === "cpu").length, 2);
+  eq("...and four DIMM banks", srv.slots.filter((s) => s.kind === "ram").length, 4);
+  eq("...and four drive bays", srv.slots.filter((s) => s.id.startsWith("bay-")).length, 4);
+  eq("only the first bank is required", srv.slots.filter((s) => s.kind === "ram" && s.required).length, 1);
+
+  // A hot-swap caddy is held by the handle alone — no cables, because the
+  // backplane IS the connector. That is the whole point of hot-swap.
+  eq("a seated caddy is held by its handle", blockedReason(srv, "bay-0"), "Pull the bay 0 handle to release the caddy");
+  const pulled = toggleFastener(srv, "bay-0", "bay0-h");
+  eq("pulling the handle releases the caddy with no cabling", canRemove(pulled, "bay-0"), true);
+  eq("...and the drive comes out", removePart(pulled, "bay-0").slots.find((s) => s.id === "bay-0").part, null);
+
+  eq("buildRig dispatches on machine kind", buildRig("server", "none").slots.length, srv.slots.length);
+
+  group("Hardware bench — POST halts speak firmware");
+
+  eq("a healthy desktop does not halt", postHalt(buildDesktopRig("none")), null);
+  eq("an unplugged cooler halts with the F1 prompt",
+     postHalt(buildDesktopRig("cpu-fan-unplugged")).screen, "CPU Fan Error. Press F1 to Run SETUP");
+
+  // Memory is the code every technician learns first, and it fires whether the
+  // stick is missing OR dead.
+  let noRam = buildDesktopRig("none");
+  for (const id of ["a1-top", "a1-bot"]) noRam = toggleFastener(noRam, "ram-a1", id);
+  noRam = removePart(noRam, "ram-a1");
+  for (const id of ["a2-top", "a2-bot"]) noRam = toggleFastener(noRam, "ram-a2", id);
+  noRam = removePart(noRam, "ram-a2");
+  eq("no memory gives one long two short", postHalt(noRam).beeps, "1 long, 2 short");
+
+  group("Hardware bench — BIOS boot order and the OS handoff");
+
+  const rig2 = buildDesktopRig("none");
+  const fresh = defaultBios(rig2, false);
+  eq("a blank disk is not bootable", biosDevices(rig2, false).find((d) => d.kind === "disk").bootable, false);
+  eq("the USB installer always is", biosDevices(rig2, false).find((d) => d.kind === "usb").bootable, true);
+
+  // The disk sits first but is empty, so the firmware falls through to the USB —
+  // the real "it keeps booting to setup" complaint.
+  eq("an empty first disk falls through to the installer", resolveBoot(fresh).kind, "usb");
+
+  // Once an OS is on it, the same order boots the disk instead.
+  eq("with an OS installed the disk wins", resolveBoot(defaultBios(rig2, true)).kind, "disk");
+  eq("network boot is never bootable here",
+     biosDevices(rig2, true).find((d) => d.kind === "network").bootable, false);
+
+  // Reordering is the setting — there is no priority field to disagree with it.
+  const usbFirst = moveBootDevice(defaultBios(rig2, true), "usb", "up");
+  eq("moving the USB up changes what boots", resolveBoot(usbFirst).kind, "usb");
+  eq("moving past the end is refused",
+     moveBootDevice(fresh, fresh.bootOrder[0].id, "up").bootOrder[0].id, fresh.bootOrder[0].id);
+
+  group("Hardware bench — specs are read off the hardware");
+
+  const spec = rigSpec(buildDesktopRig("none"));
+  eq("both sticks are counted", spec.ramGb, 16);
+  eq("the cpu model comes from the part", spec.cpuModel, "Xenon X6-4400");
+  eq("a TB disk is normalised to GB", spec.diskGb, 480);
+
+  // A failed stick is NOT counted — which is why imaging before replacing it
+  // produces a node that really does have less memory.
+  eq("a failed stick is excluded from the total", rigSpec(buildDesktopRig("faulty-ram")).ramGb, 8);
+  eq("two sockets report twice the cores", rigSpec(buildServerRig("none")).cores, 16);
 }
 
 {
