@@ -262,6 +262,19 @@ interface InfraStore {
   /** ADUC → Member Of: replace the user's group membership. */
   setADUserGroups: (nodeId: NodeId, samAccountName: string, memberOf: string[]) => void;
   controlWindowsService: (nodeId: NodeId, service: string, action: WinServiceAction) => void;
+  /**
+   * Change a service's startup type.
+   *
+   * Deliberately NOT folded into `controlWindowsService`. Start/stop change
+   * what is running NOW; startup type changes what runs after a reboot, and
+   * the difference is the entire lesson of a "the fix keeps coming back"
+   * ticket — a student who only starts a Disabled service has not fixed it.
+   */
+  setWindowsServiceStartup: (
+    nodeId: NodeId,
+    service: string,
+    startupType: "Automatic" | "AutomaticDelayed" | "Manual" | "Disabled",
+  ) => void;
   setWinInterfaceUp: (nodeId: NodeId, iface: string, up: boolean) => void;
   setFirewallProfile: (nodeId: NodeId, profile: "Domain" | "Private" | "Public", enabled: boolean) => void;
 
@@ -1297,6 +1310,22 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       if (!node) return s;
       const procs = node.processes.filter((p) => p.pid !== pid);
       return withNode(s, nodeId, { ...node, processes: procs } as TargetNode);
+    }),
+
+  setWindowsServiceStartup: (nodeId, service, startupType) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node || node.os !== "windows") return s;
+      const clone = structuredClone(node);
+      // Keyed by service name, exactly as `controlWindowsService` reads it —
+      // `services` is a Record, not a list.
+      const svc: WindowsService | undefined = clone.services[service];
+      if (!svc) return s;
+      svc.startupType = startupType;
+      // Disabling a RUNNING service does not stop it — Windows applies the
+      // change at next start. Modelling that keeps the two levers distinct
+      // instead of quietly making one imply the other.
+      return withNode(s, nodeId, clone);
     }),
 
   setNodeInterfaceUp: (nodeId, iface, up) =>

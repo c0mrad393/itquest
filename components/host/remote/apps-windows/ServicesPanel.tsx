@@ -21,6 +21,7 @@ const STATUS_STYLE: Record<WindowsService["status"], string> = {
 export default function ServicesPanel({ nodeId }: { nodeId: string }) {
   const node = useInfraStore((s) => s.infra.nodes[nodeId]) as WindowsNodeState | undefined;
   const control = useInfraStore((s) => s.controlWindowsService);
+  const setStartup = useInfraStore((s) => s.setWindowsServiceStartup);
   if (!node) return null;
 
   const services = Object.values(node.services);
@@ -51,7 +52,28 @@ export default function ServicesPanel({ nodeId }: { nodeId: string }) {
                 {svc.status}
               </span>
             </span>
-            <span className="text-[11px] text-gray-400">{svc.startupType}</span>
+            {/*
+              Startup type is EDITABLE, and that matters more than it looks.
+              Start/stop changes what runs now; startup type changes what runs
+              after a reboot. A student who starts a Disabled service has made
+              the symptom go away without fixing anything, and the next restart
+              proves it — which is the whole point of the "it keeps coming
+              back" class of ticket.
+            */}
+            <select
+              value={svc.startupType}
+              onChange={(e) =>
+                setStartup(nodeId, svc.name, e.target.value as "Automatic" | "AutomaticDelayed" | "Manual" | "Disabled")
+              }
+              aria-label={`Startup type for ${svc.displayName}`}
+              className="w-full rounded border border-edge bg-surface-2 px-1.5 py-0.5 text-[10.5px] text-gray-200 outline-none transition focus:border-brand-text"
+            >
+              {(["Automatic", "AutomaticDelayed", "Manual", "Disabled"] as const).map((t) => (
+                <option key={t} value={t}>
+                  {t === "AutomaticDelayed" ? "Automatic (Delayed)" : t}
+                </option>
+              ))}
+            </select>
             <div className="flex justify-end gap-1">
               <SvcBtn
                 disabled={svc.status === "Running"}
@@ -67,8 +89,12 @@ export default function ServicesPanel({ nodeId }: { nodeId: string }) {
               >
                 Stop
               </SvcBtn>
-              <SvcBtn onClick={() => control(nodeId, svc.name, "restart")} tone="neutral">
-                ↻
+              <SvcBtn
+                onClick={() => control(nodeId, svc.name, "restart")}
+                tone="neutral"
+                title={`Restart ${svc.displayName}`}
+              >
+                Restart
               </SvcBtn>
             </div>
           </div>
@@ -83,11 +109,13 @@ function SvcBtn({
   onClick,
   disabled,
   tone,
+  title,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
   tone: "go" | "stop" | "neutral";
+  title?: string;
 }) {
   const tones = {
     go: "border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/15",
@@ -96,6 +124,7 @@ function SvcBtn({
   };
   return (
     <button
+      title={title}
       onClick={onClick}
       disabled={disabled}
       className={`rounded border px-2 py-1 text-[11px] transition disabled:cursor-not-allowed disabled:opacity-30 ${tones[tone]}`}
