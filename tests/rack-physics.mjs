@@ -103,6 +103,17 @@ import {
 } from "../.test-build/progression/unlocks.js";
 import { appForTicket, liveHints } from "../.test-build/tickets/hints.js";
 import {
+  blockedReason,
+  buildDesktopRig,
+  canRemove,
+  insertPart,
+  nextAction,
+  post,
+  removePart,
+  setCable,
+  toggleFastener,
+} from "../.test-build/hardware/rig.js";
+import {
   CHAIN_FOR,
   cidrContains,
   defaultEdgeRules,
@@ -1850,6 +1861,75 @@ group("Client endpoints skip the rack chain");
   const sum = threatSummary({ ...prevent, events: [evPrevent, evDetect] });
   eq("the dashboard counts every event", sum.total, 2);
   eq("...and only the blocked ones as blocked", sum.blocked, 1);
+}
+
+{
+  group("Hardware bench — you cannot pull a part that is still held");
+
+  let rig = buildDesktopRig("faulty-ram");
+
+  // RAM: both clips are closed, so the stick does not move.
+  eq("a clipped stick cannot be removed", canRemove(rig, "ram-a1"), false);
+  eq("...and the model says why", blockedReason(rig, "ram-a1"), "Release both clips first");
+  eq("removing it anyway is refused", removePart(rig, "ram-a1").slots.find((s) => s.id === "ram-a1").part !== null, true);
+
+  // One clip is not enough.
+  rig = toggleFastener(rig, "ram-a1", "a1-top");
+  eq("one clip open is still not enough", canRemove(rig, "ram-a1"), false);
+  rig = toggleFastener(rig, "ram-a1", "a1-bot");
+  eq("both clips open releases it", canRemove(rig, "ram-a1"), true);
+
+  rig = removePart(rig, "ram-a1");
+  eq("the stick comes out", rig.slots.find((s) => s.id === "ram-a1").part, null);
+  eq("...and lands on the bench", rig.tray.some((p) => p.id === "p-ram1"), true);
+
+  // A clip cannot be closed over an empty slot — the one move that would let a
+  // learner "finish" a repair they have not made.
+  const closedEmpty = toggleFastener(rig, "ram-a1", "a1-top");
+  eq("a clip will not close on an empty slot",
+     closedEmpty.slots.find((s) => s.id === "ram-a1").fasteners.find((f) => f.id === "a1-top").fastened, false);
+
+  // Fit the good stick and lock it down.
+  rig = insertPart(rig, "ram-a1", "p-ram-new");
+  eq("the replacement seats", rig.slots.find((s) => s.id === "ram-a1").part.id, "p-ram-new");
+  eq("a part only fits a slot of its own kind",
+     insertPart(rig, "cpu", "p-ram-new").slots.find((s) => s.id === "cpu").part.id, "p-cpu");
+
+  rig = toggleFastener(rig, "ram-a1", "a1-top");
+  rig = toggleFastener(rig, "ram-a1", "a1-bot");
+  eq("a repaired, clipped machine passes POST", post(rig).boots, true);
+
+  group("Hardware bench — GPU needs its screw AND its power lead");
+
+  let g = buildDesktopRig("none");
+  eq("a fastened, cabled GPU is held", canRemove(g, "pcie-x16"), false);
+  g = toggleFastener(g, "pcie-x16", "gpu-bracket");
+  g = toggleFastener(g, "pcie-x16", "gpu-latch");
+  eq("released fasteners are not enough while power is attached", canRemove(g, "pcie-x16"), false);
+  eq("...and the reason names the cable", blockedReason(g, "pcie-x16"), "Disconnect the PCIe power lead first");
+  g = setCable(g, "c-gpu-pwr", false);
+  eq("with screw, latch and lead clear the card lifts", canRemove(g, "pcie-x16"), true);
+
+  group("Hardware bench — POST and guidance are derived");
+
+  const healthy = buildDesktopRig("none");
+  eq("an untouched healthy machine boots", post(healthy).boots, true);
+  eq("...and has nothing to guide", nextAction(healthy), null);
+
+  const faulty = buildDesktopRig("faulty-ram");
+  eq("a failed stick stops POST", post(faulty).boots, false);
+  eq("...and is named in the faults", post(faulty).faults.some((f) => f.includes("failed self-test")), true);
+  eq("guidance points at the failed slot", nextAction(faulty).slotId, "ram-a1");
+  eq("...and asks for the clips first", nextAction(faulty).hint, "Release both clips first");
+
+  const unplugged = buildDesktopRig("cpu-fan-unplugged");
+  eq("an unplugged fan stops POST", post(unplugged).boots, false);
+  eq("...and guidance names the cable", nextAction(unplugged).hint, "Reconnect the CPU fan header");
+  eq("reconnecting it clears POST", post(setCable(unplugged, "c-fan", true)).boots, true);
+
+  // A seated but unsecured part is a fault, not a warning.
+  const loose = toggleFastener(buildDesktopRig("none"), "fan", "fan-s1");
+  eq("a loose cooler screw fails POST", post(loose).boots, false);
 }
 
 {
