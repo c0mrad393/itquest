@@ -37,6 +37,7 @@ import {
   BOARD_SIZE,
   BoardSubstrate,
   ChassisFurniture,
+  RigDefs,
   CableRun,
   FastenerVisual,
   PartPortrait,
@@ -174,6 +175,7 @@ export default function DesktopHardwareLab() {
             role="img"
             aria-label="Motherboard blueprint"
           >
+            <RigDefs />
             <BoardSubstrate kind={machine} w={BOARD_SIZE[machine].w * U} h={BOARD_SIZE[machine].h * U} />
             <ChassisFurniture kind={machine} u={U} />
 
@@ -340,26 +342,29 @@ function SlotShape({
           e.stopPropagation();
           onSelect();
         }}
-        className="cursor-pointer transition-transform duration-150 hover:scale-[1.035]"
+        className="cursor-pointer transition-transform duration-150 hover:scale-[1.045] [&:hover>.lit]:opacity-100"
         style={{ transformBox: "fill-box", transformOrigin: "center" }}
       >
-        {/* Drop shadow: parts sit above the board, cavities do not. */}
-        {slot.part && (
-          <rect x={g.x + 1.5} y={g.y + 2} width={g.w} height={g.h} rx="2" fill="#00000055" />
-        )}
+        {/*
+         * Cyan bloom on hover, always on when selected. Painted as a filtered
+         * outline BEHIND the part rather than a filter on the part itself —
+         * glowing the component would wash out the materials underneath it,
+         * which is the whole thing we just spent this pass building.
+         */}
+        <rect
+          className={`lit transition-opacity duration-150 ${selected ? "opacity-100" : "opacity-0"}`}
+          x={g.x - 1}
+          y={g.y - 1}
+          width={g.w + 2}
+          height={g.h + 2}
+          rx="2.5"
+          fill="none"
+          stroke="#22d3ee"
+          strokeWidth="1.6"
+          filter="url(#hw-glow)"
+        />
         <SlotBody slot={slot} g={g} kind={board} />
-        {selected && (
-          <rect
-            x={g.x - 1.5}
-            y={g.y - 1.5}
-            width={g.w + 3}
-            height={g.h + 3}
-            rx="2.5"
-            fill="none"
-            stroke="#e2e8f0"
-            strokeWidth="1.4"
-          />
-        )}
+
       </g>
 
       {/* Fasteners sit on the edge they actually hold. */}

@@ -44,6 +44,111 @@ export const BOARD_SIZE: Record<BoardKind, { w: number; h: number }> = {
   server: { w: 23.5, h: 11.5 },
 };
 
+
+/**
+ * Shared paint: gradients, filters and patterns, defined once per SVG.
+ *
+ * Every material in this file references these by id rather than carrying its
+ * own inline fill. That is not just tidiness — a `<defs>` block is resolved once
+ * by the renderer and reused, where inlining a gradient per component would emit
+ * one gradient object per DIMM and re-rasterise each on every state change.
+ *
+ * Ids are prefixed `hw-` because these live in the same document as every other
+ * app's SVG; a bare id like "metal" would be claimed by whoever mounted last.
+ */
+export function RigDefs() {
+  return (
+    <defs>
+      {/* Brushed metal: bright top, mid body, shadowed underside. */}
+      <linearGradient id="hw-metal" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#f2f5f8" />
+        <stop offset="18%" stopColor="#ccd3da" />
+        <stop offset="55%" stopColor="#98a2ac" />
+        <stop offset="82%" stopColor="#b6bec7" />
+        <stop offset="100%" stopColor="#6d757f" />
+      </linearGradient>
+      {/* A tighter, colder version for heatsink fins and brackets. */}
+      <linearGradient id="hw-metal-cool" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor="#dfe6ec" />
+        <stop offset="45%" stopColor="#9aa4ae" />
+        <stop offset="100%" stopColor="#69727c" />
+      </linearGradient>
+      {/* Specular sweep laid over metal at low opacity — the "sheen". */}
+      <linearGradient id="hw-sheen" x1="0" y1="0" x2="1" y2="0.6">
+        <stop offset="0%" stopColor="#ffffff" stopOpacity="0.55" />
+        <stop offset="35%" stopColor="#ffffff" stopOpacity="0.05" />
+        <stop offset="60%" stopColor="#ffffff" stopOpacity="0.28" />
+        <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+      </linearGradient>
+
+      {/* DIMM substrate: fibreglass green with a lit top edge. */}
+      <linearGradient id="hw-pcb-green" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#2f9463" />
+        <stop offset="30%" stopColor="#1f6b45" />
+        <stop offset="100%" stopColor="#124a2f" />
+      </linearGradient>
+      <linearGradient id="hw-pcb-red" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#a33b4a" />
+        <stop offset="30%" stopColor="#7c2a36" />
+        <stop offset="100%" stopColor="#4d1922" />
+      </linearGradient>
+      {/* Black IC package: epoxy is never flat, it catches a highlight. */}
+      <linearGradient id="hw-chip" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#3a4048" />
+        <stop offset="22%" stopColor="#20252c" />
+        <stop offset="100%" stopColor="#0e1116" />
+      </linearGradient>
+
+      {/* Gold fingers: a repeating stripe, so contacts are individual pads. */}
+      <pattern id="hw-gold" width="2.4" height="4" patternUnits="userSpaceOnUse">
+        <rect width="2.4" height="4" fill="#8c6524" />
+        <rect width="1.5" height="4" fill="#e8bb5a" />
+        <rect width="1.5" height="1.2" fill="#f7dfa0" />
+      </pattern>
+
+      {/* Ribbon cable: fine conductor stripes under a dark laminate. */}
+      <pattern id="hw-ribbon" width="3" height="6" patternUnits="userSpaceOnUse">
+        <rect width="3" height="6" fill="#2b2f36" />
+        <rect x="0.7" width="1.1" height="6" fill="#43494f" />
+        <rect x="0.7" width="1.1" height="6" fill="#c9a86a" opacity="0.22" />
+      </pattern>
+
+      {/* Motherboard copper: fine diagonal routing under the solder mask. */}
+      <pattern id="hw-traces" width="18" height="18" patternUnits="userSpaceOnUse">
+        <path d="M0 18 L18 0 M-4 4 L4 -4 M14 22 L22 14" stroke="#ffffff" strokeOpacity="0.045" strokeWidth="1.6" fill="none" />
+        <circle cx="4" cy="4" r="0.9" fill="#ffffff" fillOpacity="0.05" />
+        <circle cx="13" cy="12" r="0.9" fill="#ffffff" fillOpacity="0.04" />
+      </pattern>
+
+      {/* Depth. Components sit above the board and cast onto it. */}
+      <filter id="hw-shadow" x="-40%" y="-40%" width="190%" height="190%">
+        <feDropShadow dx="0.9" dy="1.9" stdDeviation="1.5" floodColor="#000" floodOpacity="0.55" />
+      </filter>
+      <filter id="hw-shadow-lg" x="-40%" y="-40%" width="190%" height="190%">
+        <feDropShadow dx="1.4" dy="3" stdDeviation="2.6" floodColor="#000" floodOpacity="0.6" />
+      </filter>
+      {/* Interactive glow, used on hover and selection. */}
+      <filter id="hw-glow" x="-60%" y="-60%" width="220%" height="220%">
+        <feDropShadow dx="0" dy="0" stdDeviation="3.2" floodColor="#22d3ee" floodOpacity="0.95" />
+      </filter>
+
+      {/* Screw head: lit from the upper left, recessed drive. */}
+      <radialGradient id="hw-screw" cx="0.33" cy="0.28" r="0.82">
+        <stop offset="0%" stopColor="#ffffff" />
+        <stop offset="35%" stopColor="#c8cfd6" />
+        <stop offset="72%" stopColor="#8d959e" />
+        <stop offset="100%" stopColor="#545c65" />
+      </radialGradient>
+      {/* Copper heat pipe, round in section. */}
+      <linearGradient id="hw-copper" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stopColor="#e0a071" />
+        <stop offset="30%" stopColor="#b97845" />
+        <stop offset="100%" stopColor="#7c4a26" />
+      </linearGradient>
+    </defs>
+  );
+}
+
 /** Board substrate palettes. Real PCBs, not neon. */
 export const BOARD: Record<BoardKind, { pcb: string; pcbDark: string; trace: string; silk: string }> = {
   desktop: { pcb: "#1c5c3a", pcbDark: "#14432b", trace: "#2f7d53", silk: "#dbe7de" },
@@ -85,6 +190,8 @@ export function BoardSubstrate({ kind, w, h }: { kind: BoardKind; w: number; h: 
           <line key={`v${i}`} x1={(w / 10) * (i + 1)} y1="8" x2={(w / 10) * (i + 1)} y2={h - 8} opacity="0.35" />
         ))}
       </g>
+      {/* Etched copper under the solder mask, tiled rather than drawn per-run. */}
+      <rect x="0" y="0" width={w} height={h} rx="8" fill="url(#hw-traces)" />
       {/* Solder-mask edge darkening: the board is not flat-lit at the rim. */}
       <rect x="0" y="0" width={w} height={h} rx="8" fill="none" stroke={c.pcbDark} strokeWidth="5" />
       {holes.map(([fx, fy], i) => (
@@ -188,101 +295,111 @@ function EmptySlot({ slot, g, kind }: { slot: Slot; g: Geo; kind: BoardKind }) {
 /** A DIMM: green PCB, black DRAM packages, gold fingers, key notch. */
 function RamModule({ g, vertical, label, faulty }: { g: Geo; vertical: boolean; label: string; faulty: boolean }) {
   const chips = 8;
-  const body = faulty ? "#6b2530" : "#1f6b45";
+  const body = faulty ? "url(#hw-pcb-red)" : "url(#hw-pcb-green)";
   const bodyDark = faulty ? "#4a1a22" : "#155234";
 
   if (vertical) {
     return (
-      <g>
+      <g filter="url(#hw-shadow)">
         <rect x={g.x} y={g.y} width={g.w} height={g.h} rx="1.5" fill={body} />
-        <rect x={g.x} y={g.y} width={g.w} height="1.6" fill="#2d8a5b" opacity="0.7" />
-        <rect x={g.x} y={g.y + g.h - 2} width={g.w} height="2" fill={bodyDark} />
-        {/* DRAM packages down the stick */}
-        {Array.from({ length: chips }, (_, i) => (
-          <rect
-            key={i}
-            x={g.x + 1.6}
-            y={g.y + 5 + i * ((g.h - 14) / chips)}
-            width={g.w - 3.2}
-            height={(g.h - 14) / chips - 1.6}
-            rx="0.6"
-            fill={PLASTIC}
-          />
-        ))}
-        {/* Gold fingers + key notch at the seating edge */}
-        <rect x={g.x + 0.8} y={g.y + g.h - 4} width={g.w - 1.6} height="3" fill={GOLD} />
-        <rect x={g.x + g.w * 0.4} y={g.y + g.h - 4} width="1.4" height="3" fill={bodyDark} />
+        {/* DRAM packages down the stick, each with its own lit top edge. */}
+        {Array.from({ length: chips }, (_, i) => {
+          const cy = g.y + 5 + i * ((g.h - 14) / chips);
+          const ch = (g.h - 14) / chips - 1.6;
+          return (
+            <g key={i}>
+              <rect x={g.x + 1.5} y={cy} width={g.w - 3} height={ch} rx="0.5" fill="url(#hw-chip)" />
+              <rect x={g.x + 1.5} y={cy} width={g.w - 3} height="0.5" fill="#5a626b" opacity="0.8" />
+            </g>
+          );
+        })}
+        {/* Gold fingers: individual pads via the stripe pattern, plus the key notch. */}
+        <rect x={g.x + 0.7} y={g.y + g.h - 4} width={g.w - 1.4} height="3.4" fill="url(#hw-gold)" />
+        <rect x={g.x + g.w * 0.4} y={g.y + g.h - 4} width="1.5" height="3.4" fill={bodyDark} />
+        {/* Silkscreen stripe along the spine */}
+        <rect x={g.x + 0.8} y={g.y + 2} width={g.w - 1.6} height="0.7" fill="#cfe6d8" opacity="0.35" />
+        <rect x={g.x} y={g.y} width={g.w} height={g.h} rx="1.5" fill="url(#hw-sheen)" opacity="0.35" />
         {faulty && <title>{label} — failed self-test</title>}
       </g>
     );
   }
   return (
-    <g>
+    <g filter="url(#hw-shadow)">
       <rect x={g.x} y={g.y} width={g.w} height={g.h} rx="1.5" fill={body} />
-      <rect x={g.x} y={g.y} width={g.w} height="1.4" fill="#2d8a5b" opacity="0.7" />
-      {Array.from({ length: chips }, (_, i) => (
-        <rect
-          key={i}
-          x={g.x + 5 + i * ((g.w - 12) / chips)}
-          y={g.y + 2.4}
-          width={(g.w - 12) / chips - 1.6}
-          height={g.h - 7}
-          rx="0.6"
-          fill={PLASTIC}
-        />
-      ))}
-      <rect x={g.x + 1} y={g.y + g.h - 3.2} width={g.w - 2} height="2.6" fill={GOLD} />
-      <rect x={g.x + g.w * 0.45} y={g.y + g.h - 3.2} width="1.4" height="2.6" fill={bodyDark} />
+      {Array.from({ length: chips }, (_, i) => {
+        const cx = g.x + 5 + i * ((g.w - 12) / chips);
+        const cw = (g.w - 12) / chips - 1.6;
+        return (
+          <g key={i}>
+            <rect x={cx} y={g.y + 2.2} width={cw} height={g.h - 6.6} rx="0.5" fill="url(#hw-chip)" />
+            <rect x={cx} y={g.y + 2.2} width={cw} height="0.5" fill="#5a626b" opacity="0.8" />
+          </g>
+        );
+      })}
+      <rect x={g.x + 1} y={g.y + g.h - 3.4} width={g.w - 2} height="2.9" fill="url(#hw-gold)" />
+      <rect x={g.x + g.w * 0.45} y={g.y + g.h - 3.4} width="1.5" height="2.9" fill={bodyDark} />
+      <rect x={g.x} y={g.y} width={g.w} height={g.h} rx="1.5" fill="url(#hw-sheen)" opacity="0.3" />
     </g>
   );
 }
 
 /** A socketed CPU under a metal ILM, or a bare soldered SoC. */
 function CpuPackage({ g, label, soldered }: { g: Geo; label: string; soldered: boolean }) {
-  const inset = 4;
+  const inset = 4.2;
+  const ihsX = g.x + inset;
+  const ihsY = g.y + inset;
+  const ihsW = g.w - inset * 2;
+  const ihsH = g.h - inset * 2;
   return (
-    <g>
-      {/* Socket frame */}
-      <rect x={g.x} y={g.y} width={g.w} height={g.h} rx="2" fill="#20262f" />
-      <rect x={g.x} y={g.y} width={g.w} height="1.8" fill="#39414c" />
-      {/* Heat spreader */}
+    <g filter="url(#hw-shadow-lg)">
+      {/* Socket body and its plastic frame */}
+      <rect x={g.x} y={g.y} width={g.w} height={g.h} rx="2" fill="#171b21" />
+      <rect x={g.x} y={g.y} width={g.w} height={g.h} rx="2" fill="none" stroke="#39414c" strokeWidth="1.2" />
+      <rect x={g.x + 1.6} y={g.y + 1.6} width={g.w - 3.2} height={g.h - 3.2} rx="1.4" fill="#0d1116" />
+
+      {/* Integrated heat spreader — nickel-plated copper, lit from upper left */}
+      <rect x={ihsX} y={ihsY} width={ihsW} height={ihsH} rx="1.8" fill="url(#hw-metal)" />
+      {/* The raised centre platform every IHS has */}
       <rect
-        x={g.x + inset}
-        y={g.y + inset}
-        width={g.w - inset * 2}
-        height={g.h - inset * 2}
-        rx="1.5"
-        fill={METAL}
+        x={ihsX + ihsW * 0.12}
+        y={ihsY + ihsH * 0.16}
+        width={ihsW * 0.76}
+        height={ihsH * 0.68}
+        rx="1.2"
+        fill="url(#hw-metal-cool)"
       />
-      <rect
-        x={g.x + inset}
-        y={g.y + inset}
-        width={g.w - inset * 2}
-        height="2"
-        fill="#dfe5ea"
-      />
-      <rect
-        x={g.x + inset}
-        y={g.y + g.h - inset - 2}
-        width={g.w - inset * 2}
-        height="2"
-        fill={METAL_DARK}
-      />
-      {/* Etched marking */}
-      <rect
-        x={g.x + g.w * 0.3}
-        y={g.y + g.h * 0.42}
-        width={g.w * 0.4}
-        height={g.h * 0.16}
-        rx="0.8"
-        fill={METAL_DARK}
-        opacity="0.55"
-      />
+      {/* Laser etch */}
+      <rect x={ihsX + ihsW * 0.24} y={ihsY + ihsH * 0.4} width={ihsW * 0.52} height="1.5" rx="0.6" fill="#6b737c" opacity="0.75" />
+      <rect x={ihsX + ihsW * 0.3} y={ihsY + ihsH * 0.56} width={ihsW * 0.4} height="1.1" rx="0.5" fill="#6b737c" opacity="0.5" />
+      {/* Specular sweep across the lid */}
+      <rect x={ihsX} y={ihsY} width={ihsW} height={ihsH} rx="1.8" fill="url(#hw-sheen)" />
+
       {!soldered && (
-        // Retention arms: the ILM that has to be lifted before the chip moves.
-        <g stroke="#8e979f" strokeWidth="2" fill="none" strokeLinecap="round">
-          <path d={`M${g.x + 2} ${g.y + g.h * 0.25} H${g.x + g.w - 2}`} />
-          <path d={`M${g.x + 2} ${g.y + g.h * 0.75} H${g.x + g.w - 2}`} />
+        /*
+         * The independent loading mechanism: a hinged frame with a cam lever.
+         * Drawn as real geometry rather than two lines, because this is the
+         * thing a learner has to recognise and lift before the chip moves.
+         */
+        <g>
+          <rect
+            x={g.x + 0.8}
+            y={g.y + 0.8}
+            width={g.w - 1.6}
+            height={g.h - 1.6}
+            rx="1.6"
+            fill="none"
+            stroke="url(#hw-metal-cool)"
+            strokeWidth="2.4"
+          />
+          {/* Cam lever down the right edge, hooked at the bottom */}
+          <path
+            d={`M${g.x + g.w - 2} ${g.y + 3} V${g.y + g.h - 4} q0 2.5 -2.6 2.5 h-3`}
+            fill="none"
+            stroke="url(#hw-metal)"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <circle cx={g.x + g.w - 2} cy={g.y + 3} r="1.5" fill="url(#hw-screw)" />
         </g>
       )}
       <title>{label}</title>
@@ -378,24 +495,38 @@ function FanBody({ g, label }: { g: Geo; label: string }) {
   const r = Math.min(g.w, g.h) / 2 - 1.5;
   const blades = 9;
   return (
-    <g>
+    <g filter="url(#hw-shadow)">
       <rect x={g.x} y={g.y} width={g.w} height={g.h} rx="2" fill="#22262e" />
-      <rect x={g.x} y={g.y} width={g.w} height="1.6" fill="#333a44" />
-      <circle cx={cx} cy={cy} r={r} fill="#14181e" />
-      <g fill="#3a424d">
-        {Array.from({ length: blades }, (_, i) => {
-          const a = (i / blades) * Math.PI * 2;
-          const a2 = a + 0.5;
-          return (
-            <path
-              key={i}
-              d={`M${cx} ${cy} L${cx + Math.cos(a) * r} ${cy + Math.sin(a) * r} A${r} ${r} 0 0 1 ${cx + Math.cos(a2) * r} ${cy + Math.sin(a2) * r} Z`}
-            />
-          );
-        })}
+      {/* Heatsink fins visible under the frame corners */}
+      <g stroke="url(#hw-metal-cool)" strokeWidth="0.8" opacity="0.5">
+        {Array.from({ length: 7 }, (_, i) => (
+          <line key={i} x1={g.x + 2} y1={g.y + 3 + i * ((g.h - 6) / 7)} x2={g.x + g.w - 2} y2={g.y + 3 + i * ((g.h - 6) / 7)} />
+        ))}
       </g>
-      <circle cx={cx} cy={cy} r={r * 0.3} fill="#525b67" />
-      <circle cx={cx} cy={cy} r={r * 0.3} fill="none" stroke="#6c7681" strokeWidth="0.6" />
+      <rect x={g.x} y={g.y} width={g.w} height="1.6" fill="#3c444f" />
+      <circle cx={cx} cy={cy} r={r} fill="#14181e" />
+      {/* Swept blades with a curved trailing edge, each catching the light
+          differently — a fan of identical flat wedges reads as a pie chart. */}
+      {Array.from({ length: blades }, (_, i) => {
+        const a = (i / blades) * Math.PI * 2;
+        const a2 = a + 0.62;
+        const bow = r * 0.62;
+        return (
+          <path
+            key={i}
+            d={`M${cx + Math.cos(a) * r * 0.28} ${cy + Math.sin(a) * r * 0.28}
+                Q${cx + Math.cos(a + 0.3) * bow} ${cy + Math.sin(a + 0.3) * bow}
+                 ${cx + Math.cos(a2) * r} ${cy + Math.sin(a2) * r}
+                A${r} ${r} 0 0 0 ${cx + Math.cos(a) * r} ${cy + Math.sin(a) * r} Z`}
+            fill="#39414b"
+            opacity={0.72 + (i % 3) * 0.09}
+          />
+        );
+      })}
+      {/* Machined hub */}
+      <circle cx={cx} cy={cy} r={r * 0.32} fill="url(#hw-metal)" />
+      <circle cx={cx} cy={cy} r={r * 0.32} fill="url(#hw-sheen)" />
+      <circle cx={cx} cy={cy} r={r * 0.11} fill="#4a525d" />
       <title>{label}</title>
     </g>
   );
@@ -447,9 +578,15 @@ export function FastenerVisual({
             transition: "transform 180ms ease-out",
           }}
         >
-          <rect x={cx - 1.6} y={cy - 5} width="3.2" height="10" rx="1.2" fill="#e2e6ea" />
-          <rect x={cx - 1.6} y={cy - 5} width="3.2" height="3" rx="1.2" fill="#fdfefe" />
-          <rect x={cx - 2.6} y={cy + 2.4} width="5.2" height="2.6" rx="1" fill="#b6bdc5" />
+          {/* Body, then the hook. When closed the hook overlaps the module's
+              notch, which is what "locked in" actually looks like. */}
+          <rect x={cx - 1.7} y={cy - 5} width="3.4" height="10" rx="1.3" fill="url(#hw-metal)" />
+          <rect x={cx - 1.7} y={cy - 5} width="3.4" height="10" rx="1.3" fill="url(#hw-sheen)" />
+          <path
+            d={`M${cx - 2.8} ${cy + 2.2} h5.6 q1.3 0 1.3 1.4 v1.6 q0 1.3 -1.3 1.3 h-5.6 q-1.3 0 -1.3 -1.3 v-1.6 q0 -1.4 1.3 -1.4 z`}
+            fill="url(#hw-metal-cool)"
+          />
+          {!open && <circle cx={cx} cy={cy + 4} r="0.9" fill="#22d3ee" opacity="0.75" />}
         </g>
       )}
 
@@ -461,8 +598,11 @@ export function FastenerVisual({
             transition: "transform 200ms ease-out",
           }}
         >
-          <rect x={cx - 6} y={cy} width="12" height="3.4" rx="1" fill="#8b6a3a" />
-          <rect x={cx - 6} y={cy} width="12" height="1.2" rx="0.6" fill="#b08a52" />
+          <rect x={cx - 6} y={cy} width="12" height="3.4" rx="1" fill="url(#hw-copper)" />
+          <rect x={cx - 6} y={cy} width="12" height="3.4" rx="1" fill="url(#hw-sheen)" opacity="0.6" />
+          {/* Hinge pins at each end of the actuator */}
+          <circle cx={cx - 5} cy={cy + 1.7} r="0.7" fill="#5e401f" />
+          <circle cx={cx + 5} cy={cy + 1.7} r="0.7" fill="#5e401f" />
         </g>
       )}
 
@@ -474,9 +614,15 @@ export function FastenerVisual({
             transition: "transform 220ms ease-out",
           }}
         >
-          <rect x={cx - 1.6} y={cy - 1.6} width="12" height="3.2" rx="1.4" fill="#cfd5db" />
-          <rect x={cx - 1.6} y={cy - 1.6} width="12" height="1.2" rx="0.6" fill="#eef1f4" />
-          <circle cx={cx} cy={cy} r="2.2" fill="#8d959d" />
+          <rect x={cx - 1.6} y={cy - 1.7} width="12" height="3.4" rx="1.5" fill="url(#hw-metal)" />
+          <rect x={cx - 1.6} y={cy - 1.7} width="12" height="3.4" rx="1.5" fill="url(#hw-sheen)" />
+          {/* Grip ribs along the handle */}
+          <g fill="#7d858e" opacity="0.7">
+            {Array.from({ length: 4 }, (_, i) => (
+              <rect key={i} x={cx + 3 + i * 1.9} y={cy - 1} width="0.7" height="2" rx="0.3" />
+            ))}
+          </g>
+          <circle cx={cx} cy={cy} r="2.3" fill="url(#hw-screw)" />
         </g>
       )}
 
@@ -489,10 +635,18 @@ export function FastenerVisual({
             opacity: open ? 0.28 : 1,
           }}
         >
-          <circle cx={cx} cy={cy} r="3.6" fill={METAL} />
-          <circle cx={cx} cy={cy} r="3.6" fill="none" stroke={METAL_DARK} strokeWidth="0.7" />
-          <rect x={cx - 2.4} y={cy - 0.55} width="4.8" height="1.1" rx="0.4" fill="#5c646d" />
-          <rect x={cx - 0.55} y={cy - 2.4} width="1.1" height="4.8" rx="0.4" fill="#5c646d" />
+          {/* Seat shadow, head, then a recessed cross that is cut INTO it —
+              a dark cross drawn on top reads as a sticker, not a drive. */}
+          <circle cx={cx + 0.3} cy={cy + 0.6} r="3.7" fill="#000" opacity="0.45" />
+          <circle cx={cx} cy={cy} r="3.7" fill="url(#hw-screw)" />
+          <circle cx={cx} cy={cy} r="3.7" fill="none" stroke="#4a525b" strokeWidth="0.5" />
+          <g>
+            <rect x={cx - 2.5} y={cy - 0.62} width="5" height="1.24" rx="0.3" fill="#3f464f" />
+            <rect x={cx - 0.62} y={cy - 2.5} width="1.24" height="5" rx="0.3" fill="#3f464f" />
+            {/* Lit lower-right edge of the recess gives it depth */}
+            <rect x={cx - 2.5} y={cy + 0.28} width="5" height="0.34" rx="0.2" fill="#aeb6bf" opacity="0.55" />
+            <rect x={cx + 0.28} y={cy - 2.5} width="0.34" height="5" rx="0.2" fill="#aeb6bf" opacity="0.55" />
+          </g>
         </g>
       )}
     </g>
@@ -534,20 +688,38 @@ export function CableRun({
   const d = `M${from.x} ${from.y} C ${midX} ${from.y}, ${midX} ${end.y}, ${end.x} ${end.y}`;
 
   if (kind === "ribbon") {
+    /*
+     * A flex cable is a flat laminate, not a wire. Drawn as a wide stroked band
+     * filled with the conductor pattern, so the individual traces read at any
+     * zoom — a single fat stroke just looks like a thick rope.
+     */
     return (
-      <g opacity={connected ? 0.95 : 0.6}>
-        <path d={d} stroke={stroke} strokeWidth="7" fill="none" strokeLinecap="round" />
-        <path d={d} stroke="#00000055" strokeWidth="7" fill="none" strokeLinecap="round" strokeDasharray="1.5 3" />
-        <path d={d} stroke="#ffffff22" strokeWidth="1.4" fill="none" />
+      <g opacity={connected ? 1 : 0.62} filter={connected ? "url(#hw-shadow)" : undefined}>
+        <path d={d} stroke="#12151a" strokeWidth="9" fill="none" strokeLinecap="butt" />
+        <path d={d} stroke="url(#hw-ribbon)" strokeWidth="7.6" fill="none" strokeLinecap="butt" />
+        {/* Fold sheen along the top edge of the band */}
+        <path d={d} stroke="#ffffff" strokeOpacity="0.16" strokeWidth="1.2" fill="none" />
+        {!connected && <circle cx={end.x} cy={end.y} r="3" fill="#2b2f36" stroke="#7f1d1d" strokeWidth="1.2" />}
       </g>
     );
   }
+  /*
+   * Power leads are BUNDLES: a black sheath stroke, the insulated colour on top
+   * of it, and a fine specular line. Three stacked strokes cost nothing and are
+   * the difference between a wire and a line.
+   */
   return (
-    <g opacity={connected ? 1 : 0.65}>
-      <path d={d} stroke="#00000066" strokeWidth="4.6" fill="none" strokeLinecap="round" />
-      <path d={d} stroke={stroke} strokeWidth="3.4" fill="none" strokeLinecap="round" />
-      <path d={d} stroke="#ffffff33" strokeWidth="0.9" fill="none" />
-      {!connected && <circle cx={end.x} cy={end.y} r="2.6" fill={stroke} />}
+    <g opacity={connected ? 1 : 0.7}>
+      <path d={d} stroke="#05070a" strokeWidth="6.2" fill="none" strokeLinecap="round" />
+      <path d={d} stroke="#161a20" strokeWidth="5" fill="none" strokeLinecap="round" />
+      <path d={d} stroke={stroke} strokeWidth="3.2" fill="none" strokeLinecap="round" />
+      <path d={d} stroke="#ffffff" strokeOpacity="0.28" strokeWidth="0.8" fill="none" />
+      {!connected && (
+        <g>
+          {/* A bare connector shell, dangling. */}
+          <rect x={end.x - 3} y={end.y - 2} width="6" height="4" rx="1.2" fill="#2a2f38" stroke={stroke} strokeWidth="1" />
+        </g>
+      )}
     </g>
   );
 }
