@@ -140,7 +140,7 @@ import {
   stepAt,
 } from "../.test-build/tutorial/flow.js";
 
-import { MIN_W, MIN_H, GRAB_MARGIN, applyResize, clampPosition, openRect } from "../.test-build/host/windows.js";
+import { MIN_W, MIN_H, GRAB_MARGIN, applyResize, clampPosition, openRect, snapZoneAt, rectForZone, SNAP_EDGE } from "../.test-build/host/windows.js";
 import { BOOT_LINES, BOOT_TOTAL_MS, BOOT_BUDGET_MS, bootLineDelay } from "../.test-build/host/boot.js";
 import { placeMenu, menuHeight, MENU_W } from "../.test-build/host/context-menu.js";
 import { placeIcon, reflow, autoArrange, gridFor, pxToCell, cellToPx } from "../.test-build/host/desktop-icons.js";
@@ -2204,6 +2204,56 @@ group("Client endpoints skip the rack chain");
   eq("and the origin stays sane", cramped.x >= 0 && cramped.y >= 0, true);
 
   eq("a small app is never inflated", `${openRect(420, 300, 0, big).w}x${openRect(420, 300, 0, big).h}`, "420x300");
+}
+
+// ── Snap layouts ───────────────────────────────────────────────────────────
+{
+  group("WM — snap zones arm from the pointer");
+  const B = { w: 1440, h: 812 };
+
+  eq("the middle arms nothing", snapZoneAt(700, 400, B), null);
+  eq("the left edge arms left", snapZoneAt(2, 400, B), "left");
+  eq("the right edge arms right", snapZoneAt(B.w - 2, 400, B), "right");
+  eq("the top edge arms maximise", snapZoneAt(700, 2, B), "top");
+  // Corners must beat edges: the boxes overlap, and a drag into the top-left
+  // should quarter the window rather than maximise it.
+  eq("top-left is a quadrant, not maximise", snapZoneAt(4, 4, B), "tl");
+  eq("top-right too", snapZoneAt(B.w - 4, 4, B), "tr");
+  eq("bottom-left too", snapZoneAt(4, B.h - 4, B), "bl");
+  eq("bottom-right too", snapZoneAt(B.w - 4, B.h - 4, B), "br");
+  eq("just inside the edge band still arms", snapZoneAt(SNAP_EDGE - 1, 400, B), "left");
+  eq("just outside it does not", snapZoneAt(SNAP_EDGE + 2, 400, B), null);
+
+  group("WM — snapped rects tile without seams");
+  const L = rectForZone("left", B), R = rectForZone("right", B);
+  eq("halves meet exactly", L.x + L.w, R.x);
+  eq("halves cover the full width", L.w + R.w, B.w);
+  eq("halves are full height", L.h === B.h && R.h === B.h, true);
+
+  const tl = rectForZone("tl", B), tr = rectForZone("tr", B),
+        bl = rectForZone("bl", B), br = rectForZone("br", B);
+  eq("quadrants cover the width", tl.w + tr.w, B.w);
+  eq("quadrants cover the height", tl.h + bl.h, B.h);
+  eq("quadrants meet horizontally", tl.x + tl.w, tr.x);
+  eq("quadrants meet vertically", tl.y + tl.h, bl.y);
+  eq("the four quadrants total the desktop area",
+     tl.w * tl.h + tr.w * tr.h + bl.w * bl.h + br.w * br.h, B.w * B.h);
+
+  const a = rectForZone("third-l", B), b = rectForZone("third-c", B), c = rectForZone("third-r", B);
+  eq("thirds cover the width", a.w + b.w + c.w, B.w);
+  eq("thirds meet without gaps", a.x + a.w === b.x && b.x + b.w === c.x, true);
+
+  eq("top fills the desktop", JSON.stringify(rectForZone("top", B)),
+     JSON.stringify({ x: 0, y: 0, w: B.w, h: B.h }));
+
+  // Odd widths are where the naive `w / 2` twice leaves a hairline of
+  // wallpaper between two snapped windows.
+  const ODD = { w: 1441, h: 813 };
+  const ol = rectForZone("left", ODD), or = rectForZone("right", ODD);
+  eq("an odd width still tiles exactly", ol.w + or.w, ODD.w);
+  eq("and leaves no seam", ol.x + ol.w, or.x);
+  const ot = rectForZone("tl", ODD), ob = rectForZone("bl", ODD);
+  eq("an odd height tiles too", ot.h + ob.h, ODD.h);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

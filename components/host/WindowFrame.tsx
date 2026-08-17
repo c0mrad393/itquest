@@ -43,16 +43,22 @@
  * What geometry is LEGAL is pure and lives in lib/host/windows.ts.
  */
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useHostStore } from "@/lib/host/store";
 import {
   EDGE_CURSOR,
+  UNSNAP_THRESHOLD,
   applyResize,
   clampPosition,
+  rectForZone,
+  snapZoneAt,
   type ManagedWindow,
   type ResizeEdge,
+  type SnapZone,
   type WindowRect,
 } from "@/lib/host/windows";
+import SnapGhost from "./SnapGhost";
+import SnapMenu from "./SnapMenu";
 import { renderHostApp } from "./app-registry";
 import RemoteSession from "./remote/RemoteSession";
 import { AppIcon, APP_ICON_SIZE } from "@/components/ui/app-icons";
@@ -76,6 +82,19 @@ export default function WindowFrame({ win }: { win: ManagedWindow }) {
   const toggleMaximize = useHostStore((s) => s.toggleMaximize);
   const move = useHostStore((s) => s.move);
   const resize = useHostStore((s) => s.resize);
+  const snapTo = useHostStore((s) => s.snapTo);
+  const unsnap = useHostStore((s) => s.unsnap);
+
+  /*
+   * The armed zone is REACT state, unlike the gesture rect.
+   *
+   * The rect changes every frame and is painted straight to the element; the
+   * zone changes a handful of times per drag and has to render a separate
+   * ghost element. Putting it in a ref and hand-rendering the ghost would be
+   * re-implementing React for four state changes.
+   */
+  const [zone, setZone] = useState<SnapZone | null>(null);
+  const [snapMenu, setSnapMenu] = useState(false);
 
   const frameRef = useRef<HTMLDivElement>(null);
   /** Live gesture state. A ref, so updating it never renders. */
@@ -87,6 +106,10 @@ export default function WindowFrame({ win }: { win: ManagedWindow }) {
     start: WindowRect;
     latest: WindowRect;
     raf: number;
+    /** Armed snap zone, mirrored here so `end` never reads stale state. */
+    zone: SnapZone | null;
+    /** Did a snapped window travel far enough to break out? */
+    broke: boolean;
   } | null>(null);
 
   const maximized = win.mode === "maximized";
@@ -150,7 +173,10 @@ export default function WindowFrame({ win }: { win: ManagedWindow }) {
     e.stopPropagation();
     focus(win.instanceId);
     const start: WindowRect = { x: win.x, y: win.y, w: win.w, h: win.h };
-    gesture.current = { kind, edge, startX: e.clientX, startY: e.clientY, start, latest: start, raf: 0 };
+    gesture.current = {
+      kind, edge, startX: e.clientX, startY: e.clientY, start, latest: start, raf: 0,
+      zone: null, broke: false,
+    };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     // While a gesture runs, nothing on the page should select text or light up
     // a hover state as the window sweeps across it.
@@ -163,10 +189,49 @@ export default function WindowFrame({ win }: { win: ManagedWindow }) {
     const dx = e.clientX - g.startX;
     const dy = e.clientY - g.startY;
     const bounds = boundsOf();
-    g.latest =
-      g.kind === "move"
-        ? { ...g.start, ...clampPosition(g.start.x + dx, g.start.y + dy, g.start, bounds) }
-        : applyResize(g.start, g.edge!, dx, dy, bounds);
+
+    if (g.kind === "resize") {
+      g.latest = applyResize(g.start, g.edge!, dx, dy, bounds);
+      schedule();
+      return;
+    }
+
+    /*
+     * UNSNAP FIRST. A snapped window dragged away restores its floating size
+     * mid-gesture, and the restored window is then re-centred under the
+     * cursor — otherwise a half-screen window shrinking to 500px would leave
+     * the pointer somewhere in the middle of empty space, holding an edge it
+     * is no longer over.
+     */
+    if (win.snap && !g.broke && Math.hypot(dx, dy) > UNSNAP_THRESHOLD) {
+      g.broke = true;
+      const back = win.restoreRect ?? g.start;
+      g.start = {
+        ...back,
+        x: Math.round(e.clientX - back.w / 2),
+        y: Math.round(e.clientY - 18),
+      };
+      g.startX = e.clientX;
+      g.startY = e.clientY;
+      unsnap(win.instanceId);
+    }
+
+    // The pointer's own position decides the zone, not the window's corner —
+    // a window dragged by the middle should snap when the CURSOR hits the edge.
+    const parent = frameRef.current?.parentElement?.getBoundingClientRect();
+    const localX = e.clientX - (parent?.left ?? 0);
+    const localY = e.clientY - (parent?.top ?? 0);
+    const next = snapZoneAt(localX, localY, bounds);
+    if (next !== g.zone) {
+      g.zone = next;
+      setZone(next);
+    }
+
+    const from = g.broke ? g.start : g.start;
+    g.latest = {
+      ...from,
+      ...clampPosition(from.x + (e.clientX - g.startX), from.y + (e.clientY - g.startY), from, bounds),
+    };
     schedule();
   }
 
@@ -176,9 +241,17 @@ export default function WindowFrame({ win }: { win: ManagedWindow }) {
     if (g.raf) cancelAnimationFrame(g.raf);
     // Commit first, then drop the gesture: the store update and the transient
     // styles describe the same rect, so the handover has no intermediate frame.
-    if (g.kind === "move") move(win.instanceId, g.latest.x, g.latest.y);
-    else resize(win.instanceId, g.latest);
+    if (g.kind === "move") {
+      // An armed zone wins over the raw drop position: the operator aimed at
+      // an edge, and landing the window a few pixels short of it is not what
+      // they asked for.
+      if (g.zone) snapTo(win.instanceId, g.zone);
+      else move(win.instanceId, g.latest.x, g.latest.y);
+    } else {
+      resize(win.instanceId, g.latest);
+    }
     gesture.current = null;
+    setZone(null);
     document.body.classList.remove("wm-gesture");
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
@@ -208,14 +281,27 @@ export default function WindowFrame({ win }: { win: ManagedWindow }) {
   return (
     <div
       ref={frameRef}
+      /*
+       * `wm-settle` animates left/top/width/height, and is applied ONLY when
+       * the window is snapped or maximised and NOT mid-gesture. A transition
+       * during a drag would make the frame trail the cursor by its own
+       * duration — exactly the lag the rAF gesture path exists to remove.
+       */
       className={`pointer-events-auto absolute flex flex-col overflow-hidden border ${
+        (win.snap || maximized) && !gesture.current ? "wm-settle" : ""
+      } ${
         remote
           ? "border-remote-edge bg-remote-tint shadow-remote"
           : "border-edge bg-panel shadow-2xl shadow-black/60"
       }`}
-      style={{ ...rect, zIndex: win.z, borderRadius: maximized ? 0 : 10 }}
+      style={{ ...rect, zIndex: win.z, borderRadius: maximized ? 0 : "var(--wm-radius)" }}
       onMouseDown={() => focus(win.instanceId)}
     >
+      {/* The armed zone, previewed. Rendered inside the frame so it inherits
+          the windows layer's coordinate space, and pointer-events-none so it
+          never interrupts the drag that is drawing it. */}
+      {zone && <SnapGhost rect={rectForZone(zone, boundsOf())} />}
+
       {/* Title bar */}
       <div
         className={`flex h-9 shrink-0 cursor-grab items-center gap-2 border-b px-3 active:cursor-grabbing ${
@@ -261,9 +347,26 @@ export default function WindowFrame({ win }: { win: ManagedWindow }) {
           <CtrlBtn onClick={() => minimize(win.instanceId)} label="Minimize">
             <svg width="10" height="10" viewBox="0 0 10 10"><rect y="4.5" width="10" height="1" fill="currentColor" /></svg>
           </CtrlBtn>
-          <CtrlBtn onClick={() => toggleMaximize(win.instanceId)} label="Maximize">
-            <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" /></svg>
-          </CtrlBtn>
+          {/* Hovering Maximize offers the layouts, the way Windows 11 does.
+              The button still maximises on click — the menu is an addition,
+              not a replacement, so the familiar action never gets slower. */}
+          <span
+            className="relative"
+            onMouseEnter={() => setSnapMenu(true)}
+            onMouseLeave={() => setSnapMenu(false)}
+          >
+            <CtrlBtn onClick={() => toggleMaximize(win.instanceId)} label="Maximize">
+              <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" /></svg>
+            </CtrlBtn>
+            {snapMenu && (
+              <SnapMenu
+                onPick={(z) => {
+                  setSnapMenu(false);
+                  snapTo(win.instanceId, z);
+                }}
+              />
+            )}
+          </span>
           <CtrlBtn onClick={() => close(win.instanceId)} label="Close" danger>
             <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" strokeWidth="1" /></svg>
           </CtrlBtn>

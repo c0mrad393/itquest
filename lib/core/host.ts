@@ -322,13 +322,21 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
   },
   gateway: {
     id: "gateway",
-    title: "Remote Gateway",
+    title: "Remote Desktop Connection",
     iconId: "monitor",
     category: "work",
     group: "infrastructure",
-    description: "Client servers and workstations. Connect to open an RDP/SSH session.",
-    defaultSize: { w: 820, h: 560 },
-    minSize: { w: 560, h: 400 },
+    description: "Connect to a server or workstation over RDP or SSH.",
+    /*
+     * Sized to the DIALOG, not to a page.
+     *
+     * mstsc opens as a small fixed dialog, and this app is that dialog — so the
+     * window frame wraps it directly rather than centring it on a canvas. 420
+     * is the dialog's natural width; the height fits the collapsed form with
+     * the options drawer closed, and the frame grows if the operator opens it.
+     */
+    defaultSize: { w: 420, h: 468 },
+    minSize: { w: 380, h: 320 },
     singleton: true,
     pinnedToTaskbar: true,
     showOnDesktop: true,

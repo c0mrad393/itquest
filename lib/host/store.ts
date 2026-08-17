@@ -17,7 +17,15 @@ import type {
   ConnectionProtocol,
   NodeId,
 } from "@/lib/core";
-import { applyResize, clampPosition, openRect, type ManagedWindow, type WindowRect } from "./windows";
+import {
+  applyResize,
+  clampPosition,
+  openRect,
+  rectForZone,
+  type ManagedWindow,
+  type SnapZone,
+  type WindowRect,
+} from "./windows";
 import { createHostWorkstation } from "./seed";
 import type { HostWorkstationState } from "@/lib/core";
 import { levelForXp } from "@/lib/scenario/scoring";
@@ -46,6 +54,10 @@ interface HostStore {
   taskbarActivate: (instanceId: string) => void;
   move: (instanceId: string, x: number, y: number) => void;
   resize: (instanceId: string, rect: WindowRect) => void;
+  /** Snap a window into a half/quarter, remembering where it came from. */
+  snapTo: (instanceId: string, zone: SnapZone) => void;
+  /** Release a snap, restoring the floating geometry it had before. */
+  unsnap: (instanceId: string) => void;
 
   /**
    * Deep-link target: the device an app should focus when it opens.
@@ -283,6 +295,35 @@ export const useHostStore = create<HostStore>((set, get) => ({
         const safe = applyResize({ x: rect.x, y: rect.y, w: w.w, h: w.h }, "se",
           rect.w - w.w, rect.h - w.h, desktopBounds());
         return { ...w, ...safe, ...clampPosition(rect.x, rect.y, safe, desktopBounds()) };
+      }),
+    })),
+
+  /*
+   * Snapping records `restoreRect` ONLY on the way in.
+   *
+   * Re-recording it on every snap would mean dragging left, then right, then
+   * away restores the LEFT HALF rather than the floating window the operator
+   * started with — each snap overwriting the memory of the one before. The
+   * original geometry is captured once and survives any number of snaps until
+   * the window floats again.
+   */
+  snapTo: (instanceId, zone) =>
+    set((s) => ({
+      windows: s.windows.map((w) => {
+        if (w.instanceId !== instanceId) return w;
+        const restoreRect = w.snap || w.mode === "maximized"
+          ? w.restoreRect
+          : { x: w.x, y: w.y, w: w.w, h: w.h };
+        return { ...w, ...rectForZone(zone, desktopBounds()), snap: zone, mode: "normal", restoreRect };
+      }),
+    })),
+
+  unsnap: (instanceId) =>
+    set((s) => ({
+      windows: s.windows.map((w) => {
+        if (w.instanceId !== instanceId || !w.snap) return w;
+        const back = w.restoreRect ?? { x: w.x, y: w.y, w: w.w, h: w.h };
+        return { ...w, ...back, snap: undefined, restoreRect: undefined };
       }),
     })),
 

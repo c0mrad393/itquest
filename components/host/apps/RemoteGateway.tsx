@@ -170,8 +170,20 @@ export default function RemoteGateway() {
   }
 
   return (
-    <div className="relative flex h-full flex-col overflow-y-auto term-scroll bg-sunken">
-      <div className="mx-auto flex w-full max-w-[30rem] flex-col gap-3 p-5">
+    /*
+     * ── NO OUTER CANVAS ─────────────────────────────────────────────────────
+     *
+     * This used to be a `bg-sunken` page with the dialog centred on it inside
+     * a max-width column — a window frame wrapping a page wrapping a dialog,
+     * with two borders, two backgrounds and a scrollbar that appeared before
+     * the content needed one.
+     *
+     * The app IS the dialog now. The frame wraps it directly, the registry
+     * sizes the window to it (420px), and there is exactly one border on
+     * screen: the window's own.
+     */
+    <div className="relative flex h-full flex-col bg-panel">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto term-scroll p-4">
         <header className="flex items-center gap-2.5">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-info/15 text-info-strong">
             <IconMonitor size={18} />
@@ -196,7 +208,7 @@ export default function RemoteGateway() {
 
         <div
           data-tutorial-target="gateway-targets"
-          className="rounded-wm border border-edge bg-panel p-4 shadow-panel"
+          className="rounded-wm border border-edge bg-surface-2 p-3.5"
         >
           <label className="block">
             <span className="mb-1 block text-[11px] font-medium text-gray-400">Computer:</span>

@@ -530,3 +530,35 @@ code {
 @media (prefers-reduced-motion: reduce) {
   .rdp-progress { animation: none; width: 100%; }
 }
+
+/* ── Snap layouts ───────────────────────────────────────────────────────────
+   `wm-settle` is applied only to snapped/maximised windows that are NOT
+   mid-gesture. Transitioning geometry during a drag would make the frame trail
+   the cursor by the transition's own duration, which is precisely the lag the
+   rAF gesture path exists to remove. */
+.wm-settle {
+  transition:
+    left 160ms cubic-bezier(0.2, 0, 0, 1),
+    top 160ms cubic-bezier(0.2, 0, 0, 1),
+    width 160ms cubic-bezier(0.2, 0, 0, 1),
+    height 160ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+@keyframes snapGhostIn {
+  from { opacity: 0; transform: scale(0.985); }
+}
+.snap-ghost {
+  animation: snapGhostIn 110ms cubic-bezier(0.2, 0, 0, 1) both;
+  /* The ghost moves between zones as the pointer travels, so its own geometry
+     eases too — otherwise it teleports and reads as a flicker rather than a
+     preview following the cursor. */
+  transition:
+    left 110ms cubic-bezier(0.2, 0, 0, 1),
+    top 110ms cubic-bezier(0.2, 0, 0, 1),
+    width 110ms cubic-bezier(0.2, 0, 0, 1),
+    height 110ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wm-settle, .snap-ghost { transition: none; animation: none; }
+}
