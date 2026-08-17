@@ -32,6 +32,15 @@ import { blockedReason, canRemove, cablesFor, type Fastener, type MachineKind, t
 import { useInfraStore } from "@/lib/infra/store";
 import { AppIcon } from "@/components/ui/app-icons";
 import { BiosSetupScreen, OsInstallScreen, PostHaltScreen, RunningScreen } from "./BiosScreen";
+import {
+  BOARD,
+  BoardSubstrate,
+  CableRun,
+  FastenerVisual,
+  PartPortrait,
+  SlotBody,
+  type BoardKind,
+} from "./RigVisuals";
 
 /** Board grid → SVG units. The model stores grid units; this is the only scale. */
 const U = 26;
@@ -163,32 +172,19 @@ export default function DesktopHardwareLab() {
             role="img"
             aria-label="Motherboard blueprint"
           >
-            {/* Board substrate + grid */}
-            <rect x="0" y="0" width={19 * U} height={12 * U} rx="6" fill="#0b1524" stroke="#1e3a5f" />
-            {Array.from({ length: 19 }, (_, i) => (
-              <line key={`v${i}`} x1={i * U} y1="0" x2={i * U} y2={12 * U} stroke="#12233a" strokeWidth="0.5" />
-            ))}
-            {Array.from({ length: 12 }, (_, i) => (
-              <line key={`h${i}`} x1="0" y1={i * U} x2={19 * U} y2={i * U} stroke="#12233a" strokeWidth="0.5" />
-            ))}
+            <BoardSubstrate kind={machine} w={19 * U} h={12 * U} />
 
-            {/* Cable runs, drawn under the slots so connectors sit on top. */}
+            {/* Cables run under the components, as they do on a real board. */}
             {rig.cables.map((c) => {
-              const a = rig.slots.find((s) => s.cableIds.includes(c.id));
+              const a = rig.slots.find((sl) => sl.cableIds.includes(c.id));
               if (!a) return null;
-              const x = (a.x + a.w / 2) * U;
-              const y = (a.y + a.h / 2) * U;
               return (
-                <line
+                <CableRun
                   key={c.id}
-                  x1={x}
-                  y1={y}
-                  x2={18 * U}
-                  y2={11 * U}
-                  stroke={c.connected ? "#22d3ee" : "#7f1d1d"}
-                  strokeWidth={c.connected ? 1.4 : 1.8}
-                  strokeDasharray={c.connected ? undefined : "4 3"}
-                  opacity={c.connected ? 0.5 : 0.9}
+                  kind={c.kind}
+                  connected={c.connected}
+                  from={{ x: (a.x + a.w / 2) * U, y: (a.y + a.h / 2) * U }}
+                  to={{ x: 17.6 * U, y: 11.2 * U }}
                 />
               );
             })}
@@ -197,11 +193,14 @@ export default function DesktopHardwareLab() {
               <SlotShape
                 key={slot.id}
                 slot={slot}
+                board={machine}
                 selected={selected === slot.id}
                 highlighted={next?.slotId === slot.id}
                 onSelect={() => select(slot.id)}
                 onFastener={(f) =>
-                  f.kind === "clip" ? toggleClip(slot.id, f.id) : unfastenScrew(slot.id, f.id)
+                  f.kind === "clip" || f.kind === "zif" || f.kind === "handle"
+                    ? toggleClip(slot.id, f.id)
+                    : unfastenScrew(slot.id, f.id)
                 }
               />
             ))}
@@ -223,6 +222,7 @@ export default function DesktopHardwareLab() {
               </p>
             ) : (
               <Inspector
+                board={machine}
                 slot={active}
                 blocked={blockedReason(rig, active.id)}
                 removable={canRemove(rig, active.id)}
@@ -260,122 +260,147 @@ export default function DesktopHardwareLab() {
 
 // ── Blueprint pieces ────────────────────────────────────────────────────────
 
+/**
+ * One slot on the board.
+ *
+ * The body is drawn by `RigVisuals` — this component's only jobs are placing
+ * it, labelling it, and putting the fasteners where they physically sit. Which
+ * means adding a new part type is a change in one file, not two.
+ */
 function SlotShape({
   slot,
+  board,
   selected,
   highlighted,
   onSelect,
   onFastener,
 }: {
   slot: Slot;
+  board: BoardKind;
   selected: boolean;
   highlighted: boolean;
   onSelect: () => void;
   onFastener: (f: Fastener) => void;
 }) {
-  const tone = KIND_TONE[slot.kind] ?? "#94a3b8";
-  const filled = !!slot.part;
+  const g = { x: slot.x * U, y: slot.y * U, w: slot.w * U, h: slot.h * U };
+  const vertical = slot.h > slot.w;
+  const silk = BOARD[board].silk;
 
   return (
     <g>
-      {/* Guidance ring — derived from the board, see the header note. */}
+      {/* Guidance ring — still derived from `nextAction`, just prettier. */}
       {highlighted && (
         <rect
-          x={slot.x * U - 4}
-          y={slot.y * U - 4}
-          width={slot.w * U + 8}
-          height={slot.h * U + 8}
-          rx="5"
+          x={g.x - 5}
+          y={g.y - 5}
+          width={g.w + 10}
+          height={g.h + 10}
+          rx="4"
           fill="none"
           stroke="#fbbf24"
-          strokeWidth="1.6"
-          strokeDasharray="5 3"
+          strokeWidth="1.8"
+          strokeDasharray="6 4"
+          opacity="0.95"
         />
       )}
 
+      {/* Silkscreen outline + designator, printed on the board under the part. */}
       <rect
-        onClick={onSelect}
-        x={slot.x * U}
-        y={slot.y * U}
-        width={slot.w * U}
-        height={slot.h * U}
-        rx="3"
-        fill={filled ? `${tone}22` : "#0e1a2b"}
-        stroke={selected ? "#e2e8f0" : filled ? tone : "#334155"}
-        strokeWidth={selected ? 1.8 : 1.1}
-        strokeDasharray={filled ? undefined : "3 2"}
-        className="cursor-pointer"
+        x={g.x - 2.5}
+        y={g.y - 2.5}
+        width={g.w + 5}
+        height={g.h + 5}
+        rx="2"
+        fill="none"
+        stroke={silk}
+        strokeWidth="0.7"
+        opacity="0.32"
       />
-
       <text
-        x={slot.x * U + 4}
-        y={slot.y * U + 11}
-        fontSize="7.5"
-        fill={filled ? tone : "#64748b"}
+        x={g.x - 2}
+        y={g.y - 4.5}
+        fontSize="6.5"
+        fill={silk}
+        opacity="0.65"
         className="pointer-events-none select-none font-mono"
       >
         {slot.label}
       </text>
-      {slot.part && (
-        <text
-          x={slot.x * U + 4}
-          y={slot.y * U + 20}
-          fontSize="6.5"
-          fill="#94a3b8"
-          className="pointer-events-none select-none"
-        >
-          {slot.part.model}
-        </text>
-      )}
-      {slot.part?.faulty && (
-        <text
-          x={slot.x * U + 4}
-          y={slot.y * U + 29}
-          fontSize="6.5"
-          fill="#f87171"
-          className="pointer-events-none select-none"
-        >
-          self-test failed
-        </text>
-      )}
 
       {/*
-       * Fasteners sit ON the slot edge, spaced along it, because that is where
-       * they are on real hardware — a clip at the end of a DIMM slot, screws at
-       * the corners of a cooler. Placing them arbitrarily would make the
-       * blueprint decorative rather than instructive.
+       * Hover and selection live on a wrapper so they scale the WHOLE part.
+       * `transform-box: fill-box` makes the origin the part's own centre —
+       * without it an SVG scale pulls everything toward the canvas origin.
        */}
+      <g
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
+        className="cursor-pointer transition-transform duration-150 hover:scale-[1.035]"
+        style={{ transformBox: "fill-box", transformOrigin: "center" }}
+      >
+        {/* Drop shadow: parts sit above the board, cavities do not. */}
+        {slot.part && (
+          <rect x={g.x + 1.5} y={g.y + 2} width={g.w} height={g.h} rx="2" fill="#00000055" />
+        )}
+        <SlotBody slot={slot} g={g} kind={board} />
+        {selected && (
+          <rect
+            x={g.x - 1.5}
+            y={g.y - 1.5}
+            width={g.w + 3}
+            height={g.h + 3}
+            rx="2.5"
+            fill="none"
+            stroke="#e2e8f0"
+            strokeWidth="1.4"
+          />
+        )}
+      </g>
+
+      {/* Fasteners sit on the edge they actually hold. */}
       {slot.fasteners.map((f, i) => {
         const along = slot.fasteners.length === 1 ? 0.5 : i / (slot.fasteners.length - 1);
-        const vertical = slot.h > slot.w;
-        const cx = vertical ? (slot.x + slot.w / 2) * U : (slot.x + 0.15 * slot.w + along * 0.7 * slot.w) * U;
-        const cy = vertical ? (slot.y + 0.1 * slot.h + along * 0.8 * slot.h) * U : (slot.y + slot.h) * U;
+        // Clips cap the ENDS of a DIMM; screws and handles ride the near edge.
+        const isEnd = f.kind === "clip" || f.kind === "zif" || f.kind === "handle";
+        const cx = vertical
+          ? g.x + g.w / 2
+          : isEnd
+            ? g.x + (along < 0.5 ? -4 : g.w + 4)
+            : g.x + 6 + along * (g.w - 12);
+        const cy = vertical
+          ? isEnd
+            ? g.y + (along < 0.5 ? -4 : g.h + 4)
+            : g.y + 6 + along * (g.h - 12)
+          : g.y + g.h + 4;
         return (
-          <g key={f.id} onClick={() => onFastener(f)} className="cursor-pointer">
-            <circle cx={cx} cy={cy} r="6" fill="transparent" />
-            <circle
-              cx={cx}
-              cy={cy}
-              r="3.4"
-              fill={f.fastened ? tone : "none"}
-              stroke={f.fastened ? tone : "#64748b"}
-              strokeWidth="1.2"
-              strokeDasharray={f.fastened ? undefined : "2 1.5"}
-            />
-            {f.fastened && f.kind === "screw" && (
-              <line
-                x1={cx - 2}
-                y1={cy}
-                x2={cx + 2}
-                y2={cy}
-                stroke="#0b1524"
-                strokeWidth="1"
-                className="pointer-events-none"
-              />
-            )}
-          </g>
+          <FastenerVisual
+            key={f.id}
+            f={f}
+            cx={cx}
+            cy={cy}
+            vertical={vertical}
+            onClick={() => onFastener(f)}
+          />
         );
       })}
+
+      {slot.part?.faulty && (
+        <g className="pointer-events-none">
+          <rect x={g.x} y={g.y + g.h / 2 - 5} width={g.w} height="10" fill="#7f1d1d" opacity="0.55" />
+          <text
+            x={g.x + g.w / 2}
+            y={g.y + g.h / 2 + 3}
+            fontSize="6"
+            textAnchor="middle"
+            fill="#fecaca"
+            className="select-none font-mono"
+          >
+            FAILED
+          </text>
+        </g>
+      )}
     </g>
   );
 }
@@ -391,6 +416,7 @@ function fastenerState(f: Fastener): string {
 
 function Inspector({
   slot,
+  board,
   blocked,
   removable,
   cables,
@@ -401,6 +427,7 @@ function Inspector({
   onInsert,
 }: {
   slot: Slot;
+  board: BoardKind;
   blocked: string | null;
   removable: boolean;
   cables: ReturnType<typeof cablesFor>;
@@ -412,7 +439,10 @@ function Inspector({
 }) {
   return (
     <div>
-      <h3 className="text-[12px] font-semibold text-gray-100">{slot.label}</h3>
+      {/* A zoomed view of the same vector used on the board — one definition,
+          so the panel can never show a part the board does not. */}
+      <PartPortrait slot={slot} kind={board} />
+      <h3 className="mt-2.5 text-[12px] font-semibold text-gray-100">{slot.label}</h3>
       <p className="mt-0.5 text-[10px] text-gray-500">
         {slot.part ? slot.part.model : "empty"}
         {slot.part?.faulty && <span className="ml-1 text-danger-text">· failed self-test</span>}
