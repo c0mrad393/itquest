@@ -26,10 +26,9 @@ export type HostAppId =
   | "assetmanager" // Hardware inventory / store room
   | "racklab" // Datacenter floor — racks, cabling, power and heat
   | "serverman" // Server Manager — logical estate, maintenance and migration
-  | "netops" // Network topology console (link optimization)
+  | "edge" // Edge Gateway Manager (pfGate) — perimeter firewall, links, telemetry
   | "switches" // Managed PoE switches, port state and IP allocation
   | "backup" // Backup policy, storage purchase and disaster recovery
-  | "monitor" // Infrastructure metrics dashboard (observability)
   | "aethercloud" // AetherCloud Engine — hybrid cloud console
   | "procurement" // Vendor storefront — spends IT Budget
   | "wiki" // Company Wiki / intranet documentation portal
@@ -242,15 +241,24 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     showOnDesktop: true,
     badgeSource: "unread-coremail",
   },
-  netops: {
-    id: "netops",
-    title: "NetOps Console",
+  /*
+   * Replaces BOTH the NetOps Console and the Monitor (v0.9.3).
+   *
+   * They were two windows onto one network — link metrics in one, host
+   * telemetry in the other — and neither explained how it related to the
+   * perimeter. The appliance GUI is where an admin actually does this work, so
+   * the link table, the telemetry and the firewall rules now live behind one
+   * address instead of three icons.
+   */
+  edge: {
+    id: "edge",
+    title: "Edge Gateway Manager",
     iconId: "globe",
     category: "work",
     group: "infrastructure",
-    description: "Live network topology: link metrics, re-routing, and software firewalls.",
-    defaultSize: { w: 960, h: 640 },
-    minSize: { w: 680, h: 460 },
+    description: "pfGate appliance GUI: firewall rules, interfaces, link health and traffic.",
+    defaultSize: { w: 1040, h: 680 },
+    minSize: { w: 720, h: 480 },
     singleton: true,
     pinnedToTaskbar: true,
     showOnDesktop: true,
@@ -303,19 +311,6 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
     description: "Hybrid cloud console: virtual networks, vNodes, storage, VPN and audit.",
     defaultSize: { w: 1080, h: 700 },
     minSize: { w: 760, h: 500 },
-    singleton: true,
-    pinnedToTaskbar: true,
-    showOnDesktop: true,
-  },
-  monitor: {
-    id: "monitor",
-    title: "Monitor",
-    iconId: "activity",
-    category: "work",
-    group: "infrastructure",
-    description: "Live infrastructure telemetry: CPU, memory and network per host.",
-    defaultSize: { w: 1040, h: 680 },
-    minSize: { w: 700, h: 480 },
     singleton: true,
     pinnedToTaskbar: true,
     showOnDesktop: true,

@@ -20,9 +20,8 @@ import type { HostAppId, TicketDifficulty } from "@/lib/core";
 export const APP_UNLOCK_LEVEL: Partial<Record<HostAppId, number>> = {
   // Remoting into a machine IS entry-level helpdesk work, so the gateway ships
   // with the intern kit — without it there is nothing an intern can action.
-  monitor: 2, // watch the estate
   leaderboard: 2,
-  netops: 2, // touch the network
+  edge: 2, // the perimeter: firewall rules, links and traffic
   switches: 3, // the access layer: ports, PoE and addressing
   backup: 4, // protect the estate — and pay for the storage that does it
   hardwarelab: 3, // touch hardware
@@ -65,13 +64,13 @@ const TAG_APP: [string, HostAppId][] = [
   ["poe", "switches"],
   ["ip-conflict", "switches"],
   ["camera", "switches"],
-  ["congestion", "netops"],
-  ["firewall", "netops"],
-  ["containment", "netops"],
-  ["isolation", "netops"],
-  ["intrusion", "netops"],
-  ["capacity", "netops"],
-  ["logs", "netops"],
+  ["congestion", "edge"],
+  ["firewall", "edge"],
+  ["containment", "edge"],
+  ["isolation", "edge"],
+  ["intrusion", "edge"],
+  ["capacity", "edge"],
+  ["logs", "edge"],
 ];
 
 /**

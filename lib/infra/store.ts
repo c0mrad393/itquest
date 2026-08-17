@@ -45,6 +45,8 @@ import {
   restoreAvailability,
 } from "@/lib/core";
 import { nextFreeIp, nextRackName, provisionNode } from "@/lib/datacenter/seed";
+import type { FirewallRule } from "@/lib/vm/types";
+import { EDGE_GATEWAY_ID, buildEdgeGateway, deriveGatewayIp } from "@/lib/network/edge";
 import type { ShippingMethod } from "@/lib/core";
 import type { AetherVNode, AuditEvent, ShieldRule, VNodeSize, VNodeStatus } from "@/lib/core";
 import type { CommandResult, NodeId } from "@/lib/core";
@@ -280,6 +282,24 @@ interface InfraStore {
    * real boot does, and resets uptime. The only place startup type has effect.
    */
   rebootNode: (nodeId: NodeId) => void;
+
+  // ── Edge gateway (perimeter firewall) ──
+  /**
+   * Mint the perimeter gateway if the estate has none, and return its id.
+   *
+   * A lazy migration rather than a save-version bump: `loadSave` discards on
+   * any version mismatch, so bumping would delete every existing company to
+   * add one node.
+   */
+  ensureEdgeGateway: () => NodeId;
+  addFirewallRule: (nodeId: NodeId, rule: FirewallRule) => void;
+  updateFirewallRule: (nodeId: NodeId, ruleId: string, patch: Partial<FirewallRule>) => void;
+  deleteFirewallRule: (nodeId: NodeId, ruleId: string) => void;
+  /**
+   * Move a rule within its chain. Order is load-bearing — first match wins —
+   * so this is a real firewall control, not a cosmetic sort.
+   */
+  moveFirewallRule: (nodeId: NodeId, ruleId: string, dir: "up" | "down") => void;
   setWinInterfaceUp: (nodeId: NodeId, iface: string, up: boolean) => void;
   setFirewallProfile: (nodeId: NodeId, profile: "Domain" | "Private" | "Public", enabled: boolean) => void;
 
@@ -1357,6 +1377,77 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       // Uptime restarts with the machine. Left alone it would claim months of
       // continuous service on a box that just rebooted.
       clone.health = { ...clone.health, uptimeSeconds: 0 };
+      return withNode(s, nodeId, clone);
+    }),
+
+  ensureEdgeGateway: () => {
+    const existing = get().infra.nodes[EDGE_GATEWAY_ID];
+    if (existing) return EDGE_GATEWAY_ID;
+    const nodes = get().infra.nodes;
+    const gwIp = deriveGatewayIp(nodes);
+    // Borrow the estate's own naming prefix so the appliance does not look
+    // like it was bolted on from a different company.
+    const sample = Object.values(nodes).find((n) => /^[A-Z]{3,5}-/.test(n.hostname));
+    const prefix = sample?.hostname.split("-")[0] ?? "EDGE";
+    const gw = buildEdgeGateway(gwIp, prefix, sample?.domain);
+    set((s) => ({ infra: { ...s.infra, nodes: { ...s.infra.nodes, [EDGE_GATEWAY_ID]: gw } } }));
+    return EDGE_GATEWAY_ID;
+  },
+
+  addFirewallRule: (nodeId, rule) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node) return s;
+      const clone = structuredClone(node);
+      clone.network.firewall = [...clone.network.firewall, rule];
+      return withNode(s, nodeId, clone);
+    }),
+
+  updateFirewallRule: (nodeId, ruleId, patch) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node) return s;
+      const clone = structuredClone(node);
+      clone.network.firewall = clone.network.firewall.map((r) =>
+        r.id === ruleId ? { ...r, ...patch } : r,
+      );
+      return withNode(s, nodeId, clone);
+    }),
+
+  deleteFirewallRule: (nodeId, ruleId) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node) return s;
+      const clone = structuredClone(node);
+      clone.network.firewall = clone.network.firewall.filter((r) => r.id !== ruleId);
+      return withNode(s, nodeId, clone);
+    }),
+
+  moveFirewallRule: (nodeId, ruleId, dir) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node) return s;
+      const clone = structuredClone(node);
+      const all = clone.network.firewall;
+      const rule = all.find((r) => r.id === ruleId);
+      if (!rule) return s;
+      /*
+       * Reorder WITHIN the chain. The list holds every chain's rules together,
+       * so swapping raw list neighbours could move a LAN rule past a WAN one —
+       * visible as a row that jumps two places, or none.
+       */
+      const peers = all.filter((r) => r.chain === rule.chain);
+      const at = peers.indexOf(rule);
+      const to = dir === "up" ? at - 1 : at + 1;
+      if (to < 0 || to >= peers.length) return s;
+      const reordered = [...peers];
+      reordered.splice(at, 1);
+      reordered.splice(to, 0, rule);
+      // Stitch the reordered chain back into the positions the chain occupied.
+      let next = 0;
+      clone.network.firewall = all.map((r) =>
+        r.chain === rule.chain ? reordered[next++] : r,
+      );
       return withNode(s, nodeId, clone);
     }),
 

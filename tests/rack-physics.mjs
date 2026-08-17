@@ -103,6 +103,15 @@ import {
 } from "../.test-build/progression/unlocks.js";
 import { appForTicket, liveHints } from "../.test-build/tickets/hints.js";
 import {
+  CHAIN_FOR,
+  cidrContains,
+  defaultEdgeRules,
+  deriveGatewayIp,
+  evaluate,
+  lanCidrFor,
+  rulesFor,
+} from "../.test-build/network/edge.js";
+import {
   CASCADE_HEALTH_PENALTY,
   THERMAL_LATENCY_FACTOR,
   activeCascades,
@@ -1632,12 +1641,92 @@ group("Client endpoints skip the rack chain");
 }
 
 {
+  group("Edge gateway — rule evaluation is first-match-wins");
+
+  const LAN = "10.29.1.0/24";
+  const rules = defaultEdgeRules(LAN);
+
+  // The shipped baseline must be a WORKING firewall, or a ticket that breaks
+  // one rule is indistinguishable from a config that never worked.
+  eq("LAN https is permitted out of the box",
+     evaluate(rules, { chain: "FORWARD", protocol: "tcp", port: 443, source: "10.29.1.24" }).allowed, true);
+  eq("LAN dns is permitted",
+     evaluate(rules, { chain: "FORWARD", protocol: "udp", port: 53, source: "10.29.1.31" }).allowed, true);
+  // The perimeter admits NOTHING inbound. There is no state tracking in the
+  // model, so an "allow established" rule would be a permit-all wearing a
+  // reassuring name — the implicit deny is the honest posture.
+  eq("inbound ssh from the internet is refused",
+     evaluate(rules, { chain: "INPUT", protocol: "tcp", port: 22, source: "198.51.100.7" }).allowed, false);
+  eq("...and it is the implicit deny that refuses it, not a rule",
+     evaluate(rules, { chain: "INPUT", protocol: "tcp", port: 22, source: "198.51.100.7" }).rule, null);
+  eq("spoofed private source from WAN is blocked by an explicit rule",
+     evaluate(rules, { chain: "INPUT", protocol: "tcp", port: 22, source: "10.29.1.9" }).rule.id, "wan-block-private");
+
+  // Order is the whole lesson: a permit below a broad block never fires.
+  const shadowed = [
+    { id: "block-all", chain: "FORWARD", action: "DROP", protocol: "any", source: "any", enabled: true },
+    { id: "allow-web", chain: "FORWARD", action: "ACCEPT", protocol: "tcp", port: 443, source: "any", enabled: true },
+  ];
+  const verdict = evaluate(shadowed, { chain: "FORWARD", protocol: "tcp", port: 443, source: "10.29.1.5" });
+  eq("a permit shadowed by a block never fires", verdict.allowed, false);
+  eq("...and the log can name the rule that decided", verdict.rule.id, "block-all");
+
+  // Reordering fixes it — which is why the UI can move rules.
+  eq("reordering the permit above the block restores it",
+     evaluate([shadowed[1], shadowed[0]], { chain: "FORWARD", protocol: "tcp", port: 443, source: "10.29.1.5" }).allowed, true);
+
+  // A disabled rule is skipped entirely, not treated as a deny.
+  const disabled = [{ ...shadowed[1], enabled: false }];
+  eq("a disabled permit does not match", evaluate(disabled, { chain: "FORWARD", protocol: "tcp", port: 443, source: "10.29.1.5" }).allowed, false);
+  eq("nothing matching means implicit deny",
+     evaluate([], { chain: "FORWARD", protocol: "tcp", port: 443, source: "10.29.1.5" }).rule, null);
+
+  // Chains do not leak into each other.
+  eq("a FORWARD rule does not decide INPUT traffic",
+     evaluate(rules, { chain: "INPUT", protocol: "udp", port: 53, source: "10.29.1.31" }).rule.chain, "INPUT");
+  eq("...and an INPUT rule does not decide FORWARD traffic",
+     evaluate(rules, { chain: "FORWARD", protocol: "tcp", port: 443, source: "10.29.1.24" }).rule.chain, "FORWARD");
+
+  // Port and protocol narrowing.
+  eq("a port-specific rule ignores other ports",
+     evaluate([{ id: "p", chain: "FORWARD", action: "ACCEPT", protocol: "tcp", port: 443, source: "any", enabled: true }],
+              { chain: "FORWARD", protocol: "tcp", port: 22, source: "10.29.1.5" }).allowed, false);
+  eq("a protocol-specific rule ignores other protocols",
+     evaluate([{ id: "p", chain: "FORWARD", action: "ACCEPT", protocol: "udp", source: "any", enabled: true }],
+              { chain: "FORWARD", protocol: "tcp", source: "10.29.1.5" }).allowed, false);
+
+  group("Edge gateway — addressing and tabs");
+
+  eq("a /24 contains its own host", cidrContains("10.29.1.0/24", "10.29.1.55"), true);
+  eq("a /24 excludes a neighbour subnet", cidrContains("10.29.1.0/24", "10.29.2.55"), false);
+  eq("a /8 contains anything under it", cidrContains("10.0.0.0/8", "10.29.1.55"), true);
+  eq("a bare address matches only itself", cidrContains("10.29.1.1", "10.29.1.1"), true);
+
+  eq("the LAN cidr is derived from the gateway address", lanCidrFor("10.29.1.1"), "10.29.1.0/24");
+
+  // The gateway address is read off what the estate already routes through.
+  const routed = { a: { network: { routes: [{ destination: "default", gateway: "10.29.1.1" }] } } };
+  eq("the gateway ip is derived from the default route", deriveGatewayIp(routed), "10.29.1.1");
+  eq("an estate with no routes still yields an address", deriveGatewayIp({}), "10.0.0.1");
+
+  // The WAN/LAN tabs ARE chains — the UI must not invent a parallel field.
+  eq("the WAN tab is the INPUT chain", CHAIN_FOR.wan, "INPUT");
+  eq("the LAN tab is the FORWARD chain", CHAIN_FOR.lan, "FORWARD");
+  eq("the WAN tab lists only INPUT rules",
+     rulesFor({ firewall: rules }, "wan").every((r) => r.chain === "INPUT"), true);
+  eq("the LAN tab lists only FORWARD rules",
+     rulesFor({ firewall: rules }, "lan").every((r) => r.chain === "FORWARD"), true);
+}
+
+{
   group("Polish — app gating is total");
 
   // Every gated app refuses below its level and permits at it. This is the
-  // property the Monitor bypass violated: a level-2 operator reached
-  // Procurement, which opens at 4.
-  for (const app of ["monitor", "netops", "switches", "hardwarelab", "assetmanager",
+  // property the old Monitor bypass violated: a level-2 operator reached
+  // Procurement, which opens at 4. The Monitor and NetOps Console were folded
+  // into the Edge Gateway Manager (v0.9.3); `edge` inherits their level, so the
+  // same bypass is still pinned below.
+  for (const app of ["edge", "switches", "hardwarelab", "assetmanager",
                      "procurement", "backup", "racklab", "serverman", "aethercloud"]) {
     const need = appUnlockLevel(app);
     eq(`${app} is locked below level ${need}`, isAppUnlocked(app, need - 1), false);
@@ -1650,10 +1739,11 @@ group("Client endpoints skip the rack chain");
   eq("so is the remote gateway", isAppUnlocked("gateway", 1), true);
   eq("and the wiki", isAppUnlocked("wiki", 1), true);
 
-  // The specific reported bypass, pinned.
-  eq("Monitor opens before Procurement — the bypass path", appUnlockLevel("monitor") < appUnlockLevel("procurement"), true);
-  eq("...so a Monitor-level operator must NOT reach Procurement",
-     isAppUnlocked("procurement", appUnlockLevel("monitor")), false);
+  // The specific reported bypass, pinned. Carried onto the Edge Gateway, which
+  // now opens at the level the Monitor used to.
+  eq("the Edge Gateway opens before Procurement — the bypass path", appUnlockLevel("edge") < appUnlockLevel("procurement"), true);
+  eq("...so an Edge-Gateway-level operator must NOT reach Procurement",
+     isAppUnlocked("procurement", appUnlockLevel("edge")), false);
 
   // Tiers gate in step with the operator's ability to work them.
   eq("Tier 1 from the start", unlockedTiers(1).includes("Tier_1_Easy"), true);
@@ -1980,7 +2070,7 @@ group("Client endpoints skip the rack chain");
   eq("the bench tour waits for the bench",
      eligibleSequence({ ...fresh, openAppIds: ["hardwarelab"] }, ["first_boot"]), "hardware_intro");
   eq("an app with no tour offers nothing",
-     eligibleSequence({ ...fresh, openAppIds: ["monitor"] }, ["first_boot"]), null);
+     eligibleSequence({ ...fresh, openAppIds: ["edge"] }, ["first_boot"]), null);
 
   // The global intro must win while it is still outstanding, even though the
   // operator has the Ticket Center open — its last step told them to open it.

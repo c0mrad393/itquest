@@ -1,8 +1,13 @@
 "use client";
 
 /**
- * TelemetryEngine — headless sampler behind the Monitor app.
- * ----------------------------------------------------------
+ * TelemetryEngine — headless sampler behind the Edge Gateway's graphs.
+ * --------------------------------------------------------------------
+ * Formerly fed the standalone Monitor app; that app was folded into the Edge
+ * Gateway Manager (v0.9.3) and the sampler stayed, because what it produces —
+ * per-node derived samples — is what the appliance's system and traffic
+ * widgets read.
+ *
  * Appends one derived sample per monitored node every 2s, matching the
  * NetworkEngine's cadence so link utilisation and the charts stay in step.
  *

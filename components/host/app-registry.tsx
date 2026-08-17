@@ -17,14 +17,13 @@ import RackSimulator from "./apps/RackSimulator";
 import ServerManager from "./apps/ServerManager";
 import Mail from "./apps/Mail";
 import CoreMail from "./apps/CoreMail";
-import NetOpsConsole from "./apps/NetOpsConsole";
+import EdgeGateway from "./apps/EdgeGateway";
 import Leaderboard from "./apps/Leaderboard";
 import AppearanceApp from "./apps/AppearanceApp";
 import EnterpriseGateway from "./apps/EnterpriseGateway";
 import SettingsApp from "./apps/SettingsApp";
 import ProfileApp from "./apps/ProfileApp";
 import Wiki from "./apps/Wiki";
-import Monitor from "./apps/Monitor";
 import AetherConsole from "./apps/AetherConsole";
 import Procurement from "./apps/Procurement";
 import SwitchPanel from "./apps/SwitchPanel";
@@ -55,14 +54,12 @@ export function renderHostApp(appId: HostAppId): React.ReactNode {
       return <BackupCenter />;
     case "switches":
       return <SwitchPanel />;
-    case "netops":
-      return <NetOpsConsole />;
+    case "edge":
+      return <EdgeGateway />;
     case "procurement":
       return <Procurement />;
     case "aethercloud":
       return <AetherConsole />;
-    case "monitor":
-      return <Monitor />;
     case "wiki":
       return <Wiki />;
     case "leaderboard":
