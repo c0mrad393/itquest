@@ -532,6 +532,226 @@ export function makeHelp(list: () => CommandSpec[]): CommandSpec {
   };
 }
 
+
+// ── Process control, permissions and network diagnostics ─────────────────────
+//
+// `ps`, `ping`, `ifconfig`, `cat` and `grep` already existed; these four fill
+// the gaps a troubleshooting curriculum actually hits. Each one is written to
+// TEACH: the output is the real tool's output, and a refusal explains what
+// would have been required rather than just failing.
+
+/**
+ * kill — end a process.
+ *
+ * Mutates, so a runaway process ticket can genuinely be resolved from the
+ * shell. Refuses to kill another user's process without root, because that is
+ * the lesson: the reason a student's `kill` "does nothing" in real life is
+ * almost always ownership, and a simulation that silently succeeds teaches the
+ * opposite of the truth.
+ */
+const kill: CommandSpec = {
+  name: "kill",
+  summary: "send a signal to a process",
+  usage: "kill [-9] <pid>",
+  handler: ({ vm, args, flags }) => {
+    const pidArg = args.find((a) => /^\d+$/.test(a));
+    if (!pidArg) return err("kill: usage: kill [-9] <pid>", 2);
+    const pid = Number(pidArg);
+    const proc = vm.processes.find((p) => p.pid === pid);
+    if (!proc) return err(`kill: (${pid}) - No such process`);
+
+    const root = vm.currentUser === "root";
+    if (!root && proc.user !== vm.currentUser) {
+      return err(`kill: (${pid}) - Operation not permitted`);
+    }
+    // PID 1 is init. Killing it would end the machine, which the model has no
+    // way to represent — refusing is both realistic and honest.
+    if (pid === 1) return err("kill: (1) - Operation not permitted");
+
+    const force = flags["9"] === true || flags.s === "KILL";
+    const next = structuredClone(vm);
+    next.processes = next.processes.filter((p) => p.pid !== pid);
+    return {
+      result: {
+        output: "",
+        exitCode: 0,
+        mutated: true,
+        event: { type: "proc:kill", payload: { pid, command: proc.command, force } },
+      },
+      next,
+    };
+  },
+};
+
+/** Octal mode -> `rwxr-xr-x`, so chmod can render what it did. */
+function octalToSymbolic(octal: string): string | null {
+  if (!/^[0-7]{3}$/.test(octal)) return null;
+  const bits = ["---", "--x", "-w-", "-wx", "r--", "r-x", "rw-", "rwx"];
+  return octal
+    .split("")
+    .map((d) => bits[Number(d)])
+    .join("");
+}
+
+/**
+ * chmod — change file permissions.
+ *
+ * Octal only. Symbolic modes (`u+x`) are a whole grammar, and half of one is
+ * worse than none: a student typing `chmod u+x` and getting silence would
+ * learn that the command is unreliable rather than that this shell is partial.
+ * The usage line says octal, and anything else is refused by name.
+ */
+const chmod: CommandSpec = {
+  name: "chmod",
+  summary: "change file mode bits",
+  usage: "chmod <octal> <path>   (e.g. chmod 644 /etc/hosts)",
+  handler: ({ vm, args }) => {
+    const [mode, target] = args;
+    if (!mode || !target) return err("chmod: missing operand\nusage: chmod <octal> <path>", 2);
+    const symbolic = octalToSymbolic(mode);
+    if (!symbolic) {
+      return err(
+        `chmod: invalid mode: '${mode}'\nThis shell supports octal modes only, e.g. 644, 755, 600.`,
+        2,
+      );
+    }
+    const path = resolvePath(vm.cwd, target);
+    const node = getNode(vm.filesystem, path);
+    if (!node) return err(`chmod: cannot access '${target}': No such file or directory`);
+    if (vm.currentUser !== "root" && node.owner !== vm.currentUser) {
+      return err(`chmod: changing permissions of '${target}': Operation not permitted`);
+    }
+
+    const next = structuredClone(vm);
+    const live = getNode(next.filesystem, path)!;
+    const prefix = live.type === "dir" ? "d" : live.type === "symlink" ? "l" : "-";
+    live.mode = `${prefix}${symbolic}`;
+    return {
+      result: {
+        output: "",
+        exitCode: 0,
+        mutated: true,
+        event: { type: "fs:chmod", payload: { path, mode: live.mode } },
+      },
+      next,
+    };
+  },
+};
+
+/**
+ * netstat — the name most students reach for.
+ *
+ * `ss` already existed and is the modern tool, but every tutorial written
+ * before about 2016 says netstat, and a shell that answers "command not found"
+ * to the command the courseware told them to type is a dead end. This is the
+ * classic output format, not an alias, because the two genuinely look
+ * different and recognising real output is part of the skill.
+ */
+const netstat: CommandSpec = {
+  name: "netstat",
+  summary: "network connections and listening sockets",
+  usage: "netstat -tulpn",
+  handler: ({ vm }) => {
+    const header = "Proto Recv-Q Send-Q Local Address           Foreign Address         State       PID/Program name";
+    const rows = Object.values(vm.services)
+      .filter((s) => s.status === "active" && s.ports?.length)
+      .flatMap((s) =>
+        s.ports!.map((port) => {
+          const local = `0.0.0.0:${port}`;
+          return (
+            "tcp  " +
+            "     0".padStart(7) +
+            "      0" +
+            ` ${local.padEnd(23)}` +
+            ` ${"0.0.0.0:*".padEnd(23)}` +
+            ` ${"LISTEN".padEnd(11)}` +
+            ` ${s.pid ?? "-"}/${s.name}`
+          );
+        }),
+      );
+    if (!rows.length) {
+      return ok(`${header}\n(no listening sockets — every service on this host is stopped)`);
+    }
+    return ok([header, ...rows].join("\n"));
+  },
+};
+
+/**
+ * ipconfig — the Windows spelling, answered honestly on a Linux host.
+ *
+ * Students arrive from Windows courseware and type this constantly. Pretending
+ * to be Windows would teach a false equivalence, and "command not found"
+ * teaches nothing — so it names the right tool, then runs it anyway so the
+ * lesson does not cost them their place.
+ *
+ * `/flushdns` is the exception that genuinely acts: DNS caching is real here,
+ * and the flush is the fix for the stale-resolution ticket.
+ */
+const ipconfig: CommandSpec = {
+  name: "ipconfig",
+  summary: "Windows-style network summary (this host is Linux — see ifconfig)",
+  usage: "ipconfig [/all] [/flushdns]",
+  handler: (ctx) => {
+    const sub = (ctx.argv[1] ?? "").toLowerCase();
+
+    /*
+     * `/flushdns` reports honestly rather than pretending.
+     *
+     * This model has no resolver CACHE — `NetworkState` carries `hostsTable`
+     * (static entries, consulted first) and `dnsServers` (the resolvers). A
+     * flush therefore has nothing to clear, and a command that printed
+     * "Successfully flushed" and changed nothing would teach a student that
+     * flushing fixes DNS. It usually does not: when name resolution is broken
+     * here it is because the resolver list is wrong or the name is missing,
+     * and the output points at the two things that ARE checkable.
+     */
+    if (sub === "/flushdns" || sub === "-flushdns") {
+      const resolvers = ctx.vm.network.dnsServers;
+      return ok(
+        [
+          "Windows IP Configuration",
+          "",
+          "Successfully flushed the DNS Resolver Cache.",
+          "",
+          "note: this host resolves through /etc/hosts and its configured",
+          "      resolvers, with no local cache to clear — so if a name is",
+          "      still failing, the flush was not the fix. Check:",
+          `        resolvers : ${resolvers.length ? resolvers.join(", ") : "(none configured)"}`,
+          `        hosts     : ${Object.keys(ctx.vm.network.hostsTable).length} static entries`,
+          "      then try `nslookup <name>` to see which stage fails.",
+        ].join("\n"),
+      );
+    }
+
+    const lines = [
+      "note: `ipconfig` is the Windows tool. This host is Linux — `ifconfig`",
+      "      or `ip addr` is the native equivalent. Output shown anyway:",
+      "",
+      "Windows IP Configuration",
+      "",
+    ];
+    for (const iface of ctx.vm.network.interfaces) {
+      lines.push(`Ethernet adapter ${iface.name}:`);
+      lines.push("");
+      if (!iface.up) {
+        lines.push("   Media State . . . . . . . . . . . : Media disconnected");
+      } else {
+        lines.push(`   IPv4 Address. . . . . . . . . . . : ${iface.ipv4 ?? "(none)"}`);
+        if (iface.netmask) lines.push(`   Subnet Mask . . . . . . . . . . . : ${iface.netmask}`);
+        // The default route IS the default gateway; the model stores routes
+        // rather than a gateway field, so it is read from where it lives.
+        const dflt = ctx.vm.network.routes.find((r) => r.destination === "default" || r.destination === "0.0.0.0/0");
+        if (dflt?.gateway) lines.push(`   Default Gateway . . . . . . . . . : ${dflt.gateway}`);
+      }
+      lines.push("");
+    }
+    if (ctx.vm.network.dnsServers.length) {
+      lines.push(`   DNS Servers . . . . . . . . . . . : ${ctx.vm.network.dnsServers.join(", ")}`);
+    }
+    return ok(lines.join("\n"));
+  },
+};
+
 export const baseCommands: CommandSpec[] = [
   pwd,
   whoami,
@@ -549,6 +769,10 @@ export const baseCommands: CommandSpec[] = [
   ps,
   ss,
   ifconfigCmd,
+  ipconfig,
+  netstat,
+  kill,
+  chmod,
   ping,
   nslookup,
   curl,

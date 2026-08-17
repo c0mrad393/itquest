@@ -71,7 +71,12 @@ export default function MacOSEndpointEnv({ nodeId }: { nodeId: string }) {
   const activeApp = DOCK.find((d) => `tool-${d.id}` === wm.focusId || (wm.focusId === "system" && d.id === "finder"));
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden font-sans" onClick={() => setMenu(null)}>
+    // Pins the SIMULATED endpoint's theme — see the note in
+    // WindowsEndpointEnv for why the host's own theme must not reach in here.
+    <div
+      className={`${dark ? "theme-dark" : "theme-light"} relative flex h-full flex-col overflow-hidden font-sans`}
+      onClick={() => setMenu(null)}
+    >
       <WallpaperLayer visual={visual} />
 
       {/* Menu bar */}

@@ -172,7 +172,9 @@ export function EndpointBrowser({ nodeId }: { nodeId: string }) {
         ))}
       </div>
       {/* Page */}
-      <div className="flex-1 overflow-y-auto term-scroll bg-white/95 text-gray-800">
+      {/* A document pane is white whatever anyone's theme is, so it pins the
+          light token set rather than hoping the ramp points the right way. */}
+      <div className="theme-light flex-1 overflow-y-auto term-scroll bg-white/95 text-gray-800">
         <BrowserPage result={result} />
       </div>
     </div>

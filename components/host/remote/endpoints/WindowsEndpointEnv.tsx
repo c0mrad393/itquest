@@ -64,7 +64,23 @@ export default function WindowsEndpointEnv({ nodeId }: { nodeId: string }) {
   const closeMenus = () => { setStartOpen(false); setQuickOpen(false); };
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden font-sans">
+      /*
+       * ── THE NESTED-THEME BUG ────────────────────────────────────────────
+       *
+       * A simulated endpoint has its OWN light/dark — a user's laptop can be
+       * set to light while the operator's own workstation is dark, and that
+       * difference is part of the fiction. But this environment paints those
+       * grounds with the SAME neutral ramp as the host, and that ramp INVERTS
+       * in light mode. So the two notions of "light" fought: a light simulated
+       * desktop rendered inside a light-mode host got `text-gray-800` resolved
+       * to a pale ink and laid it on white.
+       *
+       * Pinning the token set that matches the SIMULATED theme settles it.
+       * Inside this subtree, "gray-800" means what the endpoint's own theme
+       * says it means, whatever the operator has chosen for themselves. Same
+       * device as `.bg-term` for shells, applied one level up.
+       */
+    <div className={`${dark ? "theme-dark" : "theme-light"} relative flex h-full flex-col overflow-hidden font-sans`}>
       <WallpaperLayer visual={visual} />
 
       {/* Desktop */}

@@ -207,7 +207,7 @@ export function FileViewer({ item }: { item: EndpointFsItem }) {
   if (isSheet) {
     const rows = (item.content ?? "").trim().split(/\r?\n/).filter(Boolean).map((r) => r.split(/[,\t]/));
     return (
-      <div className="h-full overflow-auto bg-white text-brand-on">
+      <div className="theme-light h-full overflow-auto bg-white text-gray-900">
         <div className="flex items-center gap-2 border-b border-gray-300 bg-[#217346] px-3 py-1.5 text-xs font-semibold text-white">
           <span><AppIcon id="file-sheet" size={13} /></span> {item.name}
         </div>
@@ -233,7 +233,7 @@ export function FileViewer({ item }: { item: EndpointFsItem }) {
 
   if (isText || item.content) {
     return (
-      <div className="flex h-full flex-col bg-white text-brand-on">
+      <div className="theme-light flex h-full flex-col bg-white text-gray-900">
         <div className="flex items-center gap-2 border-b border-gray-200 bg-gray-100 px-3 py-1.5 text-xs text-gray-600">
           <span><AppIcon id="file-text" size={13} /></span> {item.name} — Text Editor
         </div>

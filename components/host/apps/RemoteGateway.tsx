@@ -41,6 +41,10 @@ import { useState } from "react";
 import { Segmented } from "./AppChrome";
 import CopyButton from "@/components/ui/CopyButton";
 
+/** The port each protocol actually uses. Conventional, so it is derived
+ *  rather than stored — a field nobody can set wrong. */
+const portFor = (p: string) => (p === "rdp" ? 3389 : 22);
+
 const HEALTH: Record<HealthStatus, { label: string; dot: string; text: string }> = {
   healthy: { label: "Healthy", dot: "bg-emerald-400", text: "text-emerald-300" },
   degraded: { label: "Degraded", dot: "bg-amber-400", text: "text-amber-300" },
@@ -75,7 +79,7 @@ export default function RemoteGateway() {
 
   return (
     <div className="flex h-full flex-col bg-panel text-gray-200">
-      <div className="flex items-center gap-2.5 border-b border-edge bg-panelalt px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2.5 border-b border-edge bg-panelalt px-4 py-3">
         <span className="text-sm font-semibold">{infra.clientOrg}</span>
         {/* The count is the headline number on this screen, and it changes
             colour when anything is unreachable — a neutral pill reading
@@ -102,9 +106,22 @@ export default function RemoteGateway() {
         </div>
       </div>
 
+      {/*
+        ── THE SQUISH BUG ──────────────────────────────────────────────────
+        This was `md:grid-cols-2`, and `md:` is a VIEWPORT breakpoint. Windows
+        here are resizable, so a 400px-wide Gateway on a 1440px display still
+        matched `md:` and split itself into two ~180px columns — every card
+        crushed, every button clipped. The window's width was never consulted.
+
+        `auto-fill` + `minmax` asks no questions about the viewport: it fits as
+        many 19rem columns as the CONTAINER allows and drops to one when it
+        cannot. No breakpoints, no container-query plugin, and it keeps working
+        at any width the operator drags to, including ones nobody anticipated.
+      */}
       <div
         data-tutorial-target="gateway-targets"
-        className="grid flex-1 gap-3 overflow-y-auto term-scroll p-4 md:grid-cols-2"
+        className="grid flex-1 content-start gap-3 overflow-y-auto term-scroll p-4"
+        style={{ gridTemplateColumns: "repeat(auto-fill, minmax(19rem, 1fr))" }}
       >
         {targets.map((entry) => {
           const node = entry.node;
@@ -124,7 +141,7 @@ export default function RemoteGateway() {
           return (
             <div
               key={entry.nodeId}
-              className="selectable relative flex flex-col gap-3 overflow-hidden rounded-wm border border-edge bg-panelalt p-4 pl-5 transition hover:border-edge-strong"
+              className="group/card selectable relative flex min-w-0 flex-col gap-2.5 overflow-hidden rounded-wm border border-edge bg-panelalt p-4 pl-5 transition hover:border-edge-strong"
             >
               {/* Reachability as a rail: readable in peripheral vision, which
                   a dot competing with four other small marks is not. */}
@@ -140,17 +157,14 @@ export default function RemoteGateway() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold text-gray-100">{node.displayName}</div>
-                  <div className="group/addr flex items-center gap-1 font-mono text-[11px] text-gray-500">
-                    <span className="truncate">
-                      {node.hostname} · {node.connection.ip}
-                    </span>
+                  <div className="group/addr flex min-w-0 items-center gap-1 font-mono text-[11px] text-gray-500">
+                    <span className="truncate">{node.hostname}</span>
                     <CopyButton
-                      value={node.connection.ip}
-                      label="IP address"
+                      value={node.hostname}
+                      label="hostname"
                       size={10}
                       className="opacity-0 transition-opacity group-hover/addr:opacity-100 focus-visible:opacity-100"
                     />
-                    {entry.location && <span className="ml-0.5 shrink-0 text-gray-600">{entry.location}</span>}
                   </div>
                 </div>
                 <span
@@ -161,6 +175,49 @@ export default function RemoteGateway() {
                   {node.connection.protocol}
                 </span>
               </div>
+
+              {/*
+                THE ENDPOINT, spelled out.
+                A connection manager's job is to answer "what am I connecting
+                to, and can I". Address, port and round-trip belong on the card
+                rather than behind a hover, and they sit on their own wrapping
+                row so a narrow window stacks them instead of clipping them.
+              */}
+              <dl className="flex flex-wrap items-center gap-x-3 gap-y-1 border-y border-edge/60 py-1.5 text-[11px]">
+                <div className="flex min-w-0 items-center gap-1">
+                  <dt className="text-gray-600">Addr</dt>
+                  <dd className="truncate font-mono text-gray-300">
+                    {node.connection.ip}:{portFor(node.connection.protocol)}
+                  </dd>
+                  <CopyButton
+                    value={`${node.connection.ip}:${portFor(node.connection.protocol)}`}
+                    label="endpoint"
+                    size={10}
+                    className="shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 focus-visible:opacity-100"
+                  />
+                </div>
+                <div className="flex items-center gap-1">
+                  <dt className="text-gray-600">RTT</dt>
+                  <dd
+                    className={`font-mono tabular-nums ${
+                      satLevel === "clear" || satLevel === "busy" ? "text-gray-300" : "text-warn-strong"
+                    }`}
+                    title={
+                      satLevel === "clear" || satLevel === "busy"
+                        ? undefined
+                        : `Base ${node.connection.latencyMs} ms, inflated by network congestion.`
+                    }
+                  >
+                    {effectiveLatency(node.connection.latencyMs, satLevel)} ms
+                  </dd>
+                </div>
+                {entry.location && (
+                  <div className="flex min-w-0 items-center gap-1">
+                    <dt className="text-gray-600">Rack</dt>
+                    <dd className="truncate font-mono text-gray-400">{entry.location}</dd>
+                  </div>
+                )}
+              </dl>
 
               {/* Telemetry is Advanced: useful, but never the reason this
                   screen is open. `grid-rows-[0fr]` collapses to a true zero
@@ -188,20 +245,7 @@ export default function RemoteGateway() {
                 {pro && (
                   <span className="text-[11px] text-gray-500">· {node.role.replace(/-/g, " ")}</span>
                 )}
-                {/* Inflated by congestion, so the operator sees the network is
-                    slow BEFORE they blame the machine they are about to open. */}
-                <span
-                  className={`ml-auto text-[11px] ${
-                    satLevel === "clear" || satLevel === "busy" ? "text-gray-500" : "text-warn-strong"
-                  }`}
-                  title={
-                    satLevel === "clear" || satLevel === "busy"
-                      ? undefined
-                      : `Base ${node.connection.latencyMs} ms, inflated by network congestion.`
-                  }
-                >
-                  {effectiveLatency(node.connection.latencyMs, satLevel)} ms
-                </span>
+
               </div>
 
               {session ? (
