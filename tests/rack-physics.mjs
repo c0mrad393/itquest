@@ -142,6 +142,10 @@ import {
 
 import { MIN_W, MIN_H, GRAB_MARGIN, applyResize, clampPosition, openRect, snapZoneAt, rectForZone, SNAP_EDGE } from "../.test-build/host/windows.js";
 import { BOOT_LINES, BOOT_TOTAL_MS, BOOT_BUDGET_MS, bootLineDelay } from "../.test-build/host/boot.js";
+import {
+  UPDATE_ERRORS, freshUpdateState, canCheck, beginCheck, completeCheck, installPending,
+  restartComplete, pauseUpdates, resumeUpdates, applyWsusPolicy, updateHealthy, updateSummary,
+} from "../.test-build/vm/windows-update.js";
 import { placeMenu, menuHeight, MENU_W } from "../.test-build/host/context-menu.js";
 import { placeIcon, reflow, autoArrange, gridFor, pxToCell, cellToPx } from "../.test-build/host/desktop-icons.js";
 
@@ -2254,6 +2258,76 @@ group("Client endpoints skip the rack chain");
   eq("and leaves no seam", ol.x + ol.w, or.x);
   const ot = rectForZone("tl", ODD), ob = rectForZone("bl", ODD);
   eq("an odd height tiles too", ot.h + ob.h, ODD.h);
+}
+
+// ── Windows Update engine ──────────────────────────────────────────────────
+{
+  group("Windows Update — the happy path");
+  const NOW = 1_700_000_000_000;
+  const base = freshUpdateState(NOW);
+
+  eq("a fresh machine is up to date", base.phase, "up-to-date");
+  eq("and reports so", updateSummary(base, NOW), "You're up to date");
+  eq("and is healthy", updateHealthy(base, NOW), true);
+
+  const found = [{ kb: "KB5035853", title: "Cumulative Update", sizeMb: 812, category: "security" }];
+  const checking = beginCheck(base, NOW);
+  eq("checking is a phase, not a spinner", checking.phase, "checking");
+  const available = completeCheck(checking, found, null, NOW);
+  eq("finding updates moves to available", available.phase, "available");
+  eq("and counts them", updateSummary(available, NOW), "1 update available");
+
+  const installed = installPending(available, null, NOW);
+  eq("installing requires a restart", installed.phase, "restart-required");
+  eq("pending is emptied", installed.pending.length, 0);
+  eq("and history grew", installed.history.length, base.history.length + 1);
+  eq("a restart-required machine is NOT healthy", updateHealthy(installed, NOW), false);
+  eq("restarting finishes it", restartComplete(installed, NOW).phase, "up-to-date");
+  eq("and it is healthy again", updateHealthy(restartComplete(installed, NOW), NOW), true);
+
+  group("Windows Update — injected faults");
+  const failed = installPending(available, "0x800f081f", NOW);
+  eq("an injected error fails the install", failed.phase, "failed");
+  eq("and records the code", failed.error, "0x800f081f");
+  // A history of successes only would hide the whole problem from whoever
+  // picks the ticket up next.
+  eq("the failure is written to history", failed.history[0].outcome, "failed");
+  eq("with its code attached", failed.history[0].errorCode, "0x800f081f");
+  eq("a failed machine is not healthy", updateHealthy(failed, NOW), false);
+
+  const scanFail = completeCheck(beginCheck(base, NOW), [], "0x8024402c", NOW);
+  eq("a scan can fail too", scanFail.phase, "failed");
+  eq("which is where a bad WSUS address surfaces", scanFail.error, "0x8024402c");
+
+  eq("every code explains its cause",
+     Object.values(UPDATE_ERRORS).every((e) => e.cause.length > 40 && e.remedy.length > 30), true);
+  eq("all four named codes are present",
+     ["0x80070002", "0x80240020", "0x800f081f"].every((c) => !!UPDATE_ERRORS[c]), true);
+
+  group("Windows Update — pause is a real block");
+  const paused = pauseUpdates(base, NOW);
+  eq("pausing sets an expiry", paused.pausedUntil > NOW, true);
+  eq("a paused machine refuses to check", canCheck(paused, NOW), false);
+  eq("and beginCheck is a no-op rather than a lie", beginCheck(paused, NOW).phase, base.phase);
+  eq("the summary says how long is left", updateSummary(paused, NOW).includes("paused"), true);
+  eq("a paused machine is NOT healthy", updateHealthy(paused, NOW), false);
+  eq("the pause expires on its own", canCheck(paused, NOW + 8 * 86_400_000), true);
+  eq("and can be resumed early", canCheck(resumeUpdates(paused), NOW), true);
+
+  group("Windows Update — WSUS policy");
+  const wsus = applyWsusPolicy(base, "wsus.corp.internal");
+  eq("policy switches the source", wsus.source, "wsus");
+  eq("and locks the applet", wsus.managedByPolicy, true);
+  // A WSUS source with no server is the misconfiguration itself.
+  const broken = { ...wsus, wsusServer: null };
+  eq("wsus with no server is unhealthy", updateHealthy(broken, NOW), false);
+  eq("clearing policy returns to Microsoft", applyWsusPolicy(wsus, null).source, "microsoft");
+  eq("and unlocks the applet", applyWsusPolicy(wsus, null).managedByPolicy, false);
+
+  group("Windows Update — illegal transitions are refused");
+  eq("cannot install with nothing pending", installPending(base, null, NOW).phase, base.phase);
+  eq("cannot restart-complete when no restart is pending", restartComplete(base, NOW).phase, base.phase);
+  eq("cannot check while already checking", canCheck(checking, NOW), false);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
