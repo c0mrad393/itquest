@@ -301,7 +301,7 @@ export function nextAction(rig: Rig): { slotId: string; hint: string } | null {
  * every scenario, so a learner who has seen one recognises the next — which is
  * the entire argument for a fixed board layout over a procedural one.
  */
-export type RigFault = "faulty-ram" | "cpu-fan-unplugged" | "none";
+export type RigFault = "faulty-ram" | "cpu-fan-unplugged" | "none" | "bare-build";
 
 export function buildDesktopRig(fault: RigFault = "faulty-ram"): Rig {
   const clip = (id: string, label: string): Fastener => ({ id, label, kind: "clip", fastened: true });
@@ -650,9 +650,39 @@ export function buildServerRig(fault: RigFault = "faulty-ram"): Rig {
 }
 
 export function buildRig(kind: MachineKind, fault: RigFault = "faulty-ram"): Rig {
+  // A bare build is the SAME machine with everything taken back out. Deriving
+  // it rather than authoring a fourth set of slots means the assembly bench and
+  // the repair bench can never disagree about what a machine is made of.
+  if (fault === "bare-build") return stripToWorkbench(buildRig(kind, "none"));
   if (kind === "laptop") return buildLaptopRig(fault);
   if (kind === "server") return buildServerRig(fault);
   return buildDesktopRig(fault);
+}
+
+/**
+ * Empty the machine onto the workbench.
+ *
+ * Every fitted part goes to the tray, every fastener opens and every cable
+ * comes off — the state a chassis actually arrives in. Because `post` and
+ * `nextAction` are derived, the assembly job grades itself from here with no
+ * separate "build mode" logic: the same rules that refuse to let you pull a
+ * clipped DIMM refuse to let you call an unclipped one finished.
+ */
+export function stripToWorkbench(rig: Rig): Rig {
+  const pulled: Part[] = [];
+  const slots = rig.slots.map((s) => {
+    if (s.part) pulled.push(s.part);
+    return {
+      ...s,
+      part: null,
+      fasteners: s.fasteners.map((f) => ({ ...f, fastened: false })),
+    };
+  });
+  return {
+    slots,
+    cables: rig.cables.map((c) => ({ ...c, connected: false })),
+    tray: [...rig.tray, ...pulled],
+  };
 }
 
 // ── POST codes and BIOS ─────────────────────────────────────────────────────

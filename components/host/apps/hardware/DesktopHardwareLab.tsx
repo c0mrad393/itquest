@@ -28,7 +28,15 @@
 
 import { useState } from "react";
 import { useHardwareStore } from "@/lib/hardware/rig-store";
-import { blockedReason, canRemove, cablesFor, type Fastener, type MachineKind, type Slot } from "@/lib/hardware/rig";
+import {
+  blockedReason,
+  canRemove,
+  cablesFor,
+  type Fastener,
+  type MachineKind,
+  type Part,
+  type Slot,
+} from "@/lib/hardware/rig";
 import { useInfraStore } from "@/lib/infra/store";
 import { AppIcon } from "@/components/ui/app-icons";
 import { BiosSetupScreen, OsInstallScreen, PostHaltScreen, RunningScreen } from "./BiosScreen";
@@ -36,12 +44,14 @@ import {
   BOARD,
   BOARD_SIZE,
   BoardSubstrate,
+  ChassisFrame,
   ChassisFurniture,
   RigDefs,
+  ScrewdriverIcon,
+  SlotBody,
   CableRun,
   FastenerVisual,
   PartPortrait,
-  SlotBody,
   type BoardKind,
 } from "./RigVisuals";
 
@@ -88,6 +98,22 @@ export default function DesktopHardwareLab() {
   const powerOn = useHardwareStore((s) => s.powerOn);
   const commissionNode = useInfraStore((s) => s.commissionBenchMachine);
   const [registered, setRegistered] = useState<string | null>(null);
+  /*
+   * The part currently in hand.
+   *
+   * Click-to-install rather than HTML5 drag: a pointer drag inside an SVG that
+   * is itself inside a draggable window fights the window manager for the same
+   * gesture, and the failure mode is a part that "sticks" to the cursor while
+   * the window slides away underneath. Picking up and placing is unambiguous,
+   * and it is what the store models anyway — tray to slot.
+   */
+  const [held, setHeld] = useState<string | null>(null);
+
+  const heldPart = rig.tray.find((p) => p.id === held) ?? null;
+  /** Slots this part could legally go into — the model decides, not the view. */
+  const validTargets = heldPart
+    ? rig.slots.filter((sl) => !sl.part && sl.kind === heldPart.kind).map((sl) => sl.id)
+    : [];
 
   const next = hint();
   const active = rig.slots.find((s) => s.id === selected) ?? null;
@@ -127,14 +153,21 @@ export default function DesktopHardwareLab() {
             value={fault}
             onChange={(e) => {
               const v = e.target.value;
-              loadScenario(v === "cpu-fan-unplugged" ? "cpu-fan-unplugged" : v === "none" ? "none" : "faulty-ram");
+              loadScenario(
+                v === "cpu-fan-unplugged" ? "cpu-fan-unplugged"
+                : v === "none" ? "none"
+                : v === "bare-build" ? "bare-build"
+                : "faulty-ram",
+              );
               setPosted(null);
+              setHeld(null);
             }}
             className="rounded border border-edge bg-panel px-2 py-1 text-[10px] text-gray-200"
           >
             <option value="faulty-ram">Scenario — failed RAM stick</option>
             <option value="cpu-fan-unplugged">Scenario — CPU fan unplugged</option>
             <option value="none">Scenario — healthy machine</option>
+            <option value="bare-build">Job — build from parts</option>
           </select>
           <select
             value={machine}
@@ -176,6 +209,9 @@ export default function DesktopHardwareLab() {
             aria-label="Motherboard blueprint"
           >
             <RigDefs />
+            {/* The case, drawn around the board rather than under it, so the
+                topology coordinates keep meaning what they meant. */}
+            <ChassisFrame w={BOARD_SIZE[machine].w * U} h={BOARD_SIZE[machine].h * U} />
             <BoardSubstrate kind={machine} w={BOARD_SIZE[machine].w * U} h={BOARD_SIZE[machine].h * U} />
             <ChassisFurniture kind={machine} u={U} />
 
@@ -201,7 +237,17 @@ export default function DesktopHardwareLab() {
                 board={machine}
                 selected={selected === slot.id}
                 highlighted={next?.slotId === slot.id}
-                onSelect={() => select(slot.id)}
+                dropTarget={validTargets.includes(slot.id)}
+                onSelect={() => {
+                  // Holding a compatible part turns a click into an install.
+                  if (held && validTargets.includes(slot.id)) {
+                    insertComponent(slot.id, held);
+                    setHeld(null);
+                    select(slot.id);
+                    return;
+                  }
+                  select(slot.id);
+                }}
                 onFastener={(f) =>
                   f.kind === "clip" || f.kind === "zif" || f.kind === "handle"
                     ? toggleClip(slot.id, f.id)
@@ -217,6 +263,14 @@ export default function DesktopHardwareLab() {
             cables are clear.
           </p>
         </div>
+
+        {/* ── Parts bin ──────────────────────────────────────────────────── */}
+        <PartsBin
+          board={machine}
+          tray={rig.tray}
+          held={held}
+          onPick={(id) => setHeld((cur) => (cur === id ? null : id))}
+        />
 
         {/* ── Inspector ──────────────────────────────────────────────────── */}
         <aside className="flex w-72 shrink-0 flex-col border-l border-edge bg-panel">
@@ -277,6 +331,7 @@ function SlotShape({
   board,
   selected,
   highlighted,
+  dropTarget,
   onSelect,
   onFastener,
 }: {
@@ -284,6 +339,7 @@ function SlotShape({
   board: BoardKind;
   selected: boolean;
   highlighted: boolean;
+  dropTarget: boolean;
   onSelect: () => void;
   onFastener: (f: Fastener) => void;
 }) {
@@ -307,6 +363,19 @@ function SlotShape({
           strokeDasharray="6 4"
           opacity="0.95"
         />
+      )}
+
+      {/* A valid destination for the part in hand. Green, pulsing, and only on
+          slots the MODEL says will accept it — never a guess in the view. */}
+      {dropTarget && (
+        <g>
+          <rect
+            x={g.x - 4} y={g.y - 4} width={g.w + 8} height={g.h + 8} rx="3"
+            fill="#22c55e" fillOpacity="0.16" stroke="#4ade80" strokeWidth="1.8"
+          >
+            <animate attributeName="fill-opacity" values="0.1;0.28;0.1" dur="1.4s" repeatCount="indefinite" />
+          </rect>
+        </g>
       )}
 
       {/* Silkscreen outline + designator, printed on the board under the part. */}
@@ -533,5 +602,104 @@ function Inspector({
         )}
       </section>
     </div>
+  );
+}
+
+
+/**
+ * The workbench surface: parts waiting to go in, and the tools to fit them.
+ *
+ * Reads `rig.tray`, which is the store's own idea of "not installed yet" — so a
+ * part removed during a repair lands here beside the parts of a fresh build,
+ * because to the machine those are the same thing.
+ *
+ * Each tile draws the REAL part vector at bin scale rather than an icon, so the
+ * thing you pick up is recognisably the thing that appears in the slot.
+ */
+function PartsBin({
+  board,
+  tray,
+  held,
+  onPick,
+}: {
+  board: BoardKind;
+  // The real Part type: widening to `string` here would let a bin tile render
+  // a kind the board has no body for, and it would fail silently.
+  tray: Part[];
+  held: string | null;
+  onPick: (id: string) => void;
+}) {
+  return (
+    <aside className="flex w-52 shrink-0 flex-col border-l border-edge bg-[#14181f]">
+      <header className="shrink-0 border-b border-edge px-3 py-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Parts bin</h3>
+        <p className="mt-0.5 text-[10px] leading-snug text-gray-500">
+          {held ? "Click a highlighted slot to fit it." : "Click a part to pick it up."}
+        </p>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto term-scroll p-2">
+        {tray.length === 0 ? (
+          <p className="px-1 py-3 text-[10px] leading-relaxed text-gray-500">
+            Bin is empty — everything is in the machine.
+          </p>
+        ) : (
+          tray.map((p) => {
+            const picked = held === p.id;
+            return (
+              <button
+                key={p.id}
+                onClick={() => onPick(p.id)}
+                className={`mb-1.5 flex w-full items-center gap-2 rounded-md border p-1.5 text-left transition-all ${
+                  picked
+                    ? "border-info bg-info/15 shadow-[0_0_12px_-2px] shadow-info"
+                    : "border-edge hover:border-gray-500 hover:bg-gray-500/10"
+                }`}
+              >
+                <svg viewBox="0 0 54 30" className="h-8 w-14 shrink-0 rounded bg-[#0a0f16]">
+                  <RigDefs />
+                  {/* The part at bin scale, using the same body components. */}
+                  <SlotBody
+                    slot={{
+                      id: p.id, kind: p.kind, label: p.model,
+                      x: 0, y: 0, w: 0, h: 0,
+                      part: p,
+                      fasteners: [], cableIds: [],
+                    }}
+                    g={{ x: 5, y: 5, w: 44, h: 20 }}
+                    kind={board}
+                  />
+                </svg>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[10px] font-medium text-gray-100">{p.model}</span>
+                  <span className="block text-[9px] uppercase tracking-wide text-gray-500">{p.kind}</span>
+                </span>
+              </button>
+            );
+          })
+        )}
+      </div>
+
+      {/* Tools. The screwdriver is not a mode — every fastener is already
+          clickable — but a bench without one does not read as a bench. */}
+      <footer className="shrink-0 border-t border-edge px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <ScrewdriverIcon size={22} />
+          <span className="text-[9px] leading-tight text-gray-500">
+            Screws and clips are clicked directly on the board.
+          </span>
+        </div>
+        <div className="mt-2 flex gap-1.5">
+          {Array.from({ length: 6 }, (_, i) => (
+            <svg key={i} viewBox="0 0 12 12" className="h-3 w-3" aria-hidden>
+              <RigDefs />
+              <circle cx="6" cy="6" r="4.4" fill="url(#hw-screw)" />
+              <rect x="3.2" y="5.4" width="5.6" height="1.2" rx="0.4" fill="#3f464f" />
+              <rect x="5.4" y="3.2" width="1.2" height="5.6" rx="0.4" fill="#3f464f" />
+            </svg>
+          ))}
+        </div>
+      </footer>
+    </aside>
   );
 }

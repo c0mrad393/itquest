@@ -112,6 +112,7 @@ import {
   removePart,
   setCable,
   toggleFastener,
+  stripToWorkbench,
   buildLaptopRig,
   buildServerRig,
   buildRig,
@@ -2032,6 +2033,62 @@ group("Client endpoints skip the rack chain");
   // produces a node that really does have less memory.
   eq("a failed stick is excluded from the total", rigSpec(buildDesktopRig("faulty-ram")).ramGb, 8);
   eq("two sockets report twice the cores", rigSpec(buildServerRig("none")).cores, 16);
+}
+
+{
+  group("Hardware bench — assembling from bare parts");
+
+  const bare = buildRig("desktop", "bare-build");
+  eq("a bare chassis has nothing fitted", bare.slots.every((s) => s.part === null), true);
+  eq("...every part is on the bench", bare.tray.length > 0, true);
+  eq("...every fastener is open", bare.slots.every((s) => s.fasteners.every((f) => !f.fastened)), true);
+  eq("...and no cable is seated", bare.cables.every((c) => !c.connected), true);
+  eq("an unbuilt machine does not boot", post(bare).boots, false);
+
+  // The build is graded by the SAME rules as a repair — no build mode.
+  eq("guidance points at the first required empty slot", nextAction(bare).slotId, "cpu");
+
+  // Fit the CPU, and the machine stops complaining about the socket.
+  const cpuPart = bare.tray.find((p) => p.kind === "cpu");
+  let built = insertPart(bare, "cpu", cpuPart.id);
+  eq("the CPU seats", built.slots.find((s) => s.id === "cpu").part.id, cpuPart.id);
+  eq("...and leaves the bench", built.tray.some((p) => p.id === cpuPart.id), false);
+
+  // A seated but unsecured part still fails POST, which is what makes the
+  // retention lever a step rather than a decoration.
+  eq("a seated but unfastened CPU still fails", post(built).boots, false);
+  built = toggleFastener(built, "cpu", "cpu-lever");
+  eq("...and guidance moves on once it is locked",
+     nextAction(built).slotId === "cpu", false);
+
+  // A part only goes where it belongs, so the bin cannot be forced.
+  const ramPart = bare.tray.find((p) => p.kind === "ram");
+  eq("RAM will not go into the CPU socket",
+     insertPart(bare, "cpu", ramPart.id).slots.find((s) => s.id === "cpu").part, null);
+
+  // Stripping is idempotent-ish: doing it to an already-bare rig changes nothing.
+  eq("stripping a bare rig adds no phantom parts", stripToWorkbench(bare).tray.length, bare.tray.length);
+
+  // A fully rebuilt machine posts. Assemble everything the derived guidance asks
+  // for, which is the same loop a player runs.
+  let full = buildRig("desktop", "bare-build");
+  for (let step = 0; step < 60; step++) {
+    const n = nextAction(full);
+    if (!n) break;
+    const slot = full.slots.find((s) => s.id === n.slotId);
+    if (!slot) break;
+    if (!slot.part) {
+      const part = full.tray.find((p) => p.kind === slot.kind);
+      if (part) { full = insertPart(full, slot.id, part.id); continue; }
+    }
+    const loose = slot.fasteners.find((f) => !f.fastened);
+    if (loose) { full = toggleFastener(full, slot.id, loose.id); continue; }
+    const cable = full.cables.find((c) => !c.connected);
+    if (cable) { full = setCable(full, cable.id, true); continue; }
+    break;
+  }
+  eq("following the derived guidance builds a machine that posts", post(full).boots, true);
+  eq("...with nothing left outstanding", nextAction(full), null);
 }
 
 {

@@ -822,3 +822,49 @@ export function PartPortrait({ slot, kind }: { slot: Slot; kind: BoardKind }) {
     </svg>
   );
 }
+
+
+// ── Workbench furniture ─────────────────────────────────────────────────────
+
+/**
+ * The chassis the board is mounted into.
+ *
+ * Drawn as a frame AROUND the board rather than behind it, so the motherboard
+ * area stays exactly where the topology coordinates put it — the case is set
+ * dressing for the build, not a new coordinate system to re-lay everything in.
+ */
+export function ChassisFrame({ w, h }: { w: number; h: number }) {
+  const m = 10;
+  return (
+    <g className="pointer-events-none">
+      {/* Case shell */}
+      <rect x={-m} y={-m} width={w + m * 2} height={h + m * 2} rx="12" fill="#191d24" />
+      <rect x={-m} y={-m} width={w + m * 2} height={h + m * 2} rx="12" fill="none" stroke="#2f353e" strokeWidth="2" />
+      {/* Lit top rail and shadowed floor, so the tray reads as a box */}
+      <rect x={-m} y={-m} width={w + m * 2} height="3" rx="1.5" fill="#3d444e" />
+      <rect x={-m} y={h + m - 3} width={w + m * 2} height="3" rx="1.5" fill="#0d1116" />
+      {/* Motherboard standoffs at the mounting points */}
+      {[[0.03, 0.05], [0.97, 0.05], [0.03, 0.95], [0.97, 0.95]].map(([fx, fy], i) => (
+        <circle key={i} cx={fx * w} cy={fy * h} r="7" fill="none" stroke="#4a525c" strokeWidth="1.4" opacity="0.6" />
+      ))}
+      {/* Rear I/O cut-out and expansion slot covers down the right edge */}
+      <rect x={w + 1} y={6} width={m - 2} height={h * 0.16} rx="2" fill="#0b0e13" />
+      {Array.from({ length: 6 }, (_, i) => (
+        <rect key={i} x={w + 2} y={h * 0.42 + i * (h * 0.085)} width={m - 4} height={h * 0.055} rx="1" fill="#252b33" />
+      ))}
+    </g>
+  );
+}
+
+/** A screwdriver resting on the bench. Set dressing, and a mode affordance. */
+export function ScrewdriverIcon({ size = 34 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 60 14" width={size * 1.8} height={size * 0.42} aria-hidden>
+      <rect x="0" y="3.6" width="22" height="6.8" rx="3.4" fill="#c2410c" />
+      <rect x="0" y="3.6" width="22" height="2.4" rx="1.2" fill="#ea580c" />
+      <rect x="22" y="5.4" width="4" height="3.2" fill="#6b7280" />
+      <rect x="26" y="5.9" width="26" height="2.2" rx="1" fill="url(#hw-metal)" />
+      <rect x="52" y="4.9" width="7" height="4.2" rx="0.8" fill="url(#hw-metal-cool)" />
+    </svg>
+  );
+}
