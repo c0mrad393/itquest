@@ -37,9 +37,10 @@ import { useThemeStore } from "@/lib/host/theme";
 import AdminCenter from "./AdminCenter";
 import ServicesPanel from "../apps-windows/ServicesPanel";
 import EventViewer from "../apps-windows/EventViewer";
+import WindowsUpdatePanel from "./WindowsUpdatePanel";
 import ServerTerminal from "./ServerTerminal";
 
-type AppId = "admin" | "services" | "events" | "terminal";
+type AppId = "admin" | "services" | "events" | "updates" | "terminal";
 
 interface AppMeta {
   id: AppId;
@@ -53,6 +54,7 @@ const APPS: AppMeta[] = [
   { id: "admin", title: ADMIN_CENTER, iconId: "server", autoStart: true },
   { id: "services", title: "Services", iconId: "gear" },
   { id: "events", title: "Event Log", iconId: "list" },
+  { id: "updates", title: "Windows Update", iconId: "shield" },
   { id: "terminal", title: `${SERVER_OS} Console`, iconId: "terminal" },
 ];
 
@@ -199,6 +201,7 @@ export default function ServerOsDesktop({ nodeId }: { nodeId: string }) {
               {w.app === "admin" && <AdminCenter nodeId={nodeId} />}
               {w.app === "services" && <ServicesPanel nodeId={nodeId} />}
               {w.app === "events" && <EventViewer nodeId={nodeId} />}
+              {w.app === "updates" && <WindowsUpdatePanel nodeId={nodeId} />}
               {w.app === "terminal" && <ServerTerminal nodeId={nodeId} />}
             </NestedWindow>
           );
