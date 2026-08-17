@@ -516,3 +516,17 @@ code {
   user-select: text;
   -webkit-user-select: text;
 }
+
+/* The Connecting dialog's indeterminate bar. A real handshake has no percent
+   complete, so the bar sweeps rather than filling — a progress bar that claims
+   40% when nothing measured 40% is a small lie the whole dialog rests on. */
+@keyframes rdpSweep {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(310%); }
+}
+.rdp-progress {
+  animation: rdpSweep 1.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rdp-progress { animation: none; width: 100%; }
+}
