@@ -129,6 +129,17 @@ export interface Route {
   metric: number;
 }
 
+/**
+ * Layer-7 applications a rule can match instead of a port.
+ *
+ * The whole point of L7 filtering is that these do NOT map cleanly to ports —
+ * BitTorrent hops ports, social media rides 443 alongside everything else. A
+ * rule carrying an `app` is matched by application, and a port on the same rule
+ * would be a second, contradictory matcher; the evaluator treats `app` as the
+ * narrower one and ignores the port.
+ */
+export type L7App = "bittorrent" | "social-media" | "streaming" | "rdp" | "cloud-storage";
+
 export interface FirewallRule {
   id: string;
   chain: "INPUT" | "OUTPUT" | "FORWARD";
@@ -138,6 +149,75 @@ export interface FirewallRule {
   source?: string; // CIDR or "any"
   destination?: string;
   enabled: boolean;
+  /** Application-layer match. Takes precedence over `port` when present. */
+  app?: L7App;
+  /** Operator's own note. Shown verbatim; a generated sentence is used when absent. */
+  description?: string;
+}
+
+/**
+ * Destination NAT — a port forward.
+ *
+ * Stored, because "the port forward points at the wrong host" is precisely the
+ * kind of fault a ticket injects and a win-condition grades. SNAT/masquerade is
+ * NOT modelled as a rule: every estate here masquerades outbound, and offering
+ * a toggle for something that is always on teaches a distinction that does not
+ * exist at this scale.
+ */
+export interface NatRule {
+  id: string;
+  protocol: "tcp" | "udp";
+  /** Port on the WAN address the outside world connects to. */
+  externalPort: number;
+  /** LAN host the traffic is delivered to. */
+  internalIp: string;
+  internalPort: number;
+  description?: string;
+  enabled: boolean;
+}
+
+/** A MAC pinned to an address. Stored; leases themselves are derived. */
+export interface DhcpReservation {
+  mac: string;
+  ip: string;
+  hostname?: string;
+}
+
+export interface DhcpConfig {
+  enabled: boolean;
+  rangeStart: string;
+  rangeEnd: string;
+  leaseMinutes: number;
+  reservations: DhcpReservation[];
+}
+
+export type ThreatKind = "port-scan" | "ddos" | "brute-force" | "malware-c2" | "exploit";
+
+export interface ThreatEvent {
+  id: string;
+  /** Epoch ms. */
+  at: number;
+  kind: ThreatKind;
+  severity: "low" | "medium" | "high" | "critical";
+  source: string;
+  target: string;
+  /** Vendor-style signature id, e.g. "ET SCAN Nmap SYN". */
+  signature: string;
+  /** Whether the engine dropped it or merely saw it — depends on the mode. */
+  action: "blocked" | "detected";
+}
+
+/**
+ * Intrusion detection / prevention.
+ *
+ * `mode` is the distinction that matters and the one people get wrong: detect
+ * SEES and logs, prevent sees and DROPS. A ticket where "the IDS is on but the
+ * attack still landed" is only solvable if those are separate states.
+ */
+export interface IdsState {
+  enabled: boolean;
+  mode: "detect" | "prevent";
+  events: ThreatEvent[];
 }
 
 export interface NetworkState {
@@ -147,7 +227,20 @@ export interface NetworkState {
   dnsServers: string[];
   /** Static resolution map used by nslookup/dig/ping BEFORE dnsServers. */
   hostsTable: Record<string, string>;
+  /**
+   * Evaluated top-down, first match wins. The ARRAY ORDER is the rule order —
+   * there is no separate priority field, because two sources of ordering
+   * inevitably disagree and the array is the one the evaluator already walks.
+   */
   firewall: FirewallRule[];
+  /*
+   * Appliance-only state. Optional because every node carries a NetworkState
+   * and only the perimeter gateway does NAT, hands out leases or runs an IDS —
+   * making these required would put empty inspection engines on every laptop.
+   */
+  nat?: NatRule[];
+  dhcp?: DhcpConfig;
+  ids?: IdsState;
   /**
    * Simulated reachability of remote hosts. The interpreter derives ping/curl
    * results from: interface up + route present + firewall allows + this map.

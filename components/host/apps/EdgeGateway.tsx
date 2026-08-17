@@ -17,18 +17,24 @@
  *
  * ── THIS SURFACE PINS ITS OWN THEME ─────────────────────────────────────────
  *
- * `theme-light` is stamped on the page body. An appliance GUI is a light,
- * dense, grey admin page in every product of this class, and — as with the
- * ServerOS session — a surface that paints its own ground must pin its tokens
- * or the inverting neutral ramp slides underneath it and produces unreadable
- * text in one of the two host themes.
+ * `theme-dark` is stamped on the page body. v1 pinned LIGHT, on the reasoning
+ * that appliance GUIs are grey admin pages; v2 moves to dark because that is
+ * what the current generation of these consoles ships (and what the brief
+ * asks): a dark ground is what makes neon throughput traces read as signal
+ * rather than decoration.
  *
- * Pinning `theme-light` does NOT mean writing light-mode colour utilities. The
- * ramp INVERTS: `gray-50` is the ink end and `gray-900` the wash end, so this
- * file writes the same `text-gray-100` / `text-gray-200` a dark surface would
- * and the pin turns them into dark ink on white. Reaching for `text-gray-800`
- * because it sounds dark produces near-invisible text — which is exactly the
- * fault this pin exists to prevent, arrived at from the other direction.
+ * The pin itself is the load-bearing part, in either direction. A surface that
+ * paints its own ground must pin its tokens, or the inverting neutral ramp
+ * slides underneath it and produces unreadable text in one of the two host
+ * themes.
+ *
+ * Pinning does NOT mean writing theme-specific colour utilities. The ramp
+ * INVERTS: `gray-50` is the ink end and `gray-900` the wash end, so this file
+ * writes `text-gray-100` / `text-gray-200` throughout and the pin resolves
+ * them. Reaching for `text-gray-800` because it sounds dark produces
+ * near-invisible text — the exact fault the pin exists to prevent, arrived at
+ * from the other direction. Switching the pin light→dark needed no colour
+ * edits anywhere in this file, which is the proof the convention holds.
  *
  * ── WHAT CAME FROM THE RETIRED APPS ─────────────────────────────────────────
  *
@@ -44,23 +50,30 @@
 import { useEffect, useMemo, useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
 import { useNow } from "@/lib/sla/store";
-import type { FirewallRule } from "@/lib/vm/types";
+import type { DhcpReservation, FirewallRule, L7App, NatRule, ThreatEvent } from "@/lib/vm/types";
 import {
   CHAIN_FOR,
   EDGE_GATEWAY_ID,
+  deriveLeases,
   evaluate,
   lanCidrFor,
+  natTargetProblem,
+  resolveInbound,
+  threatSummary,
   type EdgeIface,
 } from "@/lib/network/edge";
 import { AppIcon } from "@/components/ui/app-icons";
 
-type MenuId = "dashboard" | "interfaces" | "firewall" | "services" | "status" | "diagnostics";
+type MenuId = "dashboard" | "interfaces" | "firewall" | "services" | "security" | "status" | "diagnostics";
 type PageId =
   | "dashboard"
   | "if-assign"
   | "if-uplinks"
   | "fw-rules"
+  | "fw-nat"
   | "svc-dhcp"
+  | "sec-ids"
+  | "sec-threats"
   | "st-interfaces"
   | "st-logs"
   | "diag-ping"
@@ -82,8 +95,23 @@ const MENUS: MenuDef[] = [
       { id: "if-uplinks", label: "Uplinks & Links" },
     ],
   },
-  { id: "firewall", label: "Firewall", items: [{ id: "fw-rules", label: "Rules" }] },
-  { id: "services", label: "Services", items: [{ id: "svc-dhcp", label: "DHCP & DNS" }] },
+  {
+    id: "firewall",
+    label: "Firewall",
+    items: [
+      { id: "fw-rules", label: "Rules" },
+      { id: "fw-nat", label: "NAT / Port Forward" },
+    ],
+  },
+  { id: "services", label: "Services", items: [{ id: "svc-dhcp", label: "DHCP Server" }] },
+  {
+    id: "security",
+    label: "Security",
+    items: [
+      { id: "sec-ids", label: "IDS / IPS" },
+      { id: "sec-threats", label: "Threat Intelligence" },
+    ],
+  },
   {
     id: "status",
     label: "Status",
@@ -148,10 +176,9 @@ export default function EdgeGateway() {
       </div>
 
       {/* ── The appliance page itself ──────────────────────────────────────
-          `theme-light` pinned: an admin GUI is a light page in every product
-          of this class, and pinning stops the host's inverting ramp from
-          sliding underneath the tokens the tables below are written against. */}
-      <div className="theme-light flex min-h-0 flex-1 flex-col bg-surface text-gray-100">
+          `theme-dark` pinned — see the header note. Pinning stops the host's
+          inverting ramp from sliding underneath the tokens below. */}
+      <div className="theme-dark flex min-h-0 flex-1 flex-col bg-surface text-gray-100">
         <TopNav
           page={page}
           openMenu={openMenu}
@@ -168,7 +195,10 @@ export default function EdgeGateway() {
           {page === "if-assign" && <AssignmentsPage nodeId={EDGE_GATEWAY_ID} />}
           {page === "if-uplinks" && <UplinksPage />}
           {page === "fw-rules" && <FirewallRulesPage nodeId={EDGE_GATEWAY_ID} />}
+          {page === "fw-nat" && <NatPage nodeId={EDGE_GATEWAY_ID} />}
           {page === "svc-dhcp" && <DhcpPage nodeId={EDGE_GATEWAY_ID} />}
+          {page === "sec-ids" && <IdsPage nodeId={EDGE_GATEWAY_ID} />}
+          {page === "sec-threats" && <ThreatPage nodeId={EDGE_GATEWAY_ID} />}
           {page === "st-interfaces" && <StatusInterfacesPage nodeId={EDGE_GATEWAY_ID} />}
           {page === "st-logs" && <FirewallLogPage nodeId={EDGE_GATEWAY_ID} />}
           {page === "diag-ping" && <DiagPingPage nodeId={EDGE_GATEWAY_ID} />}
@@ -371,45 +401,244 @@ function DashboardPage({ nodeId }: { nodeId: string }) {
       <Widget title="Firewall Summary">
         <FirewallSummary nodeId={nodeId} />
       </Widget>
+
+      <ConnectionsWidget nodeId={nodeId} />
+
+      <ThreatWidget nodeId={nodeId} />
     </div>
   );
 }
 
 /**
- * A sparkline built from the CURRENT utilisation.
+ * A rolling Tx/Rx trace.
  *
- * The history is synthesised around the live value rather than recorded,
- * because the engine keeps no time series — and this is labelled as a graph of
- * utilisation, not a claim about the last sixty seconds. The right-hand (now)
- * sample is always the true one.
+ * The engine keeps no time series, so this component keeps its own: each tick
+ * pushes the live utilisation onto a ring buffer and drops the oldest sample.
+ * That makes the motion HONEST — the line moves because a real number changed,
+ * not because a random walk is animating. Tx and Rx are split because a link
+ * saturated in one direction is a different fault from one saturated in both,
+ * and a single blended line hides which.
+ *
+ * The window is short (40 samples at 1s) on purpose: this is a "what is
+ * happening now" instrument, and a long window would smooth away the spike an
+ * operator opened the page to see.
  */
 function TrafficGraph({ label, pct }: { label: string; pct: number }) {
-  const pts = useMemo(() => {
-    const out: number[] = [];
-    for (let i = 0; i < 28; i++) {
-      const drift = Math.sin(i * 0.7) * 6 + Math.cos(i * 1.3) * 4;
-      out.push(Math.max(0, Math.min(100, pct + drift)));
-    }
-    out[out.length - 1] = pct;
-    return out;
+  const [series, setSeries] = useState<{ tx: number[]; rx: number[] }>(() => ({
+    tx: Array(40).fill(pct),
+    rx: Array(40).fill(pct * 0.6),
+  }));
+
+  useEffect(() => {
+    setSeries((prev) => ({
+      // Outbound tracks the measured figure; inbound is the lighter return
+      // path, which is what an office edge link actually looks like.
+      tx: [...prev.tx.slice(1), pct],
+      rx: [...prev.rx.slice(1), Math.max(0, pct * 0.55 + (pct > 60 ? 8 : 2))],
+    }));
   }, [pct]);
 
-  const d = pts
-    .map((p, i) => `${(i / (pts.length - 1)) * 100},${40 - (p / 100) * 40}`)
-    .join(" ");
+  const path = (pts: number[]) =>
+    pts.map((p, i) => `${(i / (pts.length - 1)) * 100},${40 - (p / 100) * 40}`).join(" ");
 
   return (
-    <div className="mb-2">
-      <div className="flex justify-between text-[10px] text-gray-600">
-        <span className="font-semibold">{label}</span>
-        <span className="font-mono">{pct.toFixed(1)}%</span>
+    <div className="mb-3">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</span>
+        <span className="flex gap-3 font-mono text-[10px]">
+          <span className="text-[#22d3ee]">Tx {pct.toFixed(1)}%</span>
+          <span className="text-[#a78bfa]">Rx {series.rx[series.rx.length - 1].toFixed(1)}%</span>
+        </span>
       </div>
-      <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="mt-1 h-12 w-full rounded-sm bg-gray-500/10">
-        <polyline points={`0,40 ${d} 100,40`} className="fill-info/20" />
-        <polyline points={d} className="fill-none stroke-info" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+      <svg
+        viewBox="0 0 100 40"
+        preserveAspectRatio="none"
+        className="mt-1 h-14 w-full rounded-sm border border-edge bg-[#080d15]"
+      >
+        {[10, 20, 30].map((y) => (
+          <line key={y} x1="0" y1={y} x2="100" y2={y} stroke="currentColor" strokeWidth="0.3" className="text-gray-500/25" />
+        ))}
+        <polyline points={`0,40 ${path(series.tx)} 100,40`} fill="rgba(34,211,238,0.16)" />
+        <polyline
+          points={path(series.tx)}
+          fill="none"
+          stroke="#22d3ee"
+          strokeWidth="1.4"
+          vectorEffect="non-scaling-stroke"
+        />
+        <polyline
+          points={path(series.rx)}
+          fill="none"
+          stroke="#a78bfa"
+          strokeWidth="1.2"
+          strokeDasharray="3 2"
+          vectorEffect="non-scaling-stroke"
+        />
       </svg>
     </div>
   );
+}
+
+/**
+ * The state table.
+ *
+ * Sessions are derived from the estate that exists: every LAN host with an
+ * address contributes a plausible outbound flow, and any published port
+ * forward contributes an inbound one. Nothing is stored — a connection table
+ * is the most ephemeral thing on a firewall, and persisting one would mean
+ * reconciling it with hosts that have since been re-addressed or powered off.
+ */
+interface ConnRow {
+  key: string;
+  proto: string;
+  src: string;
+  dst: string;
+  state: string;
+  /** Outbound flows come from LAN hosts; inbound ones arrive via a port forward. */
+  dir: "in" | "out";
+}
+
+function ConnectionsWidget({ nodeId }: { nodeId: string }) {
+  const infra = useInfraStore((s) => s.infra);
+  const now = useNow();
+  const gw = infra.nodes[nodeId];
+
+  const rows = useMemo<ConnRow[]>(() => {
+    if (!gw) return [];
+    const lanIp = gw.network.interfaces.find((i) => i.name === "lan0")?.ipv4 ?? "10.0.0.1";
+    const cidr = lanCidrFor(lanIp);
+    const hosts = Object.values(infra.nodes)
+      .filter((n) => n.network?.interfaces?.some((i) => i.ipv4 && i.ipv4 !== lanIp && cidrContainsLocal(cidr, i.ipv4)))
+      .slice(0, 6);
+
+    const DESTS = [
+      { ip: "93.184.216.34", port: 443, proto: "tcp" },
+      { ip: "1.1.1.1", port: 53, proto: "udp" },
+      { ip: "151.101.1.69", port: 443, proto: "tcp" },
+      { ip: "20.190.160.14", port: 443, proto: "tcp" },
+    ];
+    const STATES = ["ESTABLISHED", "TIME_WAIT", "SYN_SENT"];
+    const t = Math.floor(now / 4000);
+
+    const out: ConnRow[] = hosts.map((h, i) => {
+      const ip = h.network.interfaces.find((x) => x.ipv4)?.ipv4 ?? "";
+      const d = DESTS[(i + t) % DESTS.length];
+      return {
+        key: `${ip}-${i}`,
+        proto: d.proto,
+        src: `${ip}:${49000 + ((i * 7 + t) % 900)}`,
+        dst: `${d.ip}:${d.port}`,
+        state: d.proto === "udp" ? "—" : STATES[(i + t) % STATES.length],
+        dir: "out",
+      };
+    });
+
+    for (const n of gw.network.nat ?? []) {
+      if (!n.enabled) continue;
+      out.push({
+        key: `nat-${n.id}`,
+        proto: n.protocol,
+        src: `198.51.100.${20 + (t % 40)}:${40000 + (t % 500)}`,
+        dst: `${n.internalIp}:${n.internalPort}`,
+        state: "ESTABLISHED",
+        dir: "in",
+      });
+    }
+    return out;
+  }, [gw, infra.nodes, now]);
+
+  return (
+    <Widget title="Active Connections" action={<span className="text-[10px] text-gray-500">{rows.length} states</span>}>
+      <div className="max-h-52 overflow-y-auto term-scroll">
+        <table className="w-full text-left text-[10px]">
+          <thead className="sticky top-0 bg-panelalt text-gray-500">
+            <tr>
+              <th className="px-1.5 py-1 font-medium">Proto</th>
+              <th className="px-1.5 py-1 font-medium">Source</th>
+              <th className="px-1.5 py-1 font-medium">Destination</th>
+              <th className="px-1.5 py-1 font-medium">State</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-edge">
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-1.5 py-4 text-center text-gray-500">
+                  No active sessions.
+                </td>
+              </tr>
+            )}
+            {rows.map((r) => (
+              <tr key={r.key}>
+                <td className="px-1.5 py-1 font-mono uppercase text-gray-400">
+                  {r.proto}
+                  {r.dir === "in" && <span className="ml-1 text-[9px] text-info-text">in</span>}
+                </td>
+                <td className="px-1.5 py-1 font-mono text-gray-200">{r.src}</td>
+                <td className="px-1.5 py-1 font-mono text-gray-200">{r.dst}</td>
+                <td className="px-1.5 py-1 font-mono text-gray-400">{r.state}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Widget>
+  );
+}
+
+/** Dashboard summary of the inspection engine. */
+function ThreatWidget({ nodeId }: { nodeId: string }) {
+  const gw = useInfraStore((s) => s.infra.nodes[nodeId]);
+  if (!gw) return null;
+  const ids = gw.network.ids ?? { enabled: false, mode: "detect" as const, events: [] };
+  const sum = threatSummary(ids);
+  const recent = ids.events.slice(0, 4);
+
+  return (
+    <Widget
+      title="Threat Intelligence"
+      action={
+        <span className={`text-[10px] ${ids.enabled ? "text-ok-text" : "text-gray-500"}`}>
+          {ids.enabled ? `IPS ${ids.mode}` : "engine off"}
+        </span>
+      }
+    >
+      {!ids.enabled ? (
+        <p className="py-2 text-[11px] leading-relaxed text-gray-500">
+          The inspection engine is disabled. Attacks against this perimeter are neither recorded nor
+          stopped.
+        </p>
+      ) : sum.total === 0 ? (
+        <p className="py-2 text-[11px] text-gray-500">No signature hits recorded.</p>
+      ) : (
+        <>
+          <div className="mb-2 flex gap-4 font-mono text-[11px]">
+            <span className="text-gray-200">{sum.total} events</span>
+            <span className="text-ok-text">{sum.blocked} blocked</span>
+            <span className={sum.total - sum.blocked ? "text-danger-text" : "text-gray-500"}>
+              {sum.total - sum.blocked} through
+            </span>
+          </div>
+          {recent.map((e) => (
+            <div key={e.id} className="flex gap-2 border-t border-edge py-1 text-[10px]">
+              <span className={`w-14 shrink-0 font-medium uppercase ${SEV_CLS[e.severity]}`}>
+                {e.severity}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-gray-200">{e.signature}</span>
+              <span className="shrink-0 font-mono text-gray-500">{e.source}</span>
+            </div>
+          ))}
+        </>
+      )}
+    </Widget>
+  );
+}
+
+/** Local copy of the prefix test — the widget needs it and the model owns it. */
+function cidrContainsLocal(cidr: string, ip: string): boolean {
+  const [base, bits] = cidr.split("/");
+  if (!bits) return base === ip;
+  const octets = Math.floor(Number(bits) / 8);
+  return base.split(".").slice(0, octets).join(".") === ip.split(".").slice(0, octets).join(".");
 }
 
 function FirewallSummary({ nodeId }: { nodeId: string }) {
@@ -445,6 +674,18 @@ function FirewallSummary({ nodeId }: { nodeId: string }) {
  * cannot drift from the option list.
  */
 const ACTIONS: FirewallRule["action"][] = ["ACCEPT", "DROP", "REJECT"];
+/** The L7 catalogue. "—" in the UI means "match by port instead". */
+const L7_APPS: L7App[] = ["bittorrent", "social-media", "streaming", "rdp", "cloud-storage"];
+const L7_LABEL: Record<L7App, string> = {
+  bittorrent: "BitTorrent",
+  "social-media": "Social Media",
+  streaming: "Streaming Video",
+  rdp: "RDP",
+  "cloud-storage": "Cloud Storage",
+};
+function parseApp(v: string): L7App | undefined {
+  return L7_APPS.find((a) => a === v);
+}
 const PROTOCOLS: FirewallRule["protocol"][] = ["any", "tcp", "udp", "icmp"];
 
 function parseAction(v: string, fallback: FirewallRule["action"]): FirewallRule["action"] {
@@ -540,7 +781,15 @@ function FirewallRulesPage({ nodeId }: { nodeId: string }) {
                 <td className="px-2 py-1.5 font-mono uppercase text-gray-200">{r.protocol}</td>
                 <td className="px-2 py-1.5 font-mono text-gray-200">{r.source || "any"}</td>
                 <td className="px-2 py-1.5 font-mono text-gray-200">{r.destination || "any"}</td>
-                <td className="px-2 py-1.5 font-mono text-gray-200">{r.port ?? "*"}</td>
+                <td className="px-2 py-1.5 font-mono text-gray-200">
+                  {r.app ? (
+                    <span className="rounded-sm bg-brand-soft/25 px-1.5 py-0.5 text-[10px] text-brand-text">
+                      L7
+                    </span>
+                  ) : (
+                    (r.port ?? "*")
+                  )}
+                </td>
                 <td className="px-2 py-1.5 text-gray-600">{describe(r)}</td>
                 <td className="px-2 py-1.5">
                   <div className="flex justify-end gap-1">
@@ -602,10 +851,14 @@ function ActionBadge({ action, enabled }: { action: FirewallRule["action"]; enab
 
 /** A human sentence for the rule, so the table reads without decoding it. */
 function describe(r: FirewallRule): string {
+  if (r.description) return r.description;
   const verb = r.action === "ACCEPT" ? "Allow" : r.action === "DROP" ? "Block" : "Reject";
+  const from = r.source && r.source !== "any" ? ` from ${r.source}` : "";
+  // An application rule is described BY the application. Naming its port would
+  // be a lie — matching by app is precisely what ignores the port.
+  if (r.app) return `${verb} ${L7_LABEL[r.app]}${from} (application)`;
   const proto = r.protocol === "any" ? "all traffic" : r.protocol.toUpperCase();
   const port = r.port ? ` port ${r.port}` : "";
-  const from = r.source && r.source !== "any" ? ` from ${r.source}` : "";
   return `${verb} ${proto}${port}${from}`;
 }
 
@@ -669,18 +922,46 @@ function RuleEditor({
               className="w-full rounded border border-edge bg-panel px-2 py-1 font-mono text-[11px] text-gray-100"
             />
           </Row>
+          <Row label="Application (L7)">
+            <select
+              value={draft.app ?? ""}
+              onChange={(e) => {
+                const app = parseApp(e.target.value);
+                // Choosing an application clears the port: keeping both would
+                // show two matchers where only one is consulted.
+                setDraft((d) => ({ ...d, app, port: app ? undefined : d.port }));
+              }}
+              className="w-full rounded border border-edge bg-panel px-2 py-1 text-[11px] text-gray-100"
+            >
+              <option value="">— match by port —</option>
+              {L7_APPS.map((a) => (
+                <option key={a} value={a}>
+                  {L7_LABEL[a]}
+                </option>
+              ))}
+            </select>
+          </Row>
           <Row label="Port">
             <input
-              value={draft.port ?? ""}
+              disabled={!!draft.app}
+              value={draft.app ? "" : (draft.port ?? "")}
               onChange={(e) => {
                 const v = e.target.value.trim();
                 // Empty means "any port" — stored as absent, not as 0, because
                 // 0 is a real port number and would match nothing.
                 set("port", v === "" ? undefined : Number(v));
               }}
-              placeholder="any"
+              placeholder={draft.app ? "not used — matching by application" : "any"}
               inputMode="numeric"
-              className="w-full rounded border border-edge bg-panel px-2 py-1 font-mono text-[11px] text-gray-100"
+              className="w-full rounded border border-edge bg-panel px-2 py-1 font-mono text-[11px] text-gray-100 disabled:opacity-40"
+            />
+          </Row>
+          <Row label="Description">
+            <input
+              value={draft.description ?? ""}
+              onChange={(e) => set("description", e.target.value)}
+              placeholder="optional — a generated sentence is shown when blank"
+              className="w-full rounded border border-edge bg-panel px-2 py-1 text-[11px] text-gray-100"
             />
           </Row>
         </div>
@@ -887,33 +1168,185 @@ function UplinksPage() {
 
 // ── Services → DHCP & DNS ───────────────────────────────────────────────────
 
+/**
+ * Services → DHCP Server.
+ *
+ * Leases are DERIVED from who actually holds an address on the LAN; only
+ * reservations are stored. A machine holding an address IS the lease, and
+ * storing a second copy would let the Network applet re-address a host while
+ * the router still advertised the old one — two truths, reconciled by hand
+ * forever. A reservation, by contrast, is an intention that exists whether or
+ * not the machine is currently switched on, so it has to be stored.
+ */
 function DhcpPage({ nodeId }: { nodeId: string }) {
-  const gw = useInfraStore((s) => s.infra.nodes[nodeId]);
-  const setDns = useInfraStore((s) => s.setNodeDns);
+  const infra = useInfraStore((s) => s.infra);
+  const gw = infra.nodes[nodeId];
+  const setCfg = useInfraStore((s) => s.setDhcpConfig);
+  const addRes = useInfraStore((s) => s.addDhcpReservation);
+  const delRes = useInfraStore((s) => s.deleteDhcpReservation);
+  const [reserving, setReserving] = useState<DhcpReservation | null>(null);
   if (!gw) return null;
-  const lan = gw.network.interfaces.find((i) => i.name === "lan0");
-  const cidr = lanCidrFor(lan?.ipv4 ?? "10.0.0.1");
+
+  const lanIp = gw.network.interfaces.find((i) => i.name === "lan0")?.ipv4 ?? "10.0.0.1";
+  const cidr = lanCidrFor(lanIp);
+  const cfg = gw.network.dhcp ?? {
+    enabled: true,
+    rangeStart: lanIp.replace(/\.\d+$/, ".100"),
+    rangeEnd: lanIp.replace(/\.\d+$/, ".199"),
+    leaseMinutes: 1440,
+    reservations: [],
+  };
+  const leases = deriveLeases(cfg, cidr, infra.nodes, lanIp);
+  const conflicts = leases.filter((l) => l.problem);
 
   return (
-    <Page title="Services / DHCP & DNS" subtitle="Address handout and resolver forwarding for the LAN.">
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(20rem, 1fr))" }}>
-        <Widget title="DHCP Server (LAN)">
+    <Page title="Services / DHCP Server" subtitle={`Address handout for ${cidr}.`}>
+      <div className="mb-3 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(19rem, 1fr))" }}>
+        <Widget title="Server">
+          <label className="flex items-center gap-2 py-1 text-[11px] text-gray-200">
+            <input
+              type="checkbox"
+              checked={cfg.enabled}
+              onChange={(e) => setCfg(nodeId, { enabled: e.target.checked })}
+            />
+            Enable DHCP on LAN
+          </label>
           <Field label="Subnet" value={<span className="font-mono">{cidr}</span>} />
-          <Field label="Gateway offered" value={<span className="font-mono">{lan?.ipv4 ?? "—"}</span>} />
-          <Field label="Status" value={lan?.up ? "running" : <span className="text-danger-text">stopped (LAN down)</span>} />
+          <Field label="Gateway offered" value={<span className="font-mono">{lanIp}</span>} />
+          <Field label="Lease time" value={`${cfg.leaseMinutes} minutes`} />
         </Widget>
-        <Widget title="DNS Forwarders">
-          {gw.network.dnsServers.map((d) => (
-            <Field key={d} label="Forwarder" value={<span className="font-mono">{d}</span>} />
-          ))}
-          <button
-            onClick={() => setDns(nodeId, ["1.1.1.1", "9.9.9.9"])}
-            className={`${btn()} mt-2`}
-          >
-            Reset to defaults
-          </button>
+
+        <Widget title="Address pool">
+          <Row label="Range start">
+            <input
+              value={cfg.rangeStart}
+              onChange={(e) => setCfg(nodeId, { rangeStart: e.target.value.trim() })}
+              className="w-full rounded border border-edge bg-panel px-2 py-1 font-mono text-[11px] text-gray-100"
+            />
+          </Row>
+          <Row label="Range end">
+            <input
+              value={cfg.rangeEnd}
+              onChange={(e) => setCfg(nodeId, { rangeEnd: e.target.value.trim() })}
+              className="w-full rounded border border-edge bg-panel px-2 py-1 font-mono text-[11px] text-gray-100"
+            />
+          </Row>
+        </Widget>
+
+        <Widget title="Pool health">
+          <Field label="Active leases" value={String(leases.length)} />
+          <Field label="Static reservations" value={String(cfg.reservations.length)} />
+          <Field
+            label="Conflicts"
+            value={
+              conflicts.length ? (
+                <span className="text-danger-text">{conflicts.length} needing attention</span>
+              ) : (
+                <span className="text-ok-text">none</span>
+              )
+            }
+          />
         </Widget>
       </div>
+
+      {conflicts.length > 0 && (
+        <div className="mb-3 rounded border border-danger/40 bg-danger/10 p-3 text-[11px] leading-relaxed text-gray-200">
+          {conflicts.length} lease{conflicts.length === 1 ? "" : "s"} cannot be honoured as configured.
+          Conflicting rows are marked below.
+        </div>
+      )}
+
+      <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+        Active leases
+      </h3>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[44rem] text-left text-[11px]">
+          <thead className="bg-panelalt text-gray-500">
+            <tr>
+              <th className="px-2 py-1.5 font-medium">IP address</th>
+              <th className="px-2 py-1.5 font-medium">MAC address</th>
+              <th className="px-2 py-1.5 font-medium">Hostname</th>
+              <th className="px-2 py-1.5 font-medium">Type</th>
+              <th className="px-2 py-1.5 font-medium">Status</th>
+              <th className="px-2 py-1.5 text-right font-medium">Reservation</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-edge">
+            {leases.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-2 py-6 text-center text-gray-500">
+                  No hosts are currently holding an address on this subnet.
+                </td>
+              </tr>
+            )}
+            {leases.map((l) => (
+              <tr key={`${l.mac}-${l.ip}`} className={l.problem ? "bg-danger/10" : "bg-panel"}>
+                <td className="px-2 py-1.5 font-mono text-gray-200">{l.ip}</td>
+                <td className="px-2 py-1.5 font-mono text-gray-400">{l.mac}</td>
+                <td className="px-2 py-1.5 text-gray-200">{l.hostname}</td>
+                <td className="px-2 py-1.5">
+                  <span className={l.kind === "static" ? "text-info-text" : "text-gray-400"}>
+                    {l.kind}
+                  </span>
+                </td>
+                <td className="px-2 py-1.5">
+                  {l.problem ? (
+                    <span className="text-danger-text">{l.problem}</span>
+                  ) : (
+                    <span className="text-ok-text">bound</span>
+                  )}
+                </td>
+                <td className="px-2 py-1.5">
+                  <div className="flex justify-end gap-1">
+                    {l.kind === "static" ? (
+                      <button onClick={() => delRes(nodeId, l.mac)} className={btn("danger")}>
+                        Remove
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setReserving({ mac: l.mac, ip: l.ip, hostname: l.hostname })}
+                        className={btn()}
+                      >
+                        Reserve
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {reserving && (
+        <Modal
+          title="Static reservation"
+          onCancel={() => setReserving(null)}
+          onSave={() => {
+            addRes(nodeId, reserving);
+            setReserving(null);
+          }}
+        >
+          <Row label="MAC address">
+            <input
+              readOnly
+              value={reserving.mac}
+              className="w-full rounded border border-edge bg-panelalt px-2 py-1 font-mono text-[11px] text-gray-400"
+            />
+          </Row>
+          <Row label="Reserved IP">
+            <input
+              value={reserving.ip}
+              onChange={(e) => setReserving({ ...reserving, ip: e.target.value.trim() })}
+              className="w-full rounded border border-edge bg-panel px-2 py-1 font-mono text-[11px] text-gray-100"
+            />
+          </Row>
+          <p className="text-[10px] leading-relaxed text-gray-500">
+            Pin an address inside the pool and it will eventually be offered to another machine as
+            well. Reserve outside {cfg.rangeStart}–{cfg.rangeEnd} to be safe.
+          </p>
+        </Modal>
+      )}
     </Page>
   );
 }
@@ -1096,5 +1529,400 @@ function DiagStatesPage({ nodeId }: { nodeId: string }) {
         </table>
       </div>
     </Page>
+  );
+}
+
+// ── Firewall → NAT / Port Forward ───────────────────────────────────────────
+
+/**
+ * Destination NAT.
+ *
+ * The page exists for one scenario above all others: "external users cannot
+ * reach our web server". That fault has three distinct causes — no forward, a
+ * forward aimed at the wrong host, and a forward whose translated traffic the
+ * firewall then drops — and this page can tell them apart, which is the only
+ * reason it is worth having rather than a line in the rules table.
+ */
+function NatPage({ nodeId }: { nodeId: string }) {
+  const infra = useInfraStore((s) => s.infra);
+  const gw = infra.nodes[nodeId];
+  const add = useInfraStore((s) => s.addNatRule);
+  const update = useInfraStore((s) => s.updateNatRule);
+  const del = useInfraStore((s) => s.deleteNatRule);
+  const [editing, setEditing] = useState<NatRule | null>(null);
+  if (!gw) return null;
+
+  const wanIp = gw.network.interfaces.find((i) => i.name === "wan0")?.ipv4 ?? "—";
+  const rules = gw.network.nat ?? [];
+
+  return (
+    <Page
+      title="Firewall / NAT — Port Forward"
+      subtitle="Inbound connections to the WAN address are translated first, then filtered. A forward whose translated traffic the rules deny still fails."
+    >
+      <div className="mb-2 flex items-center">
+        <span className="font-mono text-[11px] text-gray-500">WAN address {wanIp}</span>
+        <button
+          onClick={() =>
+            setEditing({
+              id: `nat-${Date.now().toString(36)}`,
+              protocol: "tcp",
+              externalPort: 80,
+              internalIp: "",
+              internalPort: 80,
+              enabled: true,
+            })
+          }
+          className={`${btn("primary")} ml-auto`}
+        >
+          Add forward
+        </button>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[44rem] text-left text-[11px]">
+          <thead className="bg-panelalt text-gray-500">
+            <tr>
+              <th className="px-2 py-1.5 font-medium">Proto</th>
+              <th className="px-2 py-1.5 font-medium">External</th>
+              <th className="px-2 py-1.5 font-medium">Internal target</th>
+              <th className="px-2 py-1.5 font-medium">Description</th>
+              <th className="px-2 py-1.5 font-medium">Health</th>
+              <th className="px-2 py-1.5 text-right font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-edge">
+            {rules.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-2 py-6 text-center text-gray-500">
+                  No port forwards. Nothing on the LAN is published to the internet.
+                </td>
+              </tr>
+            )}
+            {rules.map((r) => {
+              // Derived every render: a forward becomes healthy the moment its
+              // target comes back, with nothing to keep in sync.
+              const problem = natTargetProblem(r, infra.nodes);
+              const check = resolveInbound(gw.network, {
+                protocol: r.protocol,
+                port: r.externalPort,
+                source: "198.51.100.20",
+              });
+              return (
+                <tr key={r.id} className={r.enabled ? "bg-panel" : "bg-gray-500/10 opacity-60"}>
+                  <td className="px-2 py-1.5 font-mono uppercase text-gray-200">{r.protocol}</td>
+                  <td className="px-2 py-1.5 font-mono text-gray-200">
+                    {wanIp}:{r.externalPort}
+                  </td>
+                  <td className="px-2 py-1.5 font-mono text-gray-200">
+                    {r.internalIp || "—"}:{r.internalPort}
+                  </td>
+                  <td className="px-2 py-1.5 text-gray-400">{r.description || "Port forward"}</td>
+                  <td className="px-2 py-1.5">
+                    {problem ? (
+                      <span className="text-danger-text">{problem}</span>
+                    ) : !check.allowed ? (
+                      <span className="text-warn-text">
+                        Target reachable, but the firewall denies port {r.internalPort}
+                      </span>
+                    ) : (
+                      <span className="text-ok-text">published</span>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <div className="flex justify-end gap-1">
+                      <button onClick={() => update(nodeId, r.id, { enabled: !r.enabled })} className={btn()}>
+                        {r.enabled ? "Disable" : "Enable"}
+                      </button>
+                      <button onClick={() => setEditing(r)} className={btn()}>
+                        Edit
+                      </button>
+                      <button onClick={() => del(nodeId, r.id)} className={btn("danger")}>
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {editing && (
+        <NatEditor
+          rule={editing}
+          onCancel={() => setEditing(null)}
+          onSave={(r) => {
+            if (rules.some((x) => x.id === r.id)) update(nodeId, r.id, r);
+            else add(nodeId, r);
+            setEditing(null);
+          }}
+        />
+      )}
+    </Page>
+  );
+}
+
+function NatEditor({
+  rule,
+  onCancel,
+  onSave,
+}: {
+  rule: NatRule;
+  onCancel: () => void;
+  onSave: (r: NatRule) => void;
+}) {
+  const [draft, setDraft] = useState<NatRule>(rule);
+  const num = (v: string, fallback: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  };
+  return (
+    <Modal title="Port forward" onCancel={onCancel} onSave={() => onSave(draft)}>
+      <Row label="Protocol">
+        <select
+          value={draft.protocol}
+          onChange={(e) => setDraft((d) => ({ ...d, protocol: e.target.value === "udp" ? "udp" : "tcp" }))}
+          className="w-full rounded border border-edge bg-panel px-2 py-1 text-[11px] text-gray-100"
+        >
+          <option value="tcp">TCP</option>
+          <option value="udp">UDP</option>
+        </select>
+      </Row>
+      <Row label="External port (WAN)">
+        <input
+          value={draft.externalPort}
+          onChange={(e) => setDraft((d) => ({ ...d, externalPort: num(e.target.value, d.externalPort) }))}
+          inputMode="numeric"
+          className="w-full rounded border border-edge bg-panel px-2 py-1 font-mono text-[11px] text-gray-100"
+        />
+      </Row>
+      <Row label="Internal host">
+        <input
+          value={draft.internalIp}
+          onChange={(e) => setDraft((d) => ({ ...d, internalIp: e.target.value.trim() }))}
+          placeholder="10.0.0.20"
+          className="w-full rounded border border-edge bg-panel px-2 py-1 font-mono text-[11px] text-gray-100"
+        />
+      </Row>
+      <Row label="Internal port">
+        <input
+          value={draft.internalPort}
+          onChange={(e) => setDraft((d) => ({ ...d, internalPort: num(e.target.value, d.internalPort) }))}
+          inputMode="numeric"
+          className="w-full rounded border border-edge bg-panel px-2 py-1 font-mono text-[11px] text-gray-100"
+        />
+      </Row>
+      <Row label="Description">
+        <input
+          value={draft.description ?? ""}
+          onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+          placeholder="Public web server"
+          className="w-full rounded border border-edge bg-panel px-2 py-1 text-[11px] text-gray-100"
+        />
+      </Row>
+    </Modal>
+  );
+}
+
+/** Shared dialog frame — the rule and NAT editors are the same shape. */
+function Modal({
+  title,
+  children,
+  onCancel,
+  onSave,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md overflow-hidden rounded border border-edge bg-panel shadow-2xl">
+        <header className="border-b border-edge bg-panelalt px-3 py-2 text-[12px] font-semibold text-gray-100">
+          {title}
+        </header>
+        <div className="space-y-2 p-3">{children}</div>
+        <footer className="flex justify-end gap-2 border-t border-edge bg-panelalt px-3 py-2">
+          <button onClick={onCancel} className={btn()}>
+            Cancel
+          </button>
+          <button onClick={onSave} className={btn("primary")}>
+            Save
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+// ── Security → IDS / IPS ────────────────────────────────────────────────────
+
+function IdsPage({ nodeId }: { nodeId: string }) {
+  const gw = useInfraStore((s) => s.infra.nodes[nodeId]);
+  const setIds = useInfraStore((s) => s.setIds);
+  if (!gw) return null;
+  const ids = gw.network.ids ?? { enabled: false, mode: "detect" as const, events: [] };
+  const sum = threatSummary(ids);
+
+  return (
+    <Page
+      title="Security / IDS — IPS"
+      subtitle="Inspection engine. Detect mode records what it sees; prevent mode drops it."
+    >
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(20rem, 1fr))" }}>
+        <Widget title="Engine">
+          <label className="flex items-center gap-2 py-1 text-[11px] text-gray-200">
+            <input
+              type="checkbox"
+              checked={ids.enabled}
+              onChange={(e) => setIds(nodeId, { enabled: e.target.checked })}
+            />
+            Enable inspection engine
+          </label>
+          <div className="mt-2 border-t border-edge pt-2">
+            {(["detect", "prevent"] as const).map((m) => (
+              <label key={m} className="flex items-center gap-2 py-1 text-[11px] text-gray-200">
+                <input
+                  type="radio"
+                  checked={ids.mode === m}
+                  disabled={!ids.enabled}
+                  onChange={() => setIds(nodeId, { mode: m })}
+                />
+                {m === "detect" ? "Detection only (log, do not drop)" : "Prevention (log and drop)"}
+              </label>
+            ))}
+          </div>
+          {ids.enabled && ids.mode === "detect" && (
+            <p className="mt-2 rounded border border-warn/40 bg-warn/10 p-2 text-[10px] leading-relaxed text-gray-200">
+              In detection mode the engine records attacks but does not stop them. Traffic matching a
+              signature still reaches the estate.
+            </p>
+          )}
+          {!ids.enabled && (
+            <p className="mt-2 text-[10px] leading-relaxed text-gray-500">
+              The engine is off. Nothing is inspected and the threat log will not grow.
+            </p>
+          )}
+        </Widget>
+
+        <Widget title="Signature activity">
+          <Field label="Events recorded" value={String(sum.total)} />
+          <Field
+            label="Blocked"
+            value={
+              sum.blocked > 0 ? <span className="text-ok-text">{sum.blocked}</span> : "none"
+            }
+          />
+          <Field
+            label="Critical"
+            value={
+              sum.critical > 0 ? <span className="text-danger-text">{sum.critical}</span> : "none"
+            }
+          />
+          <div className="mt-2 border-t border-edge pt-2">
+            {(["critical", "high", "medium", "low"] as const).map((sev) => (
+              <Meter
+                key={sev}
+                label={sev}
+                pct={sum.total ? (sum.bySeverity[sev] / sum.total) * 100 : 0}
+              />
+            ))}
+          </div>
+        </Widget>
+      </div>
+    </Page>
+  );
+}
+
+const SEV_CLS: Record<ThreatEvent["severity"], string> = {
+  low: "text-gray-400",
+  medium: "text-info-text",
+  high: "text-warn-text",
+  critical: "text-danger-text",
+};
+
+function ThreatPage({ nodeId }: { nodeId: string }) {
+  const gw = useInfraStore((s) => s.infra.nodes[nodeId]);
+  const clear = useInfraStore((s) => s.clearThreatEvents);
+  if (!gw) return null;
+  const ids = gw.network.ids ?? { enabled: false, mode: "detect" as const, events: [] };
+  const sum = threatSummary(ids);
+
+  return (
+    <Page title="Security / Threat Intelligence" subtitle="Signature hits recorded by the inspection engine.">
+      <div className="mb-3 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(11rem, 1fr))" }}>
+        <Stat label="Total events" value={String(sum.total)} />
+        <Stat label="Blocked" value={String(sum.blocked)} tone={sum.blocked ? "ok" : undefined} />
+        <Stat
+          label="Reached estate"
+          value={String(sum.total - sum.blocked)}
+          tone={sum.total - sum.blocked > 0 ? "danger" : undefined}
+        />
+        <Stat label="Critical" value={String(sum.critical)} tone={sum.critical ? "danger" : undefined} />
+      </div>
+
+      {ids.events.length === 0 ? (
+        <div className="rounded border border-edge bg-panel p-6 text-center text-[11px] text-gray-500">
+          {ids.enabled
+            ? "No signature hits recorded. The engine is running and the perimeter is quiet."
+            : "The inspection engine is disabled, so nothing is being recorded."}
+        </div>
+      ) : (
+        <>
+          <div className="mb-2 flex">
+            <button onClick={() => clear(nodeId)} className={`${btn()} ml-auto`}>
+              Clear log
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[46rem] text-left text-[11px]">
+              <thead className="bg-panelalt text-gray-500">
+                <tr>
+                  <th className="px-2 py-1.5 font-medium">Time</th>
+                  <th className="px-2 py-1.5 font-medium">Severity</th>
+                  <th className="px-2 py-1.5 font-medium">Signature</th>
+                  <th className="px-2 py-1.5 font-medium">Source</th>
+                  <th className="px-2 py-1.5 font-medium">Target</th>
+                  <th className="px-2 py-1.5 font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-edge">
+                {ids.events.slice(0, 60).map((e) => (
+                  <tr key={e.id} className="bg-panel">
+                    <td className="px-2 py-1.5 font-mono text-gray-400">
+                      {new Date(e.at).toLocaleTimeString("en-GB", { hour12: false })}
+                    </td>
+                    <td className={`px-2 py-1.5 font-medium uppercase ${SEV_CLS[e.severity]}`}>{e.severity}</td>
+                    <td className="px-2 py-1.5 text-gray-200">{e.signature}</td>
+                    <td className="px-2 py-1.5 font-mono text-gray-200">{e.source}</td>
+                    <td className="px-2 py-1.5 font-mono text-gray-200">{e.target}</td>
+                    <td className="px-2 py-1.5">
+                      {e.action === "blocked" ? (
+                        <span className="text-ok-text">blocked</span>
+                      ) : (
+                        <span className="text-danger-text">detected only</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </Page>
+  );
+}
+
+function Stat({ label, value, tone }: { label: string; value: string; tone?: "ok" | "danger" }) {
+  const cls = tone === "ok" ? "text-ok-text" : tone === "danger" ? "text-danger-text" : "text-gray-100";
+  return (
+    <div className="rounded border border-edge bg-panel p-3">
+      <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
+      <div className={`mt-1 font-mono text-[20px] leading-none ${cls}`}>{value}</div>
+    </div>
   );
 }

@@ -110,6 +110,16 @@ import {
   evaluate,
   lanCidrFor,
   rulesFor,
+  defaultDhcp,
+  defaultIds,
+  deriveLeases,
+  inPool,
+  natTargetProblem,
+  orphanReservations,
+  resolveInbound,
+  threatEvent,
+  threatReachedEstate,
+  threatSummary,
 } from "../.test-build/network/edge.js";
 import {
   CASCADE_HEALTH_PENALTY,
@@ -1716,6 +1726,130 @@ group("Client endpoints skip the rack chain");
      rulesFor({ firewall: rules }, "wan").every((r) => r.chain === "INPUT"), true);
   eq("the LAN tab lists only FORWARD rules",
      rulesFor({ firewall: rules }, "lan").every((r) => r.chain === "FORWARD"), true);
+}
+
+{
+  group("Edge gateway — NAT is translate-then-filter");
+
+  const LAN = "10.29.1.0/24";
+  const withNat = (nat, firewall) => ({ firewall, nat, interfaces: [], routes: [], dnsServers: [], hostsTable: {}, reachableHosts: {} });
+  const fwd = {
+    id: "web", protocol: "tcp", externalPort: 80, internalIp: "10.29.1.20", internalPort: 8080, enabled: true,
+  };
+
+  // Nothing published: the honest answer to "the outside can't reach us".
+  const bare = withNat([], defaultEdgeRules(LAN));
+  const noPub = resolveInbound(bare, { protocol: "tcp", port: 80, source: "198.51.100.5" });
+  eq("with no forward, nothing is delivered", noPub.deliveredTo, null);
+  eq("...and the connection is refused", noPub.allowed, false);
+
+  // A forward delivers to the INTERNAL host and port.
+  const allowInternal = [
+    ...defaultEdgeRules(LAN),
+    { id: "allow-8080", chain: "FORWARD", action: "ACCEPT", protocol: "tcp", port: 8080, source: "any", enabled: true },
+  ];
+  const good = resolveInbound(withNat([fwd], allowInternal), { protocol: "tcp", port: 80, source: "198.51.100.5" });
+  eq("a forward delivers to the internal host", good.deliveredTo, "10.29.1.20");
+  eq("...and the connection is permitted", good.allowed, true);
+
+  // The teaching case: the forward is right and the firewall still denies,
+  // because the rule must permit the TRANSLATED port, not the public one.
+  const wrongPort = [
+    ...defaultEdgeRules(LAN),
+    { id: "allow-80", chain: "FORWARD", action: "ACCEPT", protocol: "tcp", port: 80, source: "any", enabled: true },
+  ];
+  const mismatch = resolveInbound(withNat([fwd], wrongPort), { protocol: "tcp", port: 80, source: "198.51.100.5" });
+  eq("a rule permitting the PUBLIC port does not admit translated traffic", mismatch.allowed, false);
+  eq("...though the translation itself still happened", mismatch.deliveredTo, "10.29.1.20");
+
+  // A disabled forward is not consulted.
+  const off = resolveInbound(withNat([{ ...fwd, enabled: false }], allowInternal), { protocol: "tcp", port: 80, source: "198.51.100.5" });
+  eq("a disabled forward publishes nothing", off.deliveredTo, null);
+  // Protocol and port must both match to translate.
+  const udp = resolveInbound(withNat([fwd], allowInternal), { protocol: "udp", port: 80, source: "198.51.100.5" });
+  eq("a tcp forward does not catch udp", udp.deliveredTo, null);
+
+  // A forward aimed at a host that does not exist is the classic dead forward.
+  const nodes = {
+    web: { hostname: "WEB-01", connection: { online: true }, network: { interfaces: [{ name: "eth0", ipv4: "10.29.1.20", up: true, mac: "aa" }] } },
+    down: { hostname: "OLD-01", connection: { online: true }, network: { interfaces: [{ name: "eth0", ipv4: "10.29.1.21", up: false, mac: "bb" }] } },
+  };
+  eq("a forward to a live host is healthy", natTargetProblem(fwd, nodes), null);
+  eq("a forward to nobody is reported",
+     natTargetProblem({ ...fwd, internalIp: "10.29.1.99" }, nodes).includes("No host"), true);
+  eq("a forward to a downed adapter is reported",
+     natTargetProblem({ ...fwd, internalIp: "10.29.1.21" }, nodes).includes("administratively down"), true);
+
+  group("Edge gateway — DHCP leases are derived");
+
+  const cfg = defaultDhcp("10.29.1.1");
+  eq("the default pool starts at .100", cfg.rangeStart, "10.29.1.100");
+  eq("an address in the pool is recognised", inPool(cfg, "10.29.1.150"), true);
+  eq("an address below the pool is not", inPool(cfg, "10.29.1.20"), false);
+  eq("an address on another subnet is not", inPool(cfg, "10.29.2.150"), false);
+
+  const lanNodes = {
+    a: { hostname: "WS-01", connection: { online: true }, network: { interfaces: [{ name: "eth0", ipv4: "10.29.1.40", up: true, mac: "aa:01" }] } },
+    b: { hostname: "WS-02", connection: { online: true }, network: { interfaces: [{ name: "eth0", ipv4: "10.29.1.41", up: true, mac: "aa:02" }] } },
+    far: { hostname: "OFFSITE", connection: { online: true }, network: { interfaces: [{ name: "eth0", ipv4: "10.99.9.9", up: true, mac: "aa:03" }] } },
+  };
+  const leases = deriveLeases(cfg, "10.29.1.0/24", lanNodes, "10.29.1.1");
+  eq("only hosts on the LAN get leases", leases.length, 2);
+  eq("leases are dynamic without a reservation", leases[0].kind, "dynamic");
+  eq("a healthy lease has no problem", leases[0].problem, null);
+
+  // A reservation pins the host and shows as static.
+  const reserved = deriveLeases({ ...cfg, reservations: [{ mac: "aa:01", ip: "10.29.1.40" }] }, "10.29.1.0/24", lanNodes, "10.29.1.1");
+  eq("a reserved MAC reads as static", reserved.find((l) => l.mac === "aa:01").kind, "static");
+
+  // The two teachable faults.
+  const inPoolRes = deriveLeases({ ...cfg, reservations: [{ mac: "aa:01", ip: "10.29.1.120" }] }, "10.29.1.0/24", lanNodes, "10.29.1.1");
+  eq("a reservation that disagrees with the live address is flagged",
+     inPoolRes.find((l) => l.mac === "aa:01").problem.includes("currently holding"), true);
+
+  const dupe = {
+    a: lanNodes.a,
+    b: { hostname: "WS-09", connection: { online: true }, network: { interfaces: [{ name: "eth0", ipv4: "10.29.1.40", up: true, mac: "aa:09" }] } },
+  };
+  const conflict = deriveLeases(cfg, "10.29.1.0/24", dupe, "10.29.1.1");
+  eq("two hosts on one address is an address conflict",
+     conflict.some((l) => l.problem && l.problem.includes("conflict")), true);
+
+  // A reservation for a machine that is not here is an orphan, not an error.
+  eq("reservations for absent machines are listed separately",
+     orphanReservations({ ...cfg, reservations: [{ mac: "zz:99", ip: "10.29.1.60" }] }, leases).length, 1);
+
+  group("Edge gateway — L7 rules and the IDS mode");
+
+  // An application rule matches by app and ignores the port entirely.
+  const l7 = [{ id: "no-torrent", chain: "FORWARD", action: "DROP", protocol: "any", app: "bittorrent", source: "any", enabled: true }];
+  eq("an app rule matches its application", evaluate(l7, { chain: "FORWARD", protocol: "tcp", port: 6881, source: "10.29.1.5", app: "bittorrent" }).allowed, false);
+  eq("...on any port", evaluate(l7, { chain: "FORWARD", protocol: "tcp", port: 51413, source: "10.29.1.5", app: "bittorrent" }).allowed, false);
+  eq("...and ignores traffic of other apps", evaluate(l7, { chain: "FORWARD", protocol: "tcp", port: 6881, source: "10.29.1.5", app: "streaming" }).rule, null);
+  eq("...and untagged traffic never matches an app rule",
+     evaluate(l7, { chain: "FORWARD", protocol: "tcp", port: 6881, source: "10.29.1.5" }).rule, null);
+
+  // Mode decides the verdict — a detect-mode engine cannot block.
+  const detect = { ...defaultIds(), enabled: true, mode: "detect" };
+  const prevent = { ...defaultIds(), enabled: true, mode: "prevent" };
+  const evDetect = threatEvent(detect, "port-scan", "203.0.113.9", "10.29.1.1", 1000);
+  const evPrevent = threatEvent(prevent, "port-scan", "203.0.113.9", "10.29.1.1", 1000);
+  eq("detect mode records but does not block", evDetect.action, "detected");
+  eq("prevent mode blocks", evPrevent.action, "blocked");
+  eq("detected traffic reaches the estate", threatReachedEstate(detect, evDetect), true);
+  eq("blocked traffic does not", threatReachedEstate(prevent, evPrevent), false);
+  eq("a disabled engine stops nothing", threatReachedEstate(defaultIds(), evPrevent), true);
+  eq("severity comes from the signature, not the caller", threatEvent(prevent, "malware-c2", "a", "b", 1).severity, "critical");
+
+  // A disabled engine sees nothing at all — the reason leaving it off is a
+  // mistake worth teaching, and the reason the store refuses to record while
+  // it is down (an invisible fault is a bug, not a scenario).
+  eq("an event minted by a disabled engine is not marked blocked",
+     threatEvent(defaultIds(), "ddos", "a", "b", 1).action, "detected");
+
+  const sum = threatSummary({ ...prevent, events: [evPrevent, evDetect] });
+  eq("the dashboard counts every event", sum.total, 2);
+  eq("...and only the blocked ones as blocked", sum.blocked, 1);
 }
 
 {

@@ -28,7 +28,17 @@
  * through would be scenery.
  */
 
-import type { FirewallRule, NetworkState } from "@/lib/vm/types";
+import type {
+  DhcpConfig,
+  DhcpReservation,
+  FirewallRule,
+  IdsState,
+  L7App,
+  NatRule,
+  NetworkState,
+  ThreatEvent,
+  ThreatKind,
+} from "@/lib/vm/types";
 import type { LinuxNodeState } from "@/lib/core/linux";
 import type { TargetNode } from "@/lib/core/infrastructure";
 
@@ -130,13 +140,21 @@ export function defaultEdgeRules(lanCidr: string): FirewallRule[] {
  */
 export function evaluate(
   rules: FirewallRule[],
-  packet: { chain: FirewallRule["chain"]; protocol: string; port?: number; source: string },
+  packet: { chain: FirewallRule["chain"]; protocol: string; port?: number; source: string; app?: L7App },
 ): { allowed: boolean; rule: FirewallRule | null } {
   for (const r of rules) {
     if (!r.enabled) continue;
     if (r.chain !== packet.chain) continue;
     if (r.protocol !== "any" && r.protocol !== packet.protocol) continue;
-    if (r.port !== undefined && r.port !== packet.port) continue;
+    /*
+     * An application rule matches by app and IGNORES the port, because that is
+     * the entire reason L7 filtering exists: BitTorrent hops ports and social
+     * media shares 443 with everything else, so a port test would either miss
+     * the traffic or take the whole internet with it.
+     */
+    if (r.app) {
+      if (r.app !== packet.app) continue;
+    } else if (r.port !== undefined && r.port !== packet.port) continue;
     if (r.source && r.source !== "any" && !cidrContains(r.source, packet.source)) continue;
     return { allowed: r.action === "ACCEPT", rule: r };
   }
@@ -209,6 +227,9 @@ export function buildEdgeGateway(gatewayIp: string, orgPrefix: string, domain?: 
     dnsServers: ["1.1.1.1", "9.9.9.9"],
     hostsTable: {},
     firewall: defaultEdgeRules(lan),
+    nat: defaultNatRules(),
+    dhcp: defaultDhcp(gatewayIp),
+    ids: defaultIds(),
     reachableHosts: {},
   };
 
@@ -244,4 +265,221 @@ export function buildEdgeGateway(gatewayIp: string, orgPrefix: string, domain?: 
     session: { cwd: "/root", user: "root", history: [], env: {} },
     nextPid: 400,
   };
+}
+
+// ── NAT ─────────────────────────────────────────────────────────────────────
+
+/** What a port forward ships with: nothing. Forwards are always deliberate. */
+export function defaultNatRules(): NatRule[] {
+  return [];
+}
+
+/**
+ * Resolve an inbound connection to the WAN address.
+ *
+ * The order here is the lesson. A packet hitting the WAN port is translated
+ * FIRST and filtered second, which is why a correct-looking firewall rule and a
+ * correct-looking forward can still fail together: on real hardware the rule
+ * has to permit the TRANSLATED destination, not the public one. Returning both
+ * the matched forward and the verdict lets the UI say which half is wrong.
+ */
+export function resolveInbound(
+  net: NetworkState,
+  packet: { protocol: "tcp" | "udp"; port: number; source: string },
+): { forwarded: NatRule | null; deliveredTo: string | null; allowed: boolean; rule: FirewallRule | null } {
+  const nat = (net.nat ?? []).find(
+    (n) => n.enabled && n.protocol === packet.protocol && n.externalPort === packet.port,
+  );
+  if (!nat) {
+    // Nothing published on that port. The firewall still gets a say, and on a
+    // default configuration it denies — which is the correct answer to
+    // "why can't the outside reach us": nobody forwarded anything.
+    const verdict = evaluate(net.firewall, { chain: "INPUT", ...packet });
+    return { forwarded: null, deliveredTo: null, allowed: verdict.allowed, rule: verdict.rule };
+  }
+  const verdict = evaluate(net.firewall, {
+    chain: "FORWARD",
+    protocol: packet.protocol,
+    port: nat.internalPort,
+    source: packet.source,
+  });
+  return { forwarded: nat, deliveredTo: nat.internalIp, allowed: verdict.allowed, rule: verdict.rule };
+}
+
+/**
+ * Is this forward pointing at a host that exists and is up?
+ *
+ * The single most common real port-forward fault is a rule that is perfectly
+ * valid and aims at a decommissioned or re-addressed box. Derived rather than
+ * stored so it self-corrects the moment the host comes back.
+ */
+export function natTargetProblem(
+  rule: NatRule,
+  nodes: Record<string, TargetNode>,
+): string | null {
+  const target = Object.values(nodes).find((n) =>
+    n.network?.interfaces?.some((i) => i.ipv4 === rule.internalIp),
+  );
+  if (!target) return `No host on the LAN holds ${rule.internalIp}`;
+  const iface = target.network.interfaces.find((i) => i.ipv4 === rule.internalIp);
+  if (iface && !iface.up) return `${target.hostname} is administratively down`;
+  if (!target.connection.online) return `${target.hostname} is powered off`;
+  return null;
+}
+
+// ── DHCP ────────────────────────────────────────────────────────────────────
+
+export function defaultDhcp(gatewayIp: string): DhcpConfig {
+  const base = gatewayIp.replace(/\.\d+$/, "");
+  return {
+    enabled: true,
+    rangeStart: `${base}.100`,
+    rangeEnd: `${base}.199`,
+    leaseMinutes: 1440,
+    reservations: [],
+  };
+}
+
+export interface DhcpLease {
+  mac: string;
+  ip: string;
+  hostname: string;
+  /** A reservation, or a dynamic handout. */
+  kind: "static" | "dynamic";
+  /** Set when this lease cannot be honoured — the ticket-visible fault. */
+  problem: string | null;
+}
+
+/** Is the address inside the configured pool? */
+export function inPool(cfg: DhcpConfig, ip: string): boolean {
+  const last = (s: string) => Number(s.split(".").pop());
+  const net = (s: string) => s.split(".").slice(0, 3).join(".");
+  if (net(ip) !== net(cfg.rangeStart)) return false;
+  return last(ip) >= last(cfg.rangeStart) && last(ip) <= last(cfg.rangeEnd);
+}
+
+/**
+ * The lease table, DERIVED from who is actually on the LAN.
+ *
+ * Leases are not stored. A machine holding an address IS the lease — storing a
+ * second copy would mean a node could be re-addressed in the Network applet
+ * while the router still advertised the old lease, and the two would have to be
+ * reconciled by hand forever. Reservations ARE stored, because a reservation is
+ * an intention that exists whether or not the machine is currently on.
+ *
+ * `problem` is where the teachable faults surface: a reservation that collides
+ * with the dynamic pool, and two hosts on one address.
+ */
+export function deriveLeases(
+  cfg: DhcpConfig,
+  lanCidr: string,
+  nodes: Record<string, TargetNode>,
+  gatewayIp: string,
+): DhcpLease[] {
+  const out: DhcpLease[] = [];
+  const seen = new Map<string, string>(); // ip -> hostname
+
+  for (const n of Object.values(nodes)) {
+    for (const i of n.network?.interfaces ?? []) {
+      if (!i.ipv4 || i.ipv4 === gatewayIp) continue;
+      if (!cidrContains(lanCidr, i.ipv4)) continue;
+
+      const reserved = cfg.reservations.find((r) => r.mac === i.mac);
+      const clash = seen.get(i.ipv4);
+      seen.set(i.ipv4, n.hostname);
+
+      let problem: string | null = null;
+      if (clash) problem = `Address conflict — also held by ${clash}`;
+      else if (reserved && reserved.ip !== i.ipv4)
+        problem = `Reserved for ${reserved.ip} but currently holding ${i.ipv4}`;
+      else if (reserved && inPool(cfg, reserved.ip))
+        // A reservation inside the dynamic range will eventually be handed to
+        // somebody else. It looks fine until the day it isn't.
+        problem = `Reservation sits inside the dynamic pool (${cfg.rangeStart}–${cfg.rangeEnd})`;
+
+      out.push({
+        mac: i.mac,
+        ip: i.ipv4,
+        hostname: n.hostname,
+        kind: reserved ? "static" : "dynamic",
+        problem,
+      });
+    }
+  }
+  return out.sort((a, b) => a.ip.localeCompare(b.ip, undefined, { numeric: true }));
+}
+
+/** Reservations the operator made for machines that are not on this LAN. */
+export function orphanReservations(cfg: DhcpConfig, leases: DhcpLease[]): DhcpReservation[] {
+  return cfg.reservations.filter((r) => !leases.some((l) => l.mac === r.mac));
+}
+
+// ── IDS / IPS ───────────────────────────────────────────────────────────────
+
+export function defaultIds(): IdsState {
+  return { enabled: false, mode: "detect", events: [] };
+}
+
+const SIGNATURES: Record<ThreatKind, { signature: string; severity: ThreatEvent["severity"] }> = {
+  "port-scan": { signature: "ET SCAN Nmap SYN sweep", severity: "medium" },
+  ddos: { signature: "ET DOS SYN flood inbound", severity: "high" },
+  "brute-force": { signature: "ET SCAN SSH credential brute force", severity: "high" },
+  "malware-c2": { signature: "ET MALWARE C2 beacon outbound", severity: "critical" },
+  exploit: { signature: "ET EXPLOIT SMB remote code execution", severity: "critical" },
+};
+
+/**
+ * Build a threat event.
+ *
+ * `action` is decided by the MODE, not by the caller: an engine in detect mode
+ * cannot block, and letting a ticket hand-write "blocked" on a detect-mode
+ * engine would make the mode setting cosmetic — and the "IDS is on but the
+ * attack landed" scenario unsolvable.
+ */
+export function threatEvent(
+  ids: IdsState,
+  kind: ThreatKind,
+  source: string,
+  target: string,
+  at: number,
+  seq = 0,
+): ThreatEvent {
+  const meta = SIGNATURES[kind];
+  return {
+    id: `thr-${at.toString(36)}-${seq}`,
+    at,
+    kind,
+    severity: meta.severity,
+    source,
+    target,
+    signature: meta.signature,
+    action: ids.enabled && ids.mode === "prevent" ? "blocked" : "detected",
+  };
+}
+
+/**
+ * Would this traffic have reached the estate?
+ *
+ * The predicate a ticket grades. Detect-mode logs the attack and lets it
+ * through; prevent-mode stops it; a disabled engine never sees it at all.
+ */
+export function threatReachedEstate(ids: IdsState, ev: ThreatEvent): boolean {
+  if (!ids.enabled) return true;
+  return ev.action !== "blocked";
+}
+
+/** Counts for the threat dashboard, in severity order. */
+export function threatSummary(ids: IdsState): {
+  total: number;
+  blocked: number;
+  critical: number;
+  bySeverity: Record<ThreatEvent["severity"], number>;
+} {
+  const bySeverity: Record<ThreatEvent["severity"], number> = { low: 0, medium: 0, high: 0, critical: 0 };
+  let blocked = 0;
+  for (const e of ids.events) {
+    bySeverity[e.severity]++;
+    if (e.action === "blocked") blocked++;
+  }
+  return { total: ids.events.length, blocked, critical: bySeverity.critical, bySeverity };
 }

@@ -26,6 +26,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useHostStore } from "@/lib/host/store";
 import { useInfraStore } from "@/lib/infra/store";
+import { threatEvent } from "@/lib/network/edge";
+import type { ThreatKind } from "@/lib/vm/types";
 import { useTicketStore } from "@/lib/host/tickets-store";
 import { useDialogueStore } from "@/lib/dialogue/store";
 import { useNotificationStore } from "@/lib/host/notifications-store";
@@ -298,6 +300,8 @@ function FaultInjector({ say }: { say: (s: string) => void }) {
         Each fault is written as state and left for the simulation to react to — the reconciler raises the
         incident, the Gateway drops the host, and the consoles that depend on it fail with the real diagnosis.
       </p>
+
+      <EdgeFaults say={say} />
     </div>
   );
 }
@@ -354,5 +358,115 @@ function Btn({
     >
       {icon} {children}
     </button>
+  );
+}
+
+
+// ── Edge appliance faults ───────────────────────────────────────────────────
+
+/**
+ * The perimeter's ticket-injection door.
+ *
+ * Each button writes ONE piece of state and leaves the appliance to tell the
+ * story — a misconfigured forward shows up as a health warning on the NAT page,
+ * a pool collision surfaces as a conflicting lease, and a threat burst fills
+ * the Threat Intelligence dashboard. None of them print a message saying what
+ * is wrong, because finding that out is the exercise.
+ */
+function EdgeFaults({ say }: { say: (s: string) => void }) {
+  const infra = useInfraStore((s) => s.infra);
+  const ensure = useInfraStore((s) => s.ensureEdgeGateway);
+  const addNat = useInfraStore((s) => s.addNatRule);
+  const setIface = useInfraStore((s) => s.setNodeInterfaceUp);
+  const addRes = useInfraStore((s) => s.addDhcpReservation);
+  const push = useInfraStore((s) => s.pushThreatEvents);
+  const setIds = useInfraStore((s) => s.setIds);
+
+  function badNat() {
+    const id = ensure();
+    // Points at an address nobody holds: the classic "we published the web
+    // server and nothing happens" ticket.
+    addNat(id, {
+      id: `nat-broken-${Date.now().toString(36)}`,
+      protocol: "tcp",
+      externalPort: 80,
+      internalIp: "10.255.255.40",
+      internalPort: 80,
+      description: "Public web server",
+      enabled: true,
+    });
+    say("edge: published :80 to a host that does not exist");
+  }
+
+  function wanDown() {
+    const id = ensure();
+    setIface(id, "wan0", false);
+    say("edge: WAN interface administratively down");
+  }
+
+  function dhcpConflict() {
+    const id = ensure();
+    const gw = infra.nodes[id];
+    const lan = gw?.network.interfaces.find((i) => i.name === "lan0")?.ipv4 ?? "10.0.0.1";
+    // Reserve a live host's MAC onto an address INSIDE the dynamic pool — the
+    // reservation looks fine today and collides the moment the pool reaches it.
+    const victim = Object.values(infra.nodes).find(
+      (n) => n.nodeId !== id && n.network?.interfaces?.some((i) => i.ipv4 && i.mac),
+    );
+    const mac = victim?.network.interfaces.find((i) => i.ipv4)?.mac;
+    if (!mac) return say("edge: no LAN host to reserve");
+    addRes(id, { mac, ip: lan.replace(/\.\d+$/, ".120"), hostname: victim?.hostname });
+    say(`edge: reserved ${mac} inside the dynamic pool`);
+  }
+
+  function threatBurst() {
+    const id = ensure();
+    const gw = infra.nodes[id];
+    let ids = gw?.network.ids ?? { enabled: false, mode: "detect" as const, events: [] };
+    // The engine records nothing while it is off, so an attack scenario has to
+    // switch it on first — in DETECT, which is the interesting starting state:
+    // the operator can see the attack and has not yet stopped it.
+    if (!ids.enabled) {
+      setIds(id, { enabled: true, mode: "detect" });
+      ids = { ...ids, enabled: true, mode: "detect" };
+    }
+    const lan = gw?.network.interfaces.find((i) => i.name === "lan0")?.ipv4 ?? "10.0.0.1";
+    const kinds: ThreatKind[] = ["port-scan", "ddos", "brute-force", "malware-c2", "exploit"];
+    const now = Date.now();
+    const events = Array.from({ length: 24 }, (_, i) =>
+      threatEvent(
+        ids,
+        kinds[i % kinds.length],
+        `203.0.113.${20 + (i % 40)}`,
+        i % 3 === 0 ? lan : lan.replace(/\.\d+$/, `.${30 + (i % 20)}`),
+        now - i * 4000,
+        i,
+      ),
+    );
+    push(id, events);
+    say(`edge: ${events.length} threat events (engine ${ids.enabled ? ids.mode : "off"})`);
+  }
+
+  function enableIps() {
+    const id = ensure();
+    setIds(id, { enabled: true, mode: "prevent" });
+    say("edge: inspection engine set to prevent");
+  }
+
+  return (
+    <div className="space-y-2 border-t border-edge pt-2">
+      <Head>Edge appliance</Head>
+      <div className="flex flex-wrap gap-1.5">
+        <Btn onClick={badNat} icon={<IconAlert size={10} />} tone="danger">Bad NAT rule</Btn>
+        <Btn onClick={wanDown} icon={<IconAlert size={10} />} tone="danger">WAN down</Btn>
+        <Btn onClick={dhcpConflict} icon={<IconAlert size={10} />} tone="danger">DHCP conflict</Btn>
+        <Btn onClick={threatBurst} icon={<IconAlert size={10} />} tone="danger">Threat burst</Btn>
+        <Btn onClick={enableIps} icon={<IconBolt size={10} />}>Enable IPS</Btn>
+      </div>
+      <p className="text-[9px] leading-relaxed text-gray-600">
+        A threat burst injected while the engine is OFF or in detect mode is recorded as reaching the
+        estate — which is the point of the scenario.
+      </p>
+    </div>
   );
 }

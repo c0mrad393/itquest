@@ -45,8 +45,8 @@ import {
   restoreAvailability,
 } from "@/lib/core";
 import { nextFreeIp, nextRackName, provisionNode } from "@/lib/datacenter/seed";
-import type { FirewallRule } from "@/lib/vm/types";
-import { EDGE_GATEWAY_ID, buildEdgeGateway, deriveGatewayIp } from "@/lib/network/edge";
+import type { DhcpConfig, DhcpReservation, FirewallRule, IdsState, NatRule, ThreatEvent } from "@/lib/vm/types";
+import { EDGE_GATEWAY_ID, buildEdgeGateway, defaultDhcp, defaultIds, deriveGatewayIp } from "@/lib/network/edge";
 import type { ShippingMethod } from "@/lib/core";
 import type { AetherVNode, AuditEvent, ShieldRule, VNodeSize, VNodeStatus } from "@/lib/core";
 import type { CommandResult, NodeId } from "@/lib/core";
@@ -300,6 +300,24 @@ interface InfraStore {
    * so this is a real firewall control, not a cosmetic sort.
    */
   moveFirewallRule: (nodeId: NodeId, ruleId: string, dir: "up" | "down") => void;
+
+  // ── NAT / DHCP / IDS (appliance state) ──
+  addNatRule: (nodeId: NodeId, rule: NatRule) => void;
+  updateNatRule: (nodeId: NodeId, ruleId: string, patch: Partial<NatRule>) => void;
+  deleteNatRule: (nodeId: NodeId, ruleId: string) => void;
+  setDhcpConfig: (nodeId: NodeId, patch: Partial<DhcpConfig>) => void;
+  addDhcpReservation: (nodeId: NodeId, res: DhcpReservation) => void;
+  deleteDhcpReservation: (nodeId: NodeId, mac: string) => void;
+  setIds: (nodeId: NodeId, patch: Partial<Omit<IdsState, "events">>) => void;
+  /**
+   * The ticket-engine door for the IDS.
+   *
+   * Events are APPENDED rather than replacing the log, so a scenario that
+   * floods the estate can be injected repeatedly and the operator sees a rising
+   * tide instead of a log that resets each time.
+   */
+  pushThreatEvents: (nodeId: NodeId, events: ThreatEvent[]) => void;
+  clearThreatEvents: (nodeId: NodeId) => void;
   setWinInterfaceUp: (nodeId: NodeId, iface: string, up: boolean) => void;
   setFirewallProfile: (nodeId: NodeId, profile: "Domain" | "Private" | "Public", enabled: boolean) => void;
 
@@ -1448,6 +1466,112 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       clone.network.firewall = all.map((r) =>
         r.chain === rule.chain ? reordered[next++] : r,
       );
+      return withNode(s, nodeId, clone);
+    }),
+
+  addNatRule: (nodeId, rule) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node) return s;
+      const clone = structuredClone(node);
+      clone.network.nat = [...(clone.network.nat ?? []), rule];
+      return withNode(s, nodeId, clone);
+    }),
+
+  updateNatRule: (nodeId, ruleId, patch) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node) return s;
+      const clone = structuredClone(node);
+      clone.network.nat = (clone.network.nat ?? []).map((r) => (r.id === ruleId ? { ...r, ...patch } : r));
+      return withNode(s, nodeId, clone);
+    }),
+
+  deleteNatRule: (nodeId, ruleId) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node) return s;
+      const clone = structuredClone(node);
+      clone.network.nat = (clone.network.nat ?? []).filter((r) => r.id !== ruleId);
+      return withNode(s, nodeId, clone);
+    }),
+
+  setDhcpConfig: (nodeId, patch) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node) return s;
+      const clone = structuredClone(node);
+      const gwIp = clone.network.interfaces.find((i) => i.name === "lan0")?.ipv4 ?? "10.0.0.1";
+      // Defaulted rather than skipped: a saved estate predates the DHCP slice,
+      // and refusing to configure it would strand those saves permanently.
+      clone.network.dhcp = { ...(clone.network.dhcp ?? defaultDhcp(gwIp)), ...patch };
+      return withNode(s, nodeId, clone);
+    }),
+
+  addDhcpReservation: (nodeId, res) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node) return s;
+      const clone = structuredClone(node);
+      const gwIp = clone.network.interfaces.find((i) => i.name === "lan0")?.ipv4 ?? "10.0.0.1";
+      const cfg = clone.network.dhcp ?? defaultDhcp(gwIp);
+      // One reservation per MAC: re-reserving the same machine REPLACES rather
+      // than appends, or the table would show a host pinned to two addresses
+      // and the second would silently never apply.
+      cfg.reservations = [...cfg.reservations.filter((r) => r.mac !== res.mac), res];
+      clone.network.dhcp = cfg;
+      return withNode(s, nodeId, clone);
+    }),
+
+  deleteDhcpReservation: (nodeId, mac) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node?.network.dhcp) return s;
+      const clone = structuredClone(node);
+      if (!clone.network.dhcp) return s;
+      clone.network.dhcp.reservations = clone.network.dhcp.reservations.filter((r) => r.mac !== mac);
+      return withNode(s, nodeId, clone);
+    }),
+
+  setIds: (nodeId, patch) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node) return s;
+      const clone = structuredClone(node);
+      clone.network.ids = { ...(clone.network.ids ?? defaultIds()), ...patch };
+      return withNode(s, nodeId, clone);
+    }),
+
+  pushThreatEvents: (nodeId, events) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node) return s;
+      const clone = structuredClone(node);
+      const ids = clone.network.ids ?? defaultIds();
+      /*
+       * A disabled engine records NOTHING.
+       *
+       * Storing events while the engine is off would put them in state that no
+       * screen will show — the dashboard correctly reports "nothing is being
+       * recorded" — and a fault the operator cannot see is not a scenario, it
+       * is a bug. An attack against an estate with the IDS off is invisible,
+       * which is precisely why leaving it off is a mistake worth teaching.
+       */
+      if (!ids.enabled) return s;
+      // Newest first, capped. An uncapped log grows without bound across a long
+      // session and is the kind of thing that quietly makes a save enormous.
+      ids.events = [...events, ...ids.events].slice(0, 200);
+      clone.network.ids = ids;
+      return withNode(s, nodeId, clone);
+    }),
+
+  clearThreatEvents: (nodeId) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node?.network.ids) return s;
+      const clone = structuredClone(node);
+      if (!clone.network.ids) return s;
+      clone.network.ids.events = [];
       return withNode(s, nodeId, clone);
     }),
 
