@@ -145,7 +145,7 @@ export default function RemoteSession({ win }: { win: RemoteSessionWindow }) {
       <RemoteSurface>
         <CongestionVeil level={traffic.level} hostname={node.hostname}>
           {phase === "connected" ? (
-            <NodeEnvironment node={node} />
+            <NodeEnvironment node={node} onDisconnect={() => close(win.instanceId)} />
           ) : (
             <Handshake lines={lines.slice(0, logIndex)} />
           )}

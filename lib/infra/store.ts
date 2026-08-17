@@ -275,6 +275,11 @@ interface InfraStore {
     service: string,
     startupType: "Automatic" | "AutomaticDelayed" | "Manual" | "Disabled",
   ) => void;
+  /**
+   * Restart a Windows host: re-applies every service's startup type, the way a
+   * real boot does, and resets uptime. The only place startup type has effect.
+   */
+  rebootNode: (nodeId: NodeId) => void;
   setWinInterfaceUp: (nodeId: NodeId, iface: string, up: boolean) => void;
   setFirewallProfile: (nodeId: NodeId, profile: "Domain" | "Private" | "Public", enabled: boolean) => void;
 
@@ -1325,6 +1330,33 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       // Disabling a RUNNING service does not stop it — Windows applies the
       // change at next start. Modelling that keeps the two levers distinct
       // instead of quietly making one imply the other.
+      return withNode(s, nodeId, clone);
+    }),
+
+  /**
+   * Restart the server, applying startup types the way a real boot does.
+   *
+   * This is what makes `setWindowsServiceStartup` mean something. Start/stop
+   * changes what runs now; startup type only takes effect HERE. A service the
+   * operator started by hand but left on Manual comes back stopped, which is
+   * the entire lesson of a "the fix keeps coming back" ticket — and it cannot
+   * be taught if nothing ever re-reads the startup type.
+   */
+  rebootNode: (nodeId) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      if (!node || node.os !== "windows") return s;
+      const clone = structuredClone(node);
+      for (const svc of Object.values(clone.services)) {
+        // Automatic (and delayed) start at boot; Manual and Disabled do not.
+        // Manual is the subtle one: it means "startable", not "started".
+        const autoStarts = svc.startupType === "Automatic" || svc.startupType === "AutomaticDelayed";
+        svc.status = autoStarts ? "Running" : "Stopped";
+        svc.pid = autoStarts ? (svc.pid ?? Math.floor(1000 + Math.random() * 6000)) : null;
+      }
+      // Uptime restarts with the machine. Left alone it would claim months of
+      // continuous service on a box that just rebooted.
+      clone.health = { ...clone.health, uptimeSeconds: 0 };
       return withNode(s, nodeId, clone);
     }),
 

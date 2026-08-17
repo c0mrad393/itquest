@@ -19,24 +19,47 @@
 import { useMemo, useRef, useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
 import type { WindowsNodeState } from "@/lib/core";
-import { SERVER_OS, SERVER_OS_FULL, resolvePolicies, scopeChain } from "@/lib/core";
+import { SERVER_OS, SERVER_OS_FULL, SERVER_OS_VENDOR, resolvePolicies, scopeChain } from "@/lib/core";
 
 interface Line {
   kind: "in" | "out" | "err";
   text: string;
 }
 
-export default function ServerTerminal({ nodeId }: { nodeId: string }) {
+/**
+ * Which shell this console is presenting as.
+ *
+ * The command set is identical — this is presentation, and pretending
+ * otherwise would mean maintaining two interpreters to teach one idea. What it
+ * does buy is that the desktop's two shell icons are not the same icon twice:
+ * an admin who reaches for the object shell versus the legacy prompt sees the
+ * banner and prompt they expect.
+ */
+export type ServerShell = "powershell" | "cmd";
+
+export default function ServerTerminal({
+  nodeId,
+  shell = "powershell",
+}: {
+  nodeId: string;
+  shell?: ServerShell;
+}) {
   const infra = useInfraStore((s) => s.infra);
   const node = infra.nodes[nodeId] as WindowsNodeState | undefined;
   const [lines, setLines] = useState<Line[]>(() => [
     { kind: "out", text: `${SERVER_OS_FULL}` },
+    ...(shell === "cmd"
+      ? [{ kind: "out" as const, text: `(c) ${SERVER_OS_VENDOR}. All rights reserved.` }]
+      : []),
     { kind: "out", text: `Type 'help' for the available commands.` },
   ]);
   const [input, setInput] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
 
-  const prompt = useMemo(() => `PS ${node?.hostname ?? "?"}\\> `, [node]);
+  const prompt = useMemo(
+    () => (shell === "cmd" ? `C:\\Users\\Administrator> ` : `PS ${node?.hostname ?? "?"}\\> `),
+    [node, shell],
+  );
 
   function run(raw: string) {
     const cmd = raw.trim();

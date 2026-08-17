@@ -25,7 +25,7 @@
  * SVG and CSS indicators only — no emoji.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useInfraStore } from "@/lib/infra/store";
 import type { WindowsNodeState } from "@/lib/core";
 import { locationOf, serverLiveness } from "@/lib/core";
@@ -42,7 +42,7 @@ import type { GlossaryKey } from "@/lib/core";
 import { isIsolated } from "@/lib/core";
 import { IconAlert, IconCheck } from "@/components/ui/icons";
 
-type SectionId = "overview" | "directory" | "policies" | "shares" | "services" | "events";
+export type SectionId = "overview" | "directory" | "policies" | "shares" | "services" | "events";
 
 interface Section {
   id: SectionId;
@@ -63,9 +63,36 @@ const SECTIONS: Section[] = [
   { id: "events", label: "Event Log", iconId: "list", when: () => true },
 ];
 
-export default function AdminCenter({ nodeId }: { nodeId: string }) {
+export default function AdminCenter({
+  nodeId,
+  requestedSection,
+  sectionNonce = 0,
+}: {
+  nodeId: string;
+  /**
+   * Section a Start-menu shortcut asked for. The directory and policy tools are
+   * separate entries on the menu (an admin looks for them by their own names)
+   * but they are SECTIONS of this one console, not separate windows — the
+   * v0.8.1 consolidation exists precisely so the desktop does not fill with
+   * single-purpose MMC windows again.
+   */
+  requestedSection?: SectionId;
+  /**
+   * Bumped every time a shortcut fires. Without it, clicking the same shortcut
+   * twice would do nothing the second time: the prop would be unchanged, so no
+   * effect would re-run, and a console the operator had since navigated away
+   * from would stay put.
+   */
+  sectionNonce?: number;
+}) {
   const node = useInfraStore((s) => s.infra.nodes[nodeId]) as WindowsNodeState | undefined;
-  const [section, setSection] = useState<SectionId>("overview");
+  const [section, setSection] = useState<SectionId>(requestedSection ?? "overview");
+
+  useEffect(() => {
+    if (requestedSection) setSection(requestedSection);
+    // Keyed on the nonce alone: the section is read fresh each time it fires.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sectionNonce]);
 
   const available = useMemo(
     () => (node ? SECTIONS.filter((s) => s.when(node)) : []),

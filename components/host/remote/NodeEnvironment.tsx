@@ -19,12 +19,23 @@ import MacOSEndpointEnv from "./endpoints/MacOSEndpointEnv";
 import WindowsEndpointEnv from "./endpoints/WindowsEndpointEnv";
 import ServerOsDesktop from "./server/ServerOsDesktop";
 
-export default function NodeEnvironment({ node }: { node: TargetNode }) {
+export default function NodeEnvironment({
+  node,
+  onDisconnect,
+}: {
+  node: TargetNode;
+  /**
+   * Ends the session. Forwarded to the ServerOS desktop so its Start-menu power
+   * options are real: the session window is owned by RemoteSession, and a
+   * desktop cannot close the frame painted around it.
+   */
+  onDisconnect?: () => void;
+}) {
   if (node.os === "windows") {
     return node.role === "workstation" ? (
       <WindowsEndpointEnv nodeId={node.nodeId} />
     ) : (
-      <ServerOsDesktop nodeId={node.nodeId} />
+      <ServerOsDesktop nodeId={node.nodeId} onDisconnect={onDisconnect} />
     );
   }
   if (node.os === "macos") return <MacOSEndpointEnv nodeId={node.nodeId} />;
