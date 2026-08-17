@@ -30,6 +30,20 @@ import type { Fastener, Slot } from "@/lib/hardware/rig";
 
 export type BoardKind = "desktop" | "laptop" | "server";
 
+/**
+ * Canvas extents per platform, in board grid units.
+ *
+ * A server board is not a desktop board with more parts on it — it is wider and
+ * squarer, and drawing all three at ATX proportions is precisely what made the
+ * three topologies read as the same object. The slot coordinates in `rig.ts`
+ * are laid out inside these bounds.
+ */
+export const BOARD_SIZE: Record<BoardKind, { w: number; h: number }> = {
+  desktop: { w: 20, h: 11.5 },
+  laptop: { w: 20, h: 12.5 },
+  server: { w: 23.5, h: 11.5 },
+};
+
 /** Board substrate palettes. Real PCBs, not neon. */
 export const BOARD: Record<BoardKind, { pcb: string; pcbDark: string; trace: string; silk: string }> = {
   desktop: { pcb: "#1c5c3a", pcbDark: "#14432b", trace: "#2f7d53", silk: "#dbe7de" },
@@ -534,6 +548,80 @@ export function CableRun({
       <path d={d} stroke={stroke} strokeWidth="3.4" fill="none" strokeLinecap="round" />
       <path d={d} stroke="#ffffff33" strokeWidth="0.9" fill="none" />
       {!connected && <circle cx={end.x} cy={end.y} r="2.6" fill={stroke} />}
+    </g>
+  );
+}
+
+/**
+ * Chassis furniture: the non-interactive structure a board sits in.
+ *
+ * Heat pipes, heatsink retention frames and the I/O shield are not slots — you
+ * do not click them and the store has never heard of them — but leaving them
+ * out is why the three platforms looked alike. They are drawn beneath the parts
+ * and are `pointer-events-none` throughout, so they cannot swallow a click
+ * meant for a screw.
+ */
+export function ChassisFurniture({ kind, u }: { kind: BoardKind; u: number }) {
+  if (kind === "laptop") {
+    // Copper pipes run from the central SoC out to both blowers, with a flat
+    // vapour plate over the die — the defining feature of a gaming chassis.
+    const pipe = (d: string, w: number) => (
+      <path d={d} stroke="#b97845" strokeWidth={w} fill="none" strokeLinecap="round" />
+    );
+    return (
+      <g className="pointer-events-none">
+        {pipe(`M${4.4 * u} ${2.4 * u} C ${6.5 * u} ${2.2 * u}, ${7 * u} ${2.6 * u}, ${9.9 * u} ${2.6 * u}`, 9)}
+        {pipe(`M${15.6 * u} ${2.4 * u} C ${13.5 * u} ${2.2 * u}, ${13 * u} ${3.2 * u}, ${10.2 * u} ${3.2 * u}`, 9)}
+        {/* Highlight along the top of each pipe: copper is round, not flat. */}
+        {pipe(`M${4.4 * u} ${2.2 * u} C ${6.5 * u} ${2 * u}, ${7 * u} ${2.4 * u}, ${9.9 * u} ${2.4 * u}`, 2)}
+        <g opacity="0.55">
+          {pipe(`M${15.6 * u} ${2.2 * u} C ${13.5 * u} ${2 * u}, ${13 * u} ${3 * u}, ${10.2 * u} ${3 * u}`, 2)}
+        </g>
+        {/* Vapour plate over the SoC */}
+        <rect x={7.9 * u} y={1.2 * u} width={4.2 * u} height={3.8 * u} rx="4" fill="#c98a52" opacity="0.35" />
+        {/* Chassis rails top and bottom */}
+        <rect x={0.3 * u} y={0.3 * u} width={19.4 * u} height={11.9 * u} rx="10" fill="none" stroke="#2a3446" strokeWidth="3" />
+      </g>
+    );
+  }
+
+  if (kind === "server") {
+    // Massive heatsink retention frames around both sockets, plus the drive
+    // cage divider that separates the front bays from the board.
+    const frame = (x: number, y: number) => (
+      <g>
+        <rect
+          x={(x - 0.9) * u} y={(y - 0.9) * u}
+          width={5.2 * u} height={5.2 * u} rx="3"
+          fill="none" stroke="#8d959f" strokeWidth="2.4" opacity="0.75"
+        />
+        {[[x - 0.9, y - 0.9], [x + 4.3, y - 0.9], [x - 0.9, y + 4.3], [x + 4.3, y + 4.3]].map(([cx, cy], i) => (
+          <circle key={i} cx={cx * u} cy={cy * u} r="3.4" fill="#6f7883" />
+        ))}
+      </g>
+    );
+    return (
+      <g className="pointer-events-none">
+        {frame(6.5, 3.6)}
+        {frame(14.6, 3.6)}
+        {/* Front drive cage */}
+        <rect x={0.4 * u} y={0.4 * u} width={3.2 * u} height={9.2 * u} rx="4" fill="#10241a" stroke="#2b4d3a" strokeWidth="2" />
+        {/* PSU bay divider */}
+        <rect x={20.1 * u} y={0.4 * u} width={3 * u} height={6 * u} rx="4" fill="#10241a" stroke="#2b4d3a" strokeWidth="2" />
+      </g>
+    );
+  }
+
+  // Desktop: the rear I/O shield cluster, top-left, as ATX specifies.
+  return (
+    <g className="pointer-events-none">
+      <rect x={0.6 * u} y={0.5 * u} width={4.6 * u} height={1.5 * u} rx="2" fill="#242a33" stroke="#3c444f" strokeWidth="1.2" />
+      {Array.from({ length: 6 }, (_, i) => (
+        <rect key={i} x={(0.95 + i * 0.72) * u} y={0.8 * u} width={0.5 * u} height={0.9 * u} rx="1.5" fill="#0d1117" />
+      ))}
+      <text x={0.7 * u} y={2.5 * u} fontSize="6" fill="#dbe7de" opacity="0.4" className="select-none font-mono">
+        REAR I/O
+      </text>
     </g>
   );
 }

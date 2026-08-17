@@ -34,7 +34,9 @@ import { AppIcon } from "@/components/ui/app-icons";
 import { BiosSetupScreen, OsInstallScreen, PostHaltScreen, RunningScreen } from "./BiosScreen";
 import {
   BOARD,
+  BOARD_SIZE,
   BoardSubstrate,
+  ChassisFurniture,
   CableRun,
   FastenerVisual,
   PartPortrait,
@@ -167,12 +169,13 @@ export default function DesktopHardwareLab() {
         {/* ── Blueprint ──────────────────────────────────────────────────── */}
         <div className="min-w-0 flex-1 overflow-auto term-scroll bg-[#070c14] p-4">
           <svg
-            viewBox={`0 0 ${19 * U} ${12 * U}`}
+            viewBox={`0 0 ${BOARD_SIZE[machine].w * U} ${BOARD_SIZE[machine].h * U}`}
             className="h-auto w-full max-w-[52rem]"
             role="img"
             aria-label="Motherboard blueprint"
           >
-            <BoardSubstrate kind={machine} w={19 * U} h={12 * U} />
+            <BoardSubstrate kind={machine} w={BOARD_SIZE[machine].w * U} h={BOARD_SIZE[machine].h * U} />
+            <ChassisFurniture kind={machine} u={U} />
 
             {/* Cables run under the components, as they do on a real board. */}
             {rig.cables.map((c) => {
@@ -184,7 +187,7 @@ export default function DesktopHardwareLab() {
                   kind={c.kind}
                   connected={c.connected}
                   from={{ x: (a.x + a.w / 2) * U, y: (a.y + a.h / 2) * U }}
-                  to={{ x: 17.6 * U, y: 11.2 * U }}
+                  to={{ x: (BOARD_SIZE[machine].w - 1.4) * U, y: (BOARD_SIZE[machine].h - 0.8) * U }}
                 />
               );
             })}

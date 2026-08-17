@@ -306,13 +306,42 @@ export type RigFault = "faulty-ram" | "cpu-fan-unplugged" | "none";
 export function buildDesktopRig(fault: RigFault = "faulty-ram"): Rig {
   const clip = (id: string, label: string): Fastener => ({ id, label, kind: "clip", fastened: true });
   const screw = (id: string, label: string): Fastener => ({ id, label, kind: "screw", fastened: true });
+  /**
+   * One DIMM in the bank. Only the x offset differs.
+   *
+   * Fastener ids are passed in rather than generated from the slot id: they are
+   * part of the model's identity, referenced by scenarios and by the spec, and
+   * silently renaming them while moving a slot across the board would be a
+   * behaviour change wearing a layout change's clothes.
+   */
+  const ramSlot = (
+    id: string,
+    label: string,
+    x: number,
+    fastenerIds: [string, string],
+    part: Part | null,
+    required = false,
+  ): Slot => ({
+    id, kind: "ram", label, x, y: 1.4, w: 0.72, h: 5.6,
+    part,
+    fasteners: [clip(fastenerIds[0], "the upper clip"), clip(fastenerIds[1], "the lower clip")],
+    cableIds: [],
+    required,
+  });
 
+  /*
+   * Standard ATX, laid out the way the form factor actually specifies:
+   * I/O cluster top-left, socket top-centre, DIMMs in a vertical bank to the
+   * right of the socket, 24-pin on the far right edge, expansion slots filling
+   * the bottom-left quadrant. Anyone who has built a PC should be able to point
+   * at this and name every area without reading a label.
+   */
   const slots: Slot[] = [
     {
       id: "cpu",
       kind: "cpu",
       label: "CPU socket",
-      x: 3, y: 1, w: 4, h: 4,
+      x: 5.6, y: 1.6, w: 4.6, h: 4.6,
       part: { id: "p-cpu", kind: "cpu", model: "Xenon X6-4400" },
       fasteners: [screw("cpu-lever", "the retention lever")],
       cableIds: [],
@@ -322,40 +351,35 @@ export function buildDesktopRig(fault: RigFault = "faulty-ram"): Rig {
       id: "fan",
       kind: "fan",
       label: "CPU cooler",
-      x: 8, y: 1, w: 3, h: 3,
+      // Left of the socket, where a tower cooler's fan hangs.
+      x: 1.1, y: 2.2, w: 3.6, h: 3.6,
       part: { id: "p-fan", kind: "fan", model: "AeroCore 120" },
       fasteners: [screw("fan-s1", "mounting screw A"), screw("fan-s2", "mounting screw B")],
       cableIds: ["c-fan"],
     },
+    // Four DIMMs in a bank right of the socket. Two populated: the standard
+    // dual-channel build, and the reason there is somewhere to add memory.
+    ramSlot("ram-a1", "DIMM A1", 11.6, ["a1-top", "a1-bot"], { id: "p-ram1", kind: "ram", model: "8GB DDR4-3200", faulty: fault === "faulty-ram" }, true),
+    ramSlot("ram-a2", "DIMM A2", 12.6, ["a2-top", "a2-bot"], { id: "p-ram2", kind: "ram", model: "8GB DDR4-3200" }),
+    ramSlot("ram-b1", "DIMM B1", 13.6, ["b1-top", "b1-bot"], null),
+    ramSlot("ram-b2", "DIMM B2", 14.6, ["b2-top", "b2-bot"], null),
     {
-      id: "ram-a1",
-      kind: "ram",
-      label: "DIMM A1",
-      x: 12, y: 1, w: 1.4, h: 6,
-      part: {
-        id: "p-ram1",
-        kind: "ram",
-        model: "8GB DDR4-3200",
-        faulty: fault === "faulty-ram",
-      },
-      fasteners: [clip("a1-top", "the upper clip"), clip("a1-bot", "the lower clip")],
-      cableIds: [],
+      id: "atx",
+      kind: "psu",
+      label: "ATX 24-pin",
+      // Far right edge, as the spec puts it.
+      x: 18.2, y: 1.4, w: 1.3, h: 5.2,
+      part: { id: "p-psu", kind: "psu", model: "550W Bronze" },
+      fasteners: [clip("atx-latch", "the connector latch")],
+      cableIds: ["c-atx"],
       required: true,
-    },
-    {
-      id: "ram-a2",
-      kind: "ram",
-      label: "DIMM A2",
-      x: 14, y: 1, w: 1.4, h: 6,
-      part: { id: "p-ram2", kind: "ram", model: "8GB DDR4-3200" },
-      fasteners: [clip("a2-top", "the upper clip"), clip("a2-bot", "the lower clip")],
-      cableIds: [],
     },
     {
       id: "pcie-x16",
       kind: "gpu",
       label: "PCIe x16",
-      x: 2, y: 8, w: 11, h: 2,
+      // Bottom-left quadrant, horizontal, as expansion cards sit.
+      x: 0.9, y: 8.6, w: 12.4, h: 2.1,
       part: { id: "p-gpu", kind: "gpu", model: "Lumen RTX-3060" },
       fasteners: [screw("gpu-bracket", "the bracket screw"), clip("gpu-latch", "the slot latch")],
       cableIds: ["c-gpu-pwr"],
@@ -364,20 +388,10 @@ export function buildDesktopRig(fault: RigFault = "faulty-ram"): Rig {
       id: "sata-0",
       kind: "storage",
       label: "SATA 0",
-      x: 15, y: 9, w: 2, h: 1.4,
+      x: 16.6, y: 8.2, w: 2.6, h: 1.7,
       part: { id: "p-ssd", kind: "storage", model: "480GB SSD" },
       fasteners: [],
       cableIds: ["c-sata", "c-ssd-pwr"],
-    },
-    {
-      id: "atx",
-      kind: "psu",
-      label: "ATX power",
-      x: 16, y: 1, w: 1.6, h: 5,
-      part: { id: "p-psu", kind: "psu", model: "550W Bronze" },
-      fasteners: [clip("atx-latch", "the connector latch")],
-      cableIds: ["c-atx"],
-      required: true,
     },
   ];
 
@@ -423,49 +437,76 @@ export function buildLaptopRig(fault: RigFault = "faulty-ram"): Rig {
   const screw = (id: string, label: string): Fastener => ({ id, label, kind: "screw", fastened: true });
   const clip = (id: string, label: string): Fastener => ({ id, label, kind: "clip", fastened: true });
 
+  /*
+   * A gaming-chassis interior, NOT a small ATX board.
+   *
+   * The layout is dictated by the case, not by a form-factor spec: the battery
+   * owns the entire lower half, dual blowers sit in the top corners exhausting
+   * out the hinge, and the board threads between them. Everything else gets
+   * tucked into whatever is left — which is exactly why laptop repair is a
+   * disassembly ORDER problem rather than a "reach in and swap it" problem.
+   */
   const slots: Slot[] = [
     {
-      id: "cpu", kind: "cpu", label: "SoC (soldered)", x: 4, y: 3, w: 4, h: 3,
-      // Soldered: no fasteners, and no removal path. Modelled as required so a
-      // learner cannot "fix" a laptop by pulling a CPU that does not come out.
+      // Top-left blower.
+      id: "fan", kind: "fan", label: "Blower L", x: 0.8, y: 0.8, w: 3.6, h: 3.2,
+      part: { id: "l-fan", kind: "fan", model: "Thin blower" },
+      fasteners: [screw("lfan-s", "the fan screw")],
+      cableIds: ["lc-fan"],
+    },
+    {
+      // Top-right blower.
+      id: "fan2", kind: "fan", label: "Blower R", x: 15.6, y: 0.8, w: 3.6, h: 3.2,
+      part: { id: "l-fan2", kind: "fan", model: "Thin blower" },
+      fasteners: [screw("lfan2-s", "the fan screw")],
+      cableIds: ["lc-fan2"],
+    },
+    {
+      // Central SoC, between the two blowers and under the heat pipes.
+      id: "cpu", kind: "cpu", label: "SoC (soldered)", x: 8.1, y: 1.4, w: 3.8, h: 3.4,
       part: { id: "l-cpu", kind: "cpu", model: "Core M7-1250U" },
       fasteners: [], cableIds: [], required: true,
     },
     {
-      id: "ram-so", kind: "ram", label: "SO-DIMM", x: 9, y: 2, w: 6, h: 1.6,
+      // SO-DIMMs stack flat, tucked right of the SoC under a shield.
+      id: "ram-so", kind: "ram", label: "SO-DIMM 0", x: 12.4, y: 1.5, w: 2.8, h: 1.2,
       part: { id: "l-ram", kind: "ram", model: "16GB DDR5-4800", faulty: fault === "faulty-ram" },
       fasteners: [clip("so-l", "the left clip"), clip("so-r", "the right clip")],
       cableIds: [], required: true,
     },
     {
-      id: "display", kind: "gpu", label: "Display flex", x: 9, y: 4.5, w: 6, h: 1.6,
-      part: { id: "l-disp", kind: "gpu", model: "eDP display panel" },
-      fasteners: [zif("zif-disp", "the display ZIF latch")],
-      cableIds: ["lc-disp"],
+      id: "ram-so2", kind: "ram", label: "SO-DIMM 1", x: 12.4, y: 3.1, w: 2.8, h: 1.2,
+      part: null,
+      fasteners: [clip("so2-l", "the left clip"), clip("so2-r", "the right clip")],
+      cableIds: [],
     },
     {
-      id: "keyboard", kind: "gpu", label: "Keyboard flex", x: 2, y: 7.5, w: 8, h: 1.6,
-      part: { id: "l-kbd", kind: "gpu", model: "Keyboard matrix" },
-      fasteners: [zif("zif-kbd", "the keyboard ZIF latch")],
-      cableIds: ["lc-kbd"],
-    },
-    {
-      id: "m2", kind: "storage", label: "M.2 2280", x: 2, y: 1, w: 1.6, h: 5,
+      // M.2 tucked into the narrow strip left of the SoC.
+      id: "m2", kind: "storage", label: "M.2 2280", x: 4.9, y: 1.6, w: 2.6, h: 0.9,
       part: { id: "l-ssd", kind: "storage", model: "1TB NVMe" },
       fasteners: [screw("m2-screw", "the retention screw")],
       cableIds: [],
     },
     {
-      id: "battery", kind: "psu", label: "Battery", x: 11, y: 7, w: 5, h: 3,
+      // Display flex leaves the board toward the hinge, top edge.
+      id: "display", kind: "gpu", label: "Display flex", x: 8.4, y: 5.3, w: 3.2, h: 0.9,
+      part: { id: "l-disp", kind: "gpu", model: "eDP display panel" },
+      fasteners: [zif("zif-disp", "the display ZIF latch")],
+      cableIds: ["lc-disp"],
+    },
+    {
+      // The battery owns the entire lower section.
+      id: "battery", kind: "psu", label: "Battery pack", x: 1.6, y: 7.4, w: 16.8, h: 4.2,
       part: { id: "l-bat", kind: "psu", model: "58Wh Li-ion" },
       fasteners: [screw("bat-s1", "battery screw A"), screw("bat-s2", "battery screw B")],
       cableIds: ["lc-bat"], required: true,
     },
     {
-      id: "fan", kind: "fan", label: "Blower fan", x: 4, y: 7, w: 3, h: 2.4,
-      part: { id: "l-fan", kind: "fan", model: "Thin blower" },
-      fasteners: [screw("lfan-s", "the fan screw")],
-      cableIds: ["lc-fan"],
+      // Keyboard/trackpad flex sits BELOW the board and crosses the battery.
+      id: "keyboard", kind: "gpu", label: "Keyboard flex", x: 6.4, y: 6.1, w: 7.2, h: 0.9,
+      part: { id: "l-kbd", kind: "gpu", model: "Keyboard matrix" },
+      fasteners: [zif("zif-kbd", "the keyboard ZIF latch")],
+      cableIds: ["lc-kbd"],
     },
   ];
 
@@ -474,9 +515,10 @@ export function buildLaptopRig(fault: RigFault = "faulty-ram"): Rig {
     { id: "lc-kbd", label: "the keyboard ribbon", kind: "ribbon", from: "keyboard", to: "cpu", connected: true },
     { id: "lc-bat", label: "the battery connector", kind: "power", from: "battery", to: "cpu", connected: true },
     {
-      id: "lc-fan", label: "the fan connector", kind: "power", from: "fan", to: "cpu",
+      id: "lc-fan", label: "the left fan connector", kind: "power", from: "fan", to: "cpu",
       connected: fault !== "cpu-fan-unplugged",
     },
+    { id: "lc-fan2", label: "the right fan connector", kind: "power", from: "fan2", to: "cpu", connected: true },
   ];
 
   return {
@@ -499,15 +541,26 @@ export function buildServerRig(fault: RigFault = "faulty-ram"): Rig {
   const clip = (id: string, label: string): Fastener => ({ id, label, kind: "clip", fastened: true });
   const handle = (id: string, label: string): Fastener => ({ id, label, kind: "handle", fastened: true });
 
-  const bank = (n: number, x: number, faulty = false): Slot => ({
-    id: `dimm-${n}`, kind: "ram", label: `DIMM ${n}`, x, y: 1, w: 1.2, h: 5,
-    part: { id: `s-ram${n}`, kind: "ram", model: "32GB ECC RDIMM", faulty },
-    fasteners: [clip(`d${n}-t`, "the upper clip"), clip(`d${n}-b`, "the lower clip")],
-    cableIds: [], required: n === 1,
+  /*
+   * SSI EEB, laid out the way a dual-socket board actually is.
+   *
+   * The sockets sit side by side across the middle, and each is FLANKED by its
+   * own memory — four channels to the left, four to the right. That adjacency
+   * is not decoration: a DIMM is wired to one specific socket's controller, so
+   * the bank beside CPU 1 is dead if CPU 1 is not fitted, and populating "the
+   * next free slot" without knowing which side you are on is a real and common
+   * mistake. Expansion sits along the bottom edge, drives at the front.
+   */
+  const bank = (id: string, label: string, x: number, part: Part | null, required = false): Slot => ({
+    id, kind: "ram", label, x, y: 3.2, w: 0.62, h: 5.4,
+    part,
+    fasteners: [clip(`${id}-t`, "the upper clip"), clip(`${id}-b`, "the lower clip")],
+    cableIds: [],
+    required,
   });
 
   const bay = (n: number, y: number): Slot => ({
-    id: `bay-${n}`, kind: "storage", label: `Bay ${n}`, x: 16, y, w: 2.4, h: 1.6,
+    id: `bay-${n}`, kind: "storage", label: `Bay ${n}`, x: 0.7, y, w: 2.6, h: 1.5,
     part: { id: `s-hdd${n}`, kind: "storage", model: "2TB SAS 10K" },
     // A hot-swap caddy is held by ONE thing: the handle. No cables, because the
     // backplane is the connector — which is the entire point of hot-swap.
@@ -515,41 +568,69 @@ export function buildServerRig(fault: RigFault = "faulty-ram"): Rig {
     cableIds: [],
   });
 
+  /** Eight DIMMs per socket: four either side, as the channels are wired. */
+  const flank = (cpu: 0 | 1, originX: number, populated: number, faultyFirst: boolean): Slot[] => {
+    const out: Slot[] = [];
+    for (let i = 0; i < 8; i++) {
+      // Four to the left of the socket, four to the right.
+      const side = i < 4 ? i : i + 4.9;
+      const n = cpu * 8 + i + 1;
+      const filled = i < populated;
+      out.push(
+        bank(
+          `dimm-${n}`,
+          `${cpu}${String.fromCharCode(65 + i)}`,
+          originX + side * 0.76,
+          filled
+            ? { id: `s-ram${n}`, kind: "ram", model: "32GB ECC RDIMM", faulty: faultyFirst && i === 0 }
+            : null,
+          n === 1,
+        ),
+      );
+    }
+    return out;
+  };
+
   const slots: Slot[] = [
     {
-      id: "cpu0", kind: "cpu", label: "CPU 0", x: 2, y: 1, w: 3.4, h: 3.4,
+      id: "cpu0", kind: "cpu", label: "CPU 0", x: 6.5, y: 3.6, w: 3.4, h: 3.4,
       part: { id: "s-cpu0", kind: "cpu", model: "Xenon Gold 6338" },
       fasteners: [screw("c0-a", "ILM screw A"), screw("c0-b", "ILM screw B")],
       cableIds: [], required: true,
     },
     {
-      id: "cpu1", kind: "cpu", label: "CPU 1", x: 2, y: 5.4, w: 3.4, h: 3.4,
+      id: "cpu1", kind: "cpu", label: "CPU 1", x: 14.6, y: 3.6, w: 3.4, h: 3.4,
       part: { id: "s-cpu1", kind: "cpu", model: "Xenon Gold 6338" },
       fasteners: [screw("c1-a", "ILM screw A"), screw("c1-b", "ILM screw B")],
       cableIds: [],
     },
-    bank(1, 6.4, fault === "faulty-ram"),
-    bank(2, 8),
-    bank(3, 9.6),
-    bank(4, 11.2),
+    ...flank(0, 3.6, 2, fault === "faulty-ram"),
+    ...flank(1, 11.7, 2, false),
     {
-      id: "psu0", kind: "psu", label: "PSU 0", x: 13, y: 1, w: 2.4, h: 2.4,
+      id: "psu0", kind: "psu", label: "PSU 0", x: 20.4, y: 0.8, w: 2.6, h: 2.4,
       part: { id: "s-psu0", kind: "psu", model: "800W redundant" },
       fasteners: [handle("psu0-h", "the PSU 0 handle")],
       cableIds: ["sc-psu0"], required: true,
     },
     {
-      id: "psu1", kind: "psu", label: "PSU 1", x: 13, y: 4, w: 2.4, h: 2.4,
+      id: "psu1", kind: "psu", label: "PSU 1", x: 20.4, y: 3.6, w: 2.6, h: 2.4,
       part: { id: "s-psu1", kind: "psu", model: "800W redundant" },
       fasteners: [handle("psu1-h", "the PSU 1 handle")],
       cableIds: ["sc-psu1"],
     },
-    bay(0, 1), bay(1, 3), bay(2, 5), bay(3, 7),
+    bay(0, 0.8), bay(1, 2.6), bay(2, 4.4), bay(3, 6.2),
     {
-      id: "fan", kind: "fan", label: "Fan wall", x: 6.4, y: 7, w: 6, h: 2,
+      id: "fan", kind: "fan", label: "Fan wall", x: 4.2, y: 0.7, w: 13.6, h: 2.1,
       part: { id: "s-fan", kind: "fan", model: "6x 60mm hot-swap" },
       fasteners: [],
       cableIds: ["sc-fan"],
+    },
+    {
+      // Expansion along the very bottom edge, as risers sit on an EEB board.
+      id: "pcie-0", kind: "gpu", label: "PCIe x16 riser", x: 4.2, y: 9.4, w: 12.2, h: 1.5,
+      part: { id: "s-nic", kind: "gpu", model: "Dual 25GbE NIC" },
+      fasteners: [screw("pcie0-s", "the riser screw")],
+      cableIds: [],
     },
   ];
 

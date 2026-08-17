@@ -1963,7 +1963,15 @@ group("Client endpoints skip the rack chain");
 
   const srv = buildServerRig("none");
   eq("the server has two sockets", srv.slots.filter((s) => s.kind === "cpu").length, 2);
-  eq("...and four DIMM banks", srv.slots.filter((s) => s.kind === "ram").length, 4);
+  // Eight DIMMs per socket, four either side — the flanking arrangement a
+  // dual-socket board actually has, because each bank is wired to one CPU's
+  // memory controller.
+  eq("...and sixteen DIMM slots", srv.slots.filter((s) => s.kind === "ram").length, 16);
+  eq("...half of them belonging to each socket",
+     srv.slots.filter((s) => s.kind === "ram" && s.label.startsWith("0")).length, 8);
+  // Only the first bank of each side ships populated: there is room to grow,
+  // and an empty slot is not a fault.
+  eq("four banks ship populated", srv.slots.filter((s) => s.kind === "ram" && s.part).length, 4);
   eq("...and four drive bays", srv.slots.filter((s) => s.id.startsWith("bay-")).length, 4);
   eq("only the first bank is required", srv.slots.filter((s) => s.kind === "ram" && s.required).length, 1);
 
