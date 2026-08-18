@@ -30,10 +30,23 @@ export const PAL = {
   surface: "#ffffff",
   surfaceEdge: "#e8ecf0",
 
-  boardBlue: "#3d8ed9",
-  boardBlueDark: "#2a6fb0",
-  boardBlueLight: "#6fb3e8",
-  socketNavy: "#1f4e79",
+  boardBlue: "#2e8b46",
+  boardBlueDark: "#256e38",
+  boardBlueLight: "#3aa055",
+  socketNavy: "#1e5c2e",
+  /* Board-specific accents, sampled from the reference. */
+  trace: "#1f5f31",
+  vrmGold: "#c9a23f",
+  vrmGoldDark: "#a8832c",
+  slotYellow: "#e8d44d",
+  slotBlue: "#2f7fd0",
+  slotWhite: "#e4e7ea",
+  connCream: "#efe8d8",
+  sata: "#d0273b",
+  ioMagenta: "#b5306e",
+  ioTeal: "#3fb8c4",
+  ioOrange: "#e08a3c",
+  ioBlue: "#4a6fd0",
 
   pcbGreen: "#27ae60",
   pcbGreenDark: "#1e8e4d",
@@ -76,79 +89,191 @@ function Ring({ x, y, w, h, r = 3 }: { x: number; y: number; w: number; h: numbe
  * reference's, and they are also how a builder finds a slot without labels.
  */
 export function VectorMotherboard({ highlighted }: VectorProps) {
+  /*
+   * Copper routing, drawn as real paths.
+   *
+   * The reference's board reads as a BOARD because traces visibly run between
+   * the socket, the DIMM bank and the chipset — that routing is most of what
+   * separates a motherboard illustration from a green rectangle. Fixed paths
+   * rather than a scatter, so the copper does not move between renders.
+   */
+  const traces = [
+    "M46 30 L46 46 L62 62 L62 88",
+    "M52 30 L52 42 L70 60 L70 88",
+    "M58 34 L58 44 L78 64 L78 88",
+    "M44 52 L30 66 L30 92",
+    "M40 56 L24 72 L24 92",
+    "M62 26 L62 14 L86 14",
+    "M66 26 L66 10 L90 10",
+    "M34 44 L18 44 L18 70",
+    "M50 66 L50 78 L36 92",
+    "M56 68 L56 80 L44 94",
+  ];
+
   return (
     <g>
-      <rect x="2" y="4" width="96" height="92" rx="2" fill={PAL.boardBlue} />
+      {/* Substrate */}
+      <rect x="2" y="2" width="96" height="96" rx="1.5" fill={PAL.boardBlue} />
 
-      {/* Rear I/O connector stack, top edge */}
-      <rect x="8" y="6" width="34" height="10" rx="1" fill={PAL.boardBlueDark} />
-      {[10, 20, 30].map((x, i) => (
-        <rect key={i} x={x} y="8" width="8" height="6" rx="0.8" fill={PAL.paper} />
+      {/* Copper, beneath every component */}
+      <g stroke={PAL.trace} strokeWidth="0.55" fill="none" opacity="0.9">
+        {traces.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>
+
+      {/* ── Rear I/O cluster, top-left ─────────────────────────────────── */}
+      <rect x="4" y="4" width="9" height="7" rx="0.6" fill={PAL.steel} />
+      {/* The magenta parallel port the reference makes so prominent */}
+      <rect x="4" y="12" width="7" height="13" rx="0.8" fill={PAL.ioMagenta} />
+      <rect x="5" y="13.5" width="5" height="10" rx="0.5" fill="#8d2455" />
+      {/* PS/2 pair */}
+      {[27, 31].map((y, i) => (
+        <circle key={i} cx="7.5" cy={y} r="2" fill={i ? PAL.ioTeal : "#7d5aa8"} />
       ))}
-      {/* Twin D-sub ports, as on the sheet */}
-      {[48, 64].map((x, i) => (
+      {/* Audio jacks */}
+      {[PAL.ioOrange, PAL.ioBlue, "#7fd06a"].map((c, i) => (
+        <circle key={i} cx="7.5" cy={35 + i * 3.4} r="1.3" fill={c} />
+      ))}
+      {/* USB / LAN stacks */}
+      {[42, 49].map((y, i) => (
+        <rect key={i} x="4" y={y} width="8" height="6" rx="0.6" fill={PAL.steel} />
+      ))}
+
+      {/* VRM chokes and MOSFETs beside the socket */}
+      {[0, 1, 2, 3, 4].map((i) => (
+        <rect key={i} x="16" y={10 + i * 5} width="4" height="3.4" rx="0.4" fill={PAL.ink} />
+      ))}
+      {[0, 1, 2, 3, 4].map((i) => (
+        <circle key={i} cx="23" cy={11.5 + i * 5} r="1.6" fill={PAL.ioTeal} />
+      ))}
+
+      {/* ── CPU socket ─────────────────────────────────────────────────── */}
+      <rect x="30" y="8" width="22" height="22" rx="0.8" fill={PAL.steelDark} />
+      <rect x="31.5" y="9.5" width="19" height="19" rx="0.6" fill={PAL.steel} />
+      {/* Land grid */}
+      <g fill={PAL.steelDark} opacity="0.75">
+        {Array.from({ length: 100 }, (_, i) => (
+          <circle key={i} cx={33.5 + (i % 10) * 1.55} cy={11.5 + Math.floor(i / 10) * 1.55} r="0.3" />
+        ))}
+      </g>
+      {/* Retention lever down the right edge */}
+      <rect x="51" y="9" width="1.6" height="21" rx="0.8" fill={PAL.steelDark} />
+      <rect x="29" y="30" width="24" height="1.6" rx="0.8" fill={PAL.steelDark} />
+
+      {/* Top heatsink strip above the socket */}
+      <rect x="30" y="4" width="22" height="3.2" rx="0.5" fill={PAL.steel} />
+      {Array.from({ length: 9 }, (_, i) => (
+        <rect key={i} x={31 + i * 2.3} y="4.4" width="1.1" height="2.4" fill={PAL.steelDark} />
+      ))}
+
+      {/* ── Gold VRM / northbridge heatsink ────────────────────────────── */}
+      <rect x="34" y="34" width="20" height="20" rx="0.8" fill={PAL.vrmGold} />
+      <g stroke={PAL.vrmGoldDark} strokeWidth="0.7">
+        {Array.from({ length: 8 }, (_, i) => (
+          <line key={`h${i}`} x1="34" y1={36 + i * 2.4} x2="54" y2={36 + i * 2.4} />
+        ))}
+        {Array.from({ length: 8 }, (_, i) => (
+          <line key={`v${i}`} x1={36 + i * 2.4} y1="34" x2={36 + i * 2.4} y2="54" />
+        ))}
+      </g>
+
+      {/* ── DIMM bank: alternating yellow and blue, as DDR channels are ── */}
+      {[
+        { x: 62, c: PAL.slotWhite },
+        { x: 65, c: PAL.slotYellow },
+        { x: 68, c: PAL.slotBlue },
+        { x: 72, c: PAL.slotWhite },
+        { x: 75, c: PAL.slotYellow },
+        { x: 78, c: PAL.slotBlue },
+      ].map((s, i) => (
         <g key={i}>
-          <rect x={x} y="5" width="13" height="9" rx="4.5" fill={PAL.boardBlueDark} />
-          <rect x={x + 2} y="7" width="9" height="5" rx="2.5" fill={PAL.steel} />
+          <rect x={s.x} y="5" width="2.4" height="44" rx="0.4" fill={s.c} />
+          <rect x={s.x} y="5" width="2.4" height="2.6" fill={PAL.slotWhite} />
+          <rect x={s.x} y="46.4" width="2.4" height="2.6" fill={PAL.slotWhite} />
         </g>
       ))}
 
-      {/* CPU socket — navy square with a pin grid and a corner marker */}
-      <rect x="56" y="26" width="26" height="26" rx="1.5" fill={PAL.socketNavy} />
-      <rect x="59" y="29" width="20" height="20" rx="1" fill={PAL.boardBlueDark} />
-      {Array.from({ length: 36 }, (_, i) => (
-        <rect
-          key={i}
-          x={60.5 + (i % 6) * 3.2}
-          y={30.5 + Math.floor(i / 6) * 3.2}
-          width="1.8"
-          height="1.8"
-          rx="0.4"
-          fill={PAL.socketNavy}
-        />
+      {/* ── ATX 24-pin, right edge ─────────────────────────────────────── */}
+      <rect x="84" y="18" width="7" height="20" rx="0.8" fill={PAL.connCream} />
+      <g fill={PAL.steelDark} opacity="0.6">
+        {Array.from({ length: 24 }, (_, i) => (
+          <rect key={i} x={85 + (i % 2) * 2.6} y={19.5 + Math.floor(i / 2) * 1.5} width="1.8" height="1" rx="0.2" />
+        ))}
+      </g>
+      {/* IDE / floppy header below it */}
+      <rect x="84" y="40" width="6" height="14" rx="0.6" fill={PAL.ink} />
+      {Array.from({ length: 10 }, (_, i) => (
+        <rect key={i} x="85" y={41 + i * 1.3} width="4" height="0.6" fill={PAL.steel} opacity="0.5" />
       ))}
 
-      {/* DIMM slots — gold, horizontal, lower half */}
-      {[62, 70, 78].map((y, i) => (
+      {/* ── Expansion slots ────────────────────────────────────────────── */}
+      {/* PCIe: black, upper pair */}
+      {[54, 60].map((y, i) => (
+        <rect key={i} x="20" y={y} width="34" height="2.2" rx="0.4" fill={PAL.ink} />
+      ))}
+      {/* PCI: white, lower stack of four */}
+      {[66, 73, 80, 87].map((y, i) => (
         <g key={i}>
-          <rect x="30" y={y} width="58" height="5" rx="1" fill={PAL.gold} />
-          <rect x="32" y={y + 1.4} width="54" height="2.2" rx="0.6" fill={PAL.goldDark} />
+          <rect x="16" y={y} width="40" height="3" rx="0.4" fill={PAL.slotWhite} />
+          <rect x="30" y={y} width="1" height="3" fill={PAL.boardBlue} />
         </g>
       ))}
 
-      {/* PCIe slots — white, left column */}
-      {[36, 44, 52].map((y, i) => (
-        <rect key={i} x="6" y={y} width="34" height="4.5" rx="1" fill={PAL.paper} />
-      ))}
-      {/* Short slots above them */}
-      {[20, 26].map((y, i) => (
-        <rect key={i} x="6" y={y} width="20" height="4" rx="1" fill={PAL.boardBlueLight} />
+      {/* ── Chipset heatsink, silver finned ────────────────────────────── */}
+      <rect x="60" y="62" width="14" height="16" rx="0.8" fill={PAL.steel} />
+      {Array.from({ length: 7 }, (_, i) => (
+        <rect key={i} x={61 + i * 1.9} y="63" width="0.9" height="14" fill={PAL.steelDark} />
       ))}
 
-      {/* The red accent stripe the reference has down the middle */}
-      <rect x="46" y="18" width="3.5" height="34" rx="1.7" fill={PAL.red} />
+      {/* ── SATA ports: two columns of three, red ──────────────────────── */}
+      {[0, 1, 2].map((r) =>
+        [0, 1].map((c) => (
+          <g key={`${r}-${c}`}>
+            <rect x={78 + c * 6} y={62 + r * 5} width="5" height="3.4" rx="0.5" fill={PAL.sata} />
+            <rect x={79 + c * 6} y={63 + r * 5} width="3" height="1.4" rx="0.3" fill="#8f1a2a" />
+          </g>
+        )),
+      )}
 
-      {/* Chipset heatsink and VRM blocks */}
-      <rect x="86" y="26" width="9" height="26" rx="1" fill={PAL.boardBlueLight} />
-      <Chip x={60} y={16} w={12} h={7} />
-      <Chip x={16} y={62} w={9} h={7} />
-      <Chip x={16} y={74} w={9} h={7} />
-
-      {/* Round capacitors, flat two-tone */}
-      {[[52, 60], [58, 60], [64, 60], [88, 62]].map(([cx, cy], i) => (
-        <g key={i}>
-          <circle cx={cx} cy={cy} r="2.6" fill={PAL.steelDark} />
-          <circle cx={cx} cy={cy} r="1.7" fill={PAL.steel} />
-        </g>
+      {/* Front-panel header, navy */}
+      <rect x="72" y="80" width="20" height="3.4" rx="0.5" fill="#2b2f77" />
+      {Array.from({ length: 12 }, (_, i) => (
+        <rect key={i} x={73 + i * 1.6} y="81" width="0.8" height="1.6" fill={PAL.steel} opacity="0.6" />
       ))}
+
       {/* Coin cell */}
-      <circle cx="30" cy="58" r="4" fill={PAL.steel} />
+      <circle cx="70" cy="84" r="3.2" fill={PAL.steel} />
+      <circle cx="70" cy="84" r="2.4" fill={PAL.paper} />
 
-      {/* Power headers */}
-      <rect x="88" y="72" width="7" height="14" rx="1" fill={PAL.paper} />
-      <rect x="6" y="86" width="24" height="6" rx="1" fill={PAL.gold} />
+      {/* Capacitors, scattered where the reference puts them */}
+      {[
+        [26, 12], [26, 20], [26, 28], [57, 12], [57, 22], [57, 32],
+        [58, 58], [64, 58], [70, 58], [20, 44], [20, 50], [58, 82],
+      ].map(([cx, cy], i) => (
+        <g key={i}>
+          <circle cx={cx} cy={cy} r="1.9" fill={PAL.steelDark} />
+          <circle cx={cx} cy={cy} r="1.4" fill={PAL.steel} />
+        </g>
+      ))}
 
-      {highlighted && <Ring x={0} y={2} w={100} h={96} />}
+      {/* Black ICs */}
+      <Chip x={84} y={6} w={9} h={9} />
+      <Chip x={8} y={58} w={6} h={6} />
+      <Chip x={6} y={78} w={5} h={7} />
+      <Chip x={62} y={88} w={8} h={7} />
+      <Chip x={34} y={90} w={10} h={6} />
+      <Chip x={78} y={70} w={6} h={6} />
+
+      {/* Mounting holes, gold-ringed as on the reference */}
+      {[[6, 6], [6, 50], [6, 94], [58, 4], [94, 4], [94, 50], [94, 94], [58, 94]].map(([cx, cy], i) => (
+        <g key={i}>
+          <circle cx={cx} cy={cy} r="1.7" fill={PAL.slotYellow} />
+          <circle cx={cx} cy={cy} r="0.9" fill={PAL.paper} />
+        </g>
+      ))}
+
+      {highlighted && <Ring x={0} y={0} w={100} h={100} />}
     </g>
   );
 }
@@ -174,21 +299,24 @@ export function VectorCpu({ highlighted }: VectorProps) {
 export function VectorRam({ highlighted }: VectorProps) {
   return (
     <g>
-      <rect x="34" y="4" width="32" height="92" rx="2" fill={PAL.pcbGreen} />
-      {/* Gold spreader rails down both edges */}
-      <rect x="34" y="4" width="32" height="8" rx="2" fill={PAL.gold} />
-      <rect x="34" y="76" width="32" height="8" fill={PAL.gold} />
-      {/* Black memory packages */}
-      {[18, 32, 46, 60].map((y, i) => (
-        <Chip key={i} x={38} y={y} w={24} h={10} />
+      {/* Green substrate with a heat spreader over the upper two-thirds */}
+      <rect x="6" y="18" width="88" height="64" rx="1.5" fill={PAL.pcbGreen} />
+      <rect x="6" y="18" width="88" height="40" rx="1.5" fill={PAL.slotYellow} />
+      {/* Spreader ridges — the detail that stops it reading as a flat bar */}
+      {Array.from({ length: 10 }, (_, i) => (
+        <rect key={i} x={9 + i * 8.6} y="21" width="4" height="34" rx="1" fill={PAL.vrmGoldDark} opacity="0.45" />
       ))}
-      {/* Gold contact fingers along the bottom with the key notch */}
-      <rect x="34" y="88" width="32" height="8" fill={PAL.gold} />
-      <rect x="46" y="88" width="3" height="8" fill={PAL.pcbGreen} />
-      {Array.from({ length: 12 }, (_, i) => (
-        <rect key={i} x={35 + i * 2.6} y="88" width="1.2" height="8" fill={PAL.goldDark} />
+      {/* DRAM packages below the spreader */}
+      {Array.from({ length: 4 }, (_, i) => (
+        <Chip key={i} x={10 + i * 21} y={60} w={17} h={12} />
       ))}
-      {highlighted && <Ring x={30} y={0} w={40} h={100} />}
+      {/* Gold fingers with the key notch */}
+      <rect x="6" y="74" width="88" height="8" fill={PAL.gold} />
+      <rect x="38" y="74" width="3" height="8" fill={PAL.pcbGreen} />
+      {Array.from({ length: 28 }, (_, i) => (
+        <rect key={i} x={7 + i * 3.1} y="74" width="1.4" height="8" fill={PAL.goldDark} opacity="0.55" />
+      ))}
+      {highlighted && <Ring x={2} y={14} w={96} h={72} />}
     </g>
   );
 }
