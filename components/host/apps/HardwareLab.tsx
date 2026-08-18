@@ -18,6 +18,7 @@ import { useFieldOpsStore } from "@/lib/hardware/store";
 import { isHardwareTicket, jobForTicket, STAGE_LABEL, type HardwareJob, type WorkshopStage } from "@/lib/hardware/types";
 import AdvancedAssembly from "./hardware/AdvancedAssembly";
 import DesktopHardwareLab from "./hardware/DesktopHardwareLab";
+import DesktopSimulator from "./desktop-sim/DesktopSimulator";
 import BiosSim from "./hardware/BiosSim";
 import ImagingSuite, { type NetExpectation } from "./hardware/ImagingSuite";
 import type { Ticket } from "@/lib/core";
@@ -59,7 +60,7 @@ export default function HardwareLab() {
    * wired into ticket grading, and swapping it out before the bench can grade
    * would have broken every hardware ticket in flight to gain a nicer screen.
    */
-  const [view, setView] = useState<"tickets" | "workshop" | "bench">("tickets");
+  const [view, setView] = useState<"tickets" | "workshop" | "bench" | "sim">("tickets");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   /*
@@ -105,12 +106,17 @@ export default function HardwareLab() {
             { value: "tickets" as const, label: "Deployment tickets" },
             { value: "workshop" as const, label: "Workshop" },
             { value: "bench" as const, label: "Interactive bench" },
+            { value: "sim" as const, label: "PC Simulator" },
           ]}
         />
         <CountPill value={hardware.length} label="open" />
       </AppHeader>
 
-      {view === "bench" ? (
+      {view === "sim" ? (
+        <div className="min-h-0 flex-1">
+          <DesktopSimulator />
+        </div>
+      ) : view === "bench" ? (
         <div className="min-h-0 flex-1">
           <DesktopHardwareLab />
         </div>
