@@ -65,6 +65,7 @@ import {
   RunningScreen,
 } from "./FirmwareScreens";
 import { useInfraStore } from "@/lib/infra/store";
+import { BENCH, StatusBar, ToolRail, type ToolId } from "./WorkbenchShell";
 
 interface DragState {
   // Typed to the union, not widened to string: the store's actions take a
@@ -95,7 +96,8 @@ export default function DesktopSimulator() {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   /** Screw mode: the screwdriver is a tool you pick up, not an always-on verb. */
-  const [screwMode, setScrewMode] = useState(false);
+  const [tool, setTool] = useState<ToolId | null>(null);
+  const screwMode = tool === "screwdriver";
   const [screws, setScrews] = useState<string[]>([]);
 
   /** Client point to canvas point, through the SVG's own transform. */
@@ -157,73 +159,56 @@ export default function DesktopSimulator() {
   }
 
   return (
-    <div className="flex h-full flex-col" style={{ background: PAL.surface }}>
-      <header
-        className="flex shrink-0 items-center gap-3 border-b px-4 py-2.5"
-        style={{ borderColor: PAL.surfaceEdge, background: "#fafbfc" }}
-      >
-        <div className="min-w-0">
-          <div className="text-[12px] font-semibold" style={{ color: PAL.ink }}>
-            Build bench — ATX desktop
-          </div>
-          <div className="truncate text-[10px]" style={{ color: "#7a8493" }}>
-            {screwMode
-              ? "Screw mode — click a standoff or retention screw to drive it."
-              : guidance
-                ? `${guidance.label} — drag it into the case.`
-                : "Build complete. Power on to POST."}
-          </div>
-        </div>
+    <div className="flex h-full flex-col" style={{ background: BENCH.deck }}>
+      <StatusBar build={build} complete={status.complete} powered={false} />
 
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            onClick={() => setScrewMode((v) => !v)}
-            className="flex items-center gap-1.5 rounded border px-2.5 py-1 text-[10px] transition-colors"
-            style={{
-              borderColor: screwMode ? PAL.orange : PAL.surfaceEdge,
-              background: screwMode ? PAL.orange : "transparent",
-              color: screwMode ? "#fff" : PAL.ink,
-            }}
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div
+            className="flex shrink-0 items-center gap-3 border-b px-4 py-2"
+            style={{ borderColor: BENCH.line, background: BENCH.deckHi }}
           >
-            <svg viewBox="0 0 40 10" width="28" height="8" aria-hidden>
-              <rect x="0" y="3" width="16" height="4.5" rx="2.2" fill={screwMode ? "#fff" : PAL.red} />
-              <rect x="16" y="4" width="16" height="2.4" rx="1" fill={screwMode ? "#fff" : PAL.steel} />
-              <rect x="32" y="3.2" width="6" height="4" rx="0.8" fill={screwMode ? "#fff" : PAL.steelDark} />
-            </svg>
-            Screwdriver
-          </button>
-
-          <div className="flex items-center gap-2">
-            <div className="h-1.5 w-24 overflow-hidden rounded-full" style={{ background: PAL.surfaceEdge }}>
-              <div
-                className="h-full rounded-full transition-all duration-300"
-                style={{ width: `${status.progress * 100}%`, background: PAL.pcbGreen }}
-              />
+            <div className="min-w-0">
+              <div className="text-[12px] font-semibold" style={{ color: BENCH.text }}>
+                Build bench — ATX desktop
+              </div>
+              <div className="truncate text-[10px]" style={{ color: BENCH.textDim }}>
+                {screwMode
+                  ? "Screw mode — click a standoff to drive it."
+                  : guidance
+                    ? `${guidance.label} — drag it into the case.`
+                    : "Build complete. Power on to POST."}
+              </div>
             </div>
-            <span className="font-mono text-[10px]" style={{ color: "#7a8493" }}>
-              {Math.round(status.progress * 100)}%
-            </span>
+            <div className="ml-auto flex items-center gap-2">
+              <div className="h-1.5 w-24 overflow-hidden rounded-full" style={{ background: BENCH.line }}>
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{ width: `${status.progress * 100}%`, background: BENCH.ok }}
+                />
+              </div>
+              <span className="font-mono text-[10px]" style={{ color: BENCH.textDim }}>
+                {Math.round(status.progress * 100)}%
+              </span>
+              <button
+                onClick={powerOn}
+                className="rounded border px-2.5 py-1 text-[10px] font-medium transition-opacity hover:opacity-90"
+                style={{ borderColor: BENCH.accent, background: BENCH.accent, color: "#08121c" }}
+              >
+                Power on
+              </button>
+              <button
+                onClick={() => {
+                  restart();
+                  setScrews([]);
+                }}
+                className="rounded border px-2.5 py-1 text-[10px]"
+                style={{ borderColor: BENCH.line, color: BENCH.textDim }}
+              >
+                Reset
+              </button>
+            </div>
           </div>
-
-          <button
-            onClick={powerOn}
-            className="rounded border px-2.5 py-1 text-[10px] font-medium text-white transition-opacity hover:opacity-90"
-            style={{ borderColor: PAL.boardBlueDark, background: PAL.boardBlue }}
-          >
-            Power on
-          </button>
-          <button
-            onClick={() => {
-              restart();
-              setScrews([]);
-            }}
-            className="rounded border px-2.5 py-1 text-[10px]"
-            style={{ borderColor: PAL.surfaceEdge, color: PAL.ink }}
-          >
-            Reset
-          </button>
-        </div>
-      </header>
 
       <div className="flex min-h-0 flex-1 items-center justify-center p-2">
         <svg
@@ -259,14 +244,21 @@ export default function DesktopSimulator() {
             <filter id="ds-carry" x="-30%" y="-30%" width="160%" height="160%">
               <feDropShadow dx="0" dy="14" stdDeviation="12" floodColor="#3c4550" floodOpacity="0.4" />
             </filter>
+            <pattern id="ds-brushed" width="6" height="4" patternUnits="userSpaceOnUse">
+              <rect width="6" height="4" fill="none" />
+              <rect width="6" height="1" fill="#ffffff" fillOpacity="0.022" />
+              <rect y="2" width="6" height="1" fill="#000000" fillOpacity="0.06" />
+            </pattern>
             <filter id="ds-neon" x="-50%" y="-50%" width="200%" height="200%">
               <feDropShadow dx="0" dy="0" stdDeviation="7" floodColor="#22d3ee" floodOpacity="1" />
             </filter>
           </defs>
 
           {/* ── LAYER 0 — bench ─────────────────────────────────────────── */}
-          <rect x="0" y="0" width={CANVAS.w} height={CANVAS.h} fill={PAL.surface} />
-          <rect x="0" y="0" width={CANVAS.w} height={CANVAS.h} fill="#f4f6f9" />
+          {/* Brushed deck: a dark ground with fine horizontal grain, drawn as
+              a pattern so it costs one rect rather than a few hundred lines. */}
+          <rect x="0" y="0" width={CANVAS.w} height={CANVAS.h} fill={BENCH.deck} />
+          <rect x="0" y="0" width={CANVAS.w} height={CANVAS.h} fill="url(#ds-brushed)" />
 
           {/* ── LAYER 1 — case shell ───────────────────────────────────── */}
           <g filter="url(#ds-lift)">
@@ -454,11 +446,10 @@ export default function DesktopSimulator() {
 
       <footer
         className="shrink-0 border-t px-4 py-2"
-        style={{ borderColor: PAL.surfaceEdge, background: "#fafbfc" }}
-      >
+        style={{ borderColor: BENCH.line, background: BENCH.deckHi }}>
         <div className="flex flex-wrap gap-1.5">
           {status.faults.length === 0 ? (
-            <span className="text-[10px]" style={{ color: PAL.pcbGreenDark }}>
+            <span className="text-[10px]" style={{ color: BENCH.ok }}>
               Nothing outstanding.
             </span>
           ) : (
@@ -466,7 +457,7 @@ export default function DesktopSimulator() {
               <span
                 key={`${i}-${f}`}
                 className="rounded-full px-2 py-0.5 text-[9px]"
-                style={{ background: PAL.surfaceEdge, color: "#7a8493" }}
+                style={{ background: BENCH.panelHi, color: BENCH.textDim }}
               >
                 {f}
               </span>
@@ -474,6 +465,16 @@ export default function DesktopSimulator() {
           )}
         </div>
       </footer>
+        </div>
+
+        <ToolRail
+          build={build}
+          activeTool={tool}
+          onTool={setTool}
+          onPick={() => undefined}
+          blockedFor={(id) => blockedBy(build, id)}
+        />
+      </div>
     </div>
   );
 }
