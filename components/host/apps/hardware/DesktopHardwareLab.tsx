@@ -55,7 +55,9 @@ import {
   RigDefs,
   ScrewdriverIcon,
   SlotBody,
-  CableRun,
+  Grommets,
+  RoutedCable,
+  WorkbenchSurface,
   FastenerVisual,
   PartPortrait,
   type BoardKind,
@@ -222,12 +224,14 @@ export default function DesktopHardwareLab() {
         {/* ── Blueprint ──────────────────────────────────────────────────── */}
         <div className="min-w-0 flex-1 overflow-auto term-scroll bg-[#070c14] p-4">
           <svg
-            viewBox={`0 0 ${BOARD_SIZE[machine].w * U} ${BOARD_SIZE[machine].h * U}`}
+            viewBox={`-72 -58 ${BOARD_SIZE[machine].w * U + 144} ${BOARD_SIZE[machine].h * U + 124}`}
             className="h-auto w-full max-w-[52rem]"
             role="img"
             aria-label="Motherboard blueprint"
           >
             <RigDefs />
+            {/* Desk and antistatic mat, so the case rests on something. */}
+            <WorkbenchSurface w={BOARD_SIZE[machine].w * U} h={BOARD_SIZE[machine].h * U} />
             {/* The case, drawn around the board rather than under it, so the
                 topology coordinates keep meaning what they meant. */}
             <ChassisFrame w={BOARD_SIZE[machine].w * U} h={BOARD_SIZE[machine].h * U} />
@@ -235,16 +239,29 @@ export default function DesktopHardwareLab() {
             <ChassisFurniture kind={machine} u={U} />
 
             {/* Cables run under the components, as they do on a real board. */}
+            {/* Tray pass-throughs, drawn before the cables so the rings sit
+                over the point where each run disappears. */}
+            <Grommets w={BOARD_SIZE[machine].w * U} h={BOARD_SIZE[machine].h * U} />
+
             {rig.cables.map((c) => {
               const a = rig.slots.find((sl) => sl.cableIds.includes(c.id));
               if (!a) return null;
+              // Every run terminates at the PSU, which is where power actually
+              // comes from — a cable ending in empty space is what made the old
+              // bundles read as decoration.
+              const psuSlot = rig.slots.find((sl) => sl.kind === "psu");
+              const psu = psuSlot
+                ? { x: (psuSlot.x + psuSlot.w / 2) * U, y: (psuSlot.y + psuSlot.h / 2) * U }
+                : { x: BOARD_SIZE[machine].w * U * 0.9, y: BOARD_SIZE[machine].h * U * 0.9 };
               return (
-                <CableRun
+                <RoutedCable
                   key={c.id}
                   kind={c.kind}
                   connected={c.connected}
                   from={{ x: (a.x + a.w / 2) * U, y: (a.y + a.h / 2) * U }}
-                  to={{ x: (BOARD_SIZE[machine].w - 1.4) * U, y: (BOARD_SIZE[machine].h - 0.8) * U }}
+                  psu={psu}
+                  boardW={BOARD_SIZE[machine].w * U}
+                  boardH={BOARD_SIZE[machine].h * U}
                 />
               );
             })}
@@ -451,7 +468,11 @@ function SlotShape({
           strokeWidth="1.6"
           filter="url(#hw-glow)"
         />
-        <SlotBody slot={slot} g={g} kind={board} />
+        {/* Snap-in: a newly seated part settles rather than appearing. Keyed on
+            the part id, so re-rendering an untouched slot does not replay it. */}
+        <g key={slot.part?.id ?? "empty"} className={slot.part ? "hw-snap" : undefined}>
+          <SlotBody slot={slot} g={g} kind={board} />
+        </g>
 
       </g>
 

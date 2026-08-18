@@ -868,3 +868,142 @@ export function ScrewdriverIcon({ size = 34 }: { size?: number }) {
     </svg>
   );
 }
+
+// ── Workbench surface ───────────────────────────────────────────────────────
+
+/**
+ * The bench the case sits on: an antistatic mat over a dark desk.
+ *
+ * Drawn as the outermost layer so the chassis reads as an OBJECT resting on
+ * something, not as a panel floating on the app background. The mat's grid is
+ * a pattern rather than drawn lines — one rect instead of a hundred nodes.
+ */
+export function WorkbenchSurface({ w, h }: { w: number; h: number }) {
+  return (
+    <g className="pointer-events-none">
+      <defs>
+        <linearGradient id="hw-desk" x1="0" y1="0" x2="0.4" y2="1">
+          <stop offset="0%" stopColor="#2a2118" />
+          <stop offset="55%" stopColor="#1d1710" />
+          <stop offset="100%" stopColor="#120e0a" />
+        </linearGradient>
+        <linearGradient id="hw-mat" x1="0" y1="0" x2="0.3" y2="1">
+          <stop offset="0%" stopColor="#20323c" />
+          <stop offset="60%" stopColor="#182731" />
+          <stop offset="100%" stopColor="#111d25" />
+        </linearGradient>
+        {/* The fine grid printed on every ESD mat. */}
+        <pattern id="hw-mat-grid" width="26" height="26" patternUnits="userSpaceOnUse">
+          <path d="M26 0 H0 V26" fill="none" stroke="#5b8ea6" strokeOpacity="0.09" strokeWidth="1" />
+        </pattern>
+      </defs>
+      {/* Desk, then the mat inset on it with a soft contact shadow. */}
+      <rect x={-90} y={-70} width={w + 180} height={h + 150} fill="url(#hw-desk)" />
+      <rect x={-64} y={-48} width={w + 128} height={h + 108} rx="14" fill="#000" opacity="0.5" />
+      <rect x={-60} y={-46} width={w + 120} height={h + 100} rx="12" fill="url(#hw-mat)" />
+      <rect x={-60} y={-46} width={w + 120} height={h + 100} rx="12" fill="url(#hw-mat-grid)" />
+      <rect x={-60} y={-46} width={w + 120} height="2.5" rx="1" fill="#4d7387" opacity="0.5" />
+    </g>
+  );
+}
+
+/**
+ * Cable pass-throughs in the motherboard tray.
+ *
+ * Real positions matter: a grommet exists where a cable actually needs to
+ * cross the tray, which is why they cluster along the right edge beside the
+ * 24-pin and at the bottom beside the PSU basement. Exported so the cable
+ * router can aim at the NEAREST one rather than guessing.
+ */
+export function grommetsFor(w: number, h: number): { x: number; y: number }[] {
+  return [
+    { x: w * 0.845, y: h * 0.14 },
+    { x: w * 0.845, y: h * 0.46 },
+    { x: w * 0.845, y: h * 0.78 },
+    { x: w * 0.42, y: h * 0.965 },
+    { x: w * 0.1, y: h * 0.965 },
+  ];
+}
+
+export function Grommets({ w, h }: { w: number; h: number }) {
+  return (
+    <g className="pointer-events-none">
+      {grommetsFor(w, h).map((g, i) => (
+        <g key={i}>
+          {/* Cut-out, then the rubber ring that lines it. */}
+          <rect x={g.x - 9} y={g.y - 15} width="18" height="30" rx="9" fill="#05070a" />
+          <rect
+            x={g.x - 9} y={g.y - 15} width="18" height="30" rx="9"
+            fill="none" stroke="#2b323b" strokeWidth="3.5"
+          />
+          <rect
+            x={g.x - 6.5} y={g.y - 12.5} width="13" height="25" rx="6.5"
+            fill="none" stroke="#161a20" strokeWidth="1.5"
+          />
+        </g>
+      ))}
+    </g>
+  );
+}
+
+/**
+ * A cable routed the way a builder actually routes one.
+ *
+ * From the header it runs a short visible stub to the NEAREST grommet, passes
+ * BEHIND the motherboard tray — drawn as a faint ghost so the run is still
+ * legible without cluttering the board — and re-emerges at the PSU. No cable
+ * crosses the board face, which is both what a tidy build looks like and the
+ * reason the components stay readable underneath.
+ */
+export function RoutedCable({
+  from,
+  psu,
+  boardW,
+  boardH,
+  kind,
+  connected,
+}: {
+  from: { x: number; y: number };
+  psu: { x: number; y: number };
+  boardW: number;
+  boardH: number;
+  kind: string;
+  connected: boolean;
+}) {
+  const tone = kind === "data" ? "#d8455f" : kind === "ribbon" ? "#b98a4e" : "#e0b341";
+  const stroke = connected ? tone : "#5c4a20";
+
+  const gs = grommetsFor(boardW, boardH);
+  const near = (p: { x: number; y: number }) =>
+    gs.reduce((best, g) =>
+      Math.hypot(g.x - p.x, g.y - p.y) < Math.hypot(best.x - p.x, best.y - p.y) ? g : best,
+    );
+  const entry = near(from);
+  const exit = near(psu);
+
+  // Front stubs: header to grommet, and grommet to PSU.
+  const stubIn = `M${from.x} ${from.y} C ${from.x + (entry.x - from.x) * 0.6} ${from.y}, ${entry.x} ${from.y + (entry.y - from.y) * 0.4}, ${entry.x} ${entry.y}`;
+  const stubOut = `M${exit.x} ${exit.y} C ${exit.x} ${exit.y + (psu.y - exit.y) * 0.5}, ${psu.x + (exit.x - psu.x) * 0.4} ${psu.y}, ${psu.x} ${psu.y}`;
+  // The hidden run, behind the tray.
+  const behind = `M${entry.x} ${entry.y} C ${entry.x + 26} ${entry.y}, ${exit.x + 26} ${exit.y}, ${exit.x} ${exit.y}`;
+
+  const bundle = (d: string, ghost = false) => (
+    <>
+      <path d={d} stroke="#05070a" strokeWidth={ghost ? 4 : 6.4} fill="none" strokeLinecap="round" opacity={ghost ? 0.35 : 1} />
+      <path d={d} stroke={stroke} strokeWidth={ghost ? 2.4 : 3.4} fill="none" strokeLinecap="round" opacity={ghost ? 0.28 : 1} strokeDasharray={ghost ? "5 5" : undefined} />
+      {!ghost && <path d={d} stroke="#ffffff" strokeOpacity="0.26" strokeWidth="0.8" fill="none" />}
+    </>
+  );
+
+  return (
+    <g opacity={connected ? 1 : 0.6}>
+      {/* Behind the tray first, so the grommet rings overlap its ends. */}
+      {bundle(behind, true)}
+      {bundle(stubIn)}
+      {bundle(stubOut)}
+      {!connected && (
+        <rect x={from.x - 3.4} y={from.y - 2.4} width="6.8" height="4.8" rx="1.4" fill="#2a2f38" stroke={stroke} strokeWidth="1.1" />
+      )}
+    </g>
+  );
+}

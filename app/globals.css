@@ -562,3 +562,21 @@ code {
 @media (prefers-reduced-motion: reduce) {
   .wm-settle, .snap-ghost { transition: none; animation: none; }
 }
+
+/*
+ * Assembly snap.
+ *
+ * A part that has just been seated settles into place instead of blinking into
+ * existence. Deliberately short and on a single transform — the point is to
+ * confirm the click landed, not to make the operator wait.
+ */
+@keyframes hw-snap-in {
+  0%   { transform: scale(1.16) translateY(-3px); opacity: 0.45; }
+  60%  { transform: scale(0.985) translateY(0);   opacity: 1; }
+  100% { transform: scale(1)     translateY(0);   opacity: 1; }
+}
+.hw-snap {
+  animation: hw-snap-in 220ms cubic-bezier(0.22, 1.2, 0.36, 1) both;
+  transform-box: fill-box;
+  transform-origin: center;
+}
