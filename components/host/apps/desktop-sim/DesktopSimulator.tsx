@@ -96,17 +96,17 @@ export default function DesktopSimulator() {
   if (phase === "running") return <RunningScreen hostname={registeredAs} />;
 
   return (
-    <div className="flex h-full flex-col" style={{ background: PAL.desk }}>
+    <div className="flex h-full flex-col" style={{ background: PAL.surface }}>
       {/* ── Work order ──────────────────────────────────────────────────── */}
       <header
         className="flex shrink-0 items-center gap-3 border-b px-4 py-2.5"
-        style={{ borderColor: PAL.deskEdge, background: "#fdf5f1" }}
+        style={{ borderColor: PAL.surfaceEdge, background: "#fafbfc" }}
       >
         <div className="min-w-0">
           <div className="text-[12px] font-semibold" style={{ color: PAL.ink }}>
             Build bench — ATX desktop
           </div>
-          <div className="truncate text-[10px]" style={{ color: "#8a7d78" }}>
+          <div className="truncate text-[10px]" style={{ color: "#7a8493" }}>
             {guidance ? guidance.label : "Build complete — every part seated and every cable routed."}
           </div>
         </div>
@@ -114,27 +114,27 @@ export default function DesktopSimulator() {
         <div className="ml-auto flex items-center gap-3">
           {/* Progress, derived from parts + cables done. */}
           <div className="flex items-center gap-2">
-            <div className="h-1.5 w-28 overflow-hidden rounded-full" style={{ background: PAL.deskEdge }}>
+            <div className="h-1.5 w-28 overflow-hidden rounded-full" style={{ background: PAL.surfaceEdge }}>
               <div
                 className="h-full rounded-full transition-all duration-300"
-                style={{ width: `${status.progress * 100}%`, background: PAL.pcb }}
+                style={{ width: `${status.progress * 100}%`, background: PAL.boardBlue }}
               />
             </div>
-            <span className="font-mono text-[10px]" style={{ color: "#8a7d78" }}>
+            <span className="font-mono text-[10px]" style={{ color: "#7a8493" }}>
               {Math.round(status.progress * 100)}%
             </span>
           </div>
           <button
             onClick={powerOn}
             className="rounded border px-2.5 py-1 text-[10px] font-medium transition-colors"
-            style={{ borderColor: PAL.pcbDark, background: PAL.pcb, color: "#fff" }}
+            style={{ borderColor: PAL.boardBlueDark, background: PAL.boardBlue, color: "#fff" }}
           >
             Power on
           </button>
           <button
             onClick={restart}
             className="rounded border px-2.5 py-1 text-[10px] transition-colors"
-            style={{ borderColor: PAL.deskEdge, color: PAL.ink }}
+            style={{ borderColor: PAL.surfaceEdge, color: PAL.ink }}
           >
             Reset bench
           </button>
@@ -162,11 +162,11 @@ export default function DesktopSimulator() {
             {/* The one shadow in the whole scene. The reference is flat; a part
                 lifts off the desk with a soft contact shadow and nothing more. */}
             <filter id="ds-lift" x="-30%" y="-30%" width="160%" height="160%">
-              <feDropShadow dx="0" dy="0.7" stdDeviation="0.7" floodColor="#8a6a5f" floodOpacity="0.35" />
+              <feDropShadow dx="0" dy="0.7" stdDeviation="0.7" floodColor="#93a0b0" floodOpacity="0.35" />
             </filter>
           </defs>
 
-          <rect x="0" y="0" width={VB.w} height={VB.h} fill={PAL.desk} />
+          <rect x="0" y="0" width={VB.w} height={VB.h} fill={PAL.surface} />
 
           <Chassis />
           <g transform="translate(4 4) scale(0.5)">
@@ -188,7 +188,7 @@ export default function DesktopSimulator() {
               >
                 <path d={d} stroke={PAL.ink} strokeWidth="2.1" fill="none" strokeLinecap="round" />
                 <path d={d} stroke={c.colour} strokeWidth="1.4" fill="none" strokeLinecap="round" />
-                <rect x={c.to.x - 1.6} y={c.to.y - 1.1} width="3.2" height="2.2" rx="0.5" fill={PAL.cream} />
+                <rect x={c.to.x - 1.6} y={c.to.y - 1.1} width="3.2" height="2.2" rx="0.5" fill={PAL.paper} />
               </g>
             );
           })}
@@ -218,19 +218,19 @@ export default function DesktopSimulator() {
       {/* ── Outstanding work ────────────────────────────────────────────── */}
       <footer
         className="shrink-0 border-t px-4 py-2"
-        style={{ borderColor: PAL.deskEdge, background: "#fdf5f1" }}
+        style={{ borderColor: PAL.surfaceEdge, background: "#fafbfc" }}
       >
         <div className="flex flex-wrap gap-1.5">
           {status.faults.length === 0 ? (
-            <span className="text-[10px]" style={{ color: PAL.pcbDark }}>
+            <span className="text-[10px]" style={{ color: PAL.boardBlueDark }}>
               Nothing outstanding.
             </span>
           ) : (
-            status.faults.slice(0, 6).map((f) => (
+            status.faults.slice(0, 6).map((f, i) => (
               <span
-                key={f}
+                key={`${i}-${f}`}
                 className="rounded-full px-2 py-0.5 text-[9px]"
-                style={{ background: PAL.deskEdge, color: "#7d6f6a" }}
+                style={{ background: PAL.surfaceEdge, color: "#7a8493" }}
               >
                 {f}
               </span>
@@ -251,36 +251,36 @@ export default function DesktopSimulator() {
 function Chassis() {
   return (
     <g className="pointer-events-none">
-      <rect x="10" y="10" width="56" height="82" rx="1.5" fill={PAL.case} />
-      <rect x="10" y="10" width="56" height="82" rx="1.5" fill="none" stroke={PAL.caseDark} strokeWidth="1.2" />
+      <rect x="10" y="10" width="56" height="82" rx="1.5" fill={PAL.inkSoft} />
+      <rect x="10" y="10" width="56" height="82" rx="1.5" fill="none" stroke={PAL.ink} strokeWidth="1.2" />
       {/* Motherboard tray, recessed */}
-      <rect x="13" y="24" width="48" height="62" rx="1" fill={PAL.caseDark} />
+      <rect x="13" y="24" width="48" height="62" rx="1" fill={PAL.ink} />
       {/* PSU shroud, top-left, with its fan grille */}
-      <rect x="12" y="12" width="24" height="16" rx="1" fill={PAL.caseLight} />
-      <circle cx="24" cy="20" r="6.4" fill={PAL.caseDark} />
+      <rect x="12" y="12" width="24" height="16" rx="1" fill={PAL.steel} />
+      <circle cx="24" cy="20" r="6.4" fill={PAL.ink} />
       {Array.from({ length: 9 }, (_, i) => {
         const a = (i / 9) * Math.PI * 2;
         return (
           <path
             key={i}
             d={`M24 20 L${24 + Math.cos(a) * 6} ${20 + Math.sin(a) * 6} A6 6 0 0 1 ${24 + Math.cos(a + 0.6) * 6} ${20 + Math.sin(a + 0.6) * 6} Z`}
-            fill={PAL.caseLight}
+            fill={PAL.steel}
             opacity="0.45"
           />
         );
       })}
       {/* Drive cage / front bays, right column */}
-      <rect x="52" y="12" width="12" height="26" rx="1" fill={PAL.caseLight} />
+      <rect x="52" y="12" width="12" height="26" rx="1" fill={PAL.steel} />
       {[14, 20, 26, 32].map((y, i) => (
-        <rect key={i} x="53.5" y={y} width="9" height="4" rx="0.6" fill={PAL.caseDark} opacity="0.7" />
+        <rect key={i} x="53.5" y={y} width="9" height="4" rx="0.6" fill={PAL.ink} opacity="0.7" />
       ))}
       {/* Rear expansion slot covers */}
       {Array.from({ length: 5 }, (_, i) => (
-        <rect key={i} x="11" y={64 + i * 5} width="3" height="3.4" rx="0.5" fill={PAL.caseLight} />
+        <rect key={i} x="11" y={64 + i * 5} width="3" height="3.4" rx="0.5" fill={PAL.steel} />
       ))}
       {/* Standoffs the board will land on */}
       {[[16, 30], [16, 80], [58, 30], [58, 80], [37, 30]].map(([cx, cy], i) => (
-        <circle key={i} cx={cx} cy={cy} r="0.9" fill={PAL.caseLight} />
+        <circle key={i} cx={cx} cy={cy} r="0.9" fill={PAL.steel} />
       ))}
     </g>
   );

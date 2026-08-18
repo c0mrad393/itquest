@@ -106,7 +106,7 @@ export const PARTS: PartDef[] = [
   },
   {
     id: "ram1",
-    label: "RAM",
+    label: "RAM (slot A1)",
     spec: "8GB DDR4",
     desk: { x: 10, y: 34, rot: -18 },
     seat: { x: 49, y: 30, w: 2.6, h: 22 },
@@ -114,7 +114,7 @@ export const PARTS: PartDef[] = [
   },
   {
     id: "ram2",
-    label: "RAM",
+    label: "RAM (slot A2)",
     spec: "8GB DDR4",
     desk: { x: 8, y: 46, rot: -18 },
     seat: { x: 53, y: 30, w: 2.6, h: 22 },
