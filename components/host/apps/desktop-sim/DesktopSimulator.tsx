@@ -49,6 +49,7 @@ import {
   STANDOFFS,
   ZONES,
   mm,
+  artTransform,
   rectOf,
   seatBox,
   snapTarget,
@@ -358,21 +359,52 @@ export default function DesktopSimulator() {
             {CABLES.map((c) => {
               if (!cableReady(build, c.id)) return null;
               const done = build.connected.includes(c.id);
-              const gx = CASE_INNER.x + CASE_INNER.w - mm(10);
-              const from = { x: PSU_BAY.x + PSU_BAY.w * 0.8, y: PSU_BAY.y + 10 };
+              // Grommet column, just inside the right wall of the tray.
+              const gx = CASE_INNER.x + CASE_INNER.w - mm(9);
+              const from = { x: PSU_BAY.x + PSU_BAY.w * 0.86, y: PSU_BAY.y + mm(10) };
               const to = {
-                x: BOARD.x + BOARD.w * (c.id === "pcie8" ? 0.2 : 0.9),
-                y: BOARD.y + BOARD.h * (c.id === "cpu8" ? 0.08 : c.id === "pcie8" ? 0.72 : 0.35),
+                x: BOARD.x + BOARD.w * (c.id === "pcie8" ? 0.34 : 0.97),
+                y: BOARD.y + BOARD.h * (c.id === "cpu8" ? 0.06 : c.id === "pcie8" ? 0.78 : 0.34),
               };
-              // Out of the PSU, up behind the tray through a grommet, back out
-              // beside the header. Nothing crosses the board face.
-              const d = `M${from.x} ${from.y} C ${gx} ${from.y}, ${gx} ${to.y}, ${to.x} ${to.y}`;
+              const entry = { x: gx, y: from.y - mm(12) };
+              const exit = { x: gx, y: to.y };
+
+              /*
+               * Three segments: out of the PSU to the nearest grommet, BEHIND
+               * the motherboard tray, then out again beside the header. The
+               * middle run is drawn dim and dashed because it is genuinely
+               * hidden — that is what makes the routing read as tidy rather
+               * than as a wire thrown across the board.
+               */
+              const stubIn = `M${from.x} ${from.y} C ${entry.x} ${from.y}, ${entry.x} ${entry.y}, ${entry.x} ${entry.y}`;
+              const behind = `M${entry.x} ${entry.y} L${exit.x} ${exit.y}`;
+              const stubOut = `M${exit.x} ${exit.y} C ${exit.x - mm(14)} ${exit.y}, ${to.x + mm(14)} ${to.y}, ${to.x} ${to.y}`;
+
+              const sleeve = (d: string) => (
+                <>
+                  <path d={d} stroke="#0c1013" strokeWidth="11" fill="none" strokeLinecap="round" />
+                  <path d={d} stroke={c.colour} strokeWidth="7" fill="none" strokeLinecap="round" />
+                  {/* Paracord weave: short dashes over the sleeve colour. */}
+                  <path
+                    d={d}
+                    stroke="#0c1013"
+                    strokeOpacity="0.4"
+                    strokeWidth="7"
+                    fill="none"
+                    strokeDasharray="3 6"
+                    strokeLinecap="butt"
+                  />
+                </>
+              );
+
               return (
-                <g key={c.id} onClick={() => route(c.id)} className="cursor-pointer" opacity={done ? 1 : 0.3}>
-                  <path d={d} stroke="#10151a" strokeWidth="13" fill="none" strokeLinecap="round" />
-                  <path d={d} stroke={c.colour} strokeWidth="8" fill="none" strokeLinecap="round" />
-                  <path d={d} stroke="#ffffff" strokeOpacity="0.25" strokeWidth="2" fill="none" />
-                  <rect x={to.x - 12} y={to.y - 7} width="24" height="14" rx="3" fill={PAL.paper} />
+                <g key={c.id} onClick={() => route(c.id)} className="cursor-pointer" opacity={done ? 1 : 0.28}>
+                  {/* Hidden run, dimmed — it is behind the tray. */}
+                  <path d={behind} stroke="#0c1013" strokeWidth="9" fill="none" opacity="0.5" strokeDasharray="7 7" />
+                  {sleeve(stubIn)}
+                  {sleeve(stubOut)}
+                  {/* Connector shell at the header */}
+                  <rect x={to.x - mm(7)} y={to.y - mm(4)} width={mm(14)} height={mm(8)} rx="2" fill={PAL.paper} />
                 </g>
               );
             })}
@@ -490,8 +522,10 @@ export default function DesktopSimulator() {
 function PartArt({ id, box }: { id: PartId; box: Box }) {
   const Vector = PART_VECTOR[id];
   if (!Vector) return null;
+  // UNIFORM scale. Two different factors is what stretched every part.
+  const t = artTransform(id, box);
   return (
-    <g transform={`translate(${box.x} ${box.y}) scale(${box.w / 100} ${box.h / 100})`}>
+    <g transform={`translate(${t.x} ${t.y}) scale(${t.scale})`}>
       <Vector />
     </g>
   );

@@ -341,3 +341,35 @@ export function trayBox(partId: PartId): Box {
   const s = 0.62;
   return { x: t.x, y: t.y, w: mm(size.w) * s, h: mm(size.h) * s };
 }
+
+/**
+ * The height each part's artwork occupies when its width is normalised to 100.
+ *
+ * This is the fix for stretched parts. Art was drawn in a square 0-100 box and
+ * then scaled by `(box.w/100, box.h/100)` — two DIFFERENT factors — so a DIMM
+ * whose slot is 266 x 62 was squashed 2.7x wide and 0.6x tall. Every part was
+ * distorted, and no amount of redrawing helps while the transform is
+ * non-uniform.
+ *
+ * Each vector now draws inside 100 x ART_H(id), which is its REAL aspect, and
+ * the view scales by a single factor. A part can then only ever be its true
+ * shape.
+ */
+export function artHeight(partId: PartId): number {
+  const d = PART_MM[partId];
+  return (d.h / d.w) * 100;
+}
+
+/**
+ * Where a part's art lands, preserving aspect.
+ *
+ * Fits the art to the seat's WIDTH and lets the height follow, so a card fills
+ * its slot along the axis that matters and never squashes across it.
+ */
+export function artTransform(partId: PartId, box: Box): { scale: number; x: number; y: number } {
+  const scale = box.w / 100;
+  const h = artHeight(partId) * scale;
+  // Vertically centred on the seat, so a tall part straddles a thin slot the
+  // way a real module stands proud of the connector it sits in.
+  return { scale, x: box.x, y: box.y + (box.h - h) / 2 };
+}
