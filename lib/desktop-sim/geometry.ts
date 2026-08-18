@@ -26,6 +26,8 @@
  * wrong ancestor.
  */
 
+import type { PartId } from "./parts";
+
 /** Canvas extents. Every coordinate in the simulator is inside this box. */
 export const CANVAS = { w: 1600, h: 1000 } as const;
 
@@ -75,6 +77,18 @@ export interface Box {
 
 export function boxOf(x: number, y: number, dim: { w: number; h: number }): Box {
   return { x, y, w: mm(dim.w), h: mm(dim.h) };
+}
+
+/**
+ * Box to SVG rect attributes.
+ *
+ * A `Box` carries `w`/`h`; `<rect>` wants `width`/`height`. Spreading a Box
+ * straight onto a rect therefore renders NOTHING — the element is valid, sized
+ * zero, and silently invisible. That is a whole class of "why is my case not
+ * drawing" bug, so the conversion lives here and is the only way to place one.
+ */
+export function rectOf(b: Box): { x: number; y: number; width: number; height: number } {
+  return { x: b.x, y: b.y, width: b.w, height: b.h };
 }
 
 export function centreOf(b: Box): { x: number; y: number } {
@@ -149,8 +163,12 @@ export interface Zone {
   id: string;
   label: string;
   box: Box;
-  /** Which part may land here. */
-  accepts: string;
+  /**
+   * Which part may land here. Typed to the union rather than `string`, so a
+   * zone cannot advertise a part id that does not exist — the compiler catches
+   * a renamed part instead of the slot silently accepting nothing.
+   */
+  accepts: PartId;
 }
 
 /**
@@ -167,7 +185,7 @@ const OFF = {
   m2: { x: 20, y: 185 },
 } as const;
 
-function boardZone(id: string, label: string, accepts: string, ox: number, oy: number, dim: { w: number; h: number }): Zone {
+function boardZone(id: string, label: string, accepts: PartId, ox: number, oy: number, dim: { w: number; h: number }): Zone {
   return { id, label, accepts, box: boxOf(BOARD.x + mm(ox), BOARD.y + mm(oy), dim) };
 }
 
@@ -199,7 +217,7 @@ export function zoneById(id: string): Zone | undefined {
   return ZONES.find((z) => z.id === id);
 }
 
-export function zoneFor(partId: string): Zone | undefined {
+export function zoneFor(partId: PartId): Zone | undefined {
   return ZONES.find((z) => z.accepts === partId);
 }
 
@@ -228,16 +246,23 @@ export const STANDOFFS: { id: string; x: number; y: number }[] = [
  * arranges parts on a grid, and a grid is also the only way a tray stays
  * legible as parts leave and return to it.
  */
-export const TRAY: Record<string, { x: number; y: number; rot: number }> = {
-  mobo: { x: 1180, y: 150, rot: 0 },
-  cpu: { x: 1180, y: 430, rot: 0 },
-  paste: { x: 1330, y: 430, rot: 0 },
-  cooler: { x: 1180, y: 560, rot: 0 },
-  ram1: { x: 1370, y: 150, rot: 0 },
-  ram2: { x: 1450, y: 150, rot: 0 },
-  ssd: { x: 1330, y: 560, rot: 0 },
-  gpu: { x: 380, y: 830, rot: 0 },
-  psu: { x: 900, y: 830, rot: 0 },
+export const TRAY: Record<PartId, { x: number; y: number; rot: number }> = {
+  /*
+   * A single column to the right of the case, laid out so no two footprints
+   * overlap and nothing sits inside the chassis. The GPU and PSU were
+   * previously placed at x=380/900 — coordinates that fall INSIDE the case,
+   * so they drew on top of the very slots they were meant to be dragged into.
+   * Every entry below is checked against its own trayBox extent.
+   */
+  mobo: { x: 1150, y: 120, rot: 0 },
+  ram1: { x: 1150, y: 450, rot: 0 },
+  ram2: { x: 1340, y: 450, rot: 0 },
+  cpu: { x: 1150, y: 515, rot: 0 },
+  paste: { x: 1230, y: 525, rot: 0 },
+  cooler: { x: 1400, y: 505, rot: 0 },
+  ssd: { x: 1150, y: 640, rot: 0 },
+  gpu: { x: 1150, y: 710, rot: 0 },
+  psu: { x: 1150, y: 870, rot: 0 },
 };
 
 /** Snap radius in canvas units — the brief's 30px, in this space. */
@@ -249,8 +274,70 @@ export const SNAP_RADIUS = 60;
  * Returns null outside the radius so a drag that ends nowhere near a slot puts
  * the part back on the tray rather than teleporting it across the bench.
  */
-export function snapTarget(partId: string, p: { x: number; y: number }): Zone | null {
+export function snapTarget(partId: PartId, p: { x: number; y: number }): Zone | null {
   const z = zoneFor(partId);
   if (!z) return null;
   return distanceTo(z.box, p) <= SNAP_RADIUS ? z : null;
+}
+
+// ── Part footprints ─────────────────────────────────────────────────────────
+
+/**
+ * How large each part is when seated, in millimetres.
+ *
+ * A part is NOT the size of its slot: a DIMM slot is 133 x 5mm but the module
+ * standing in it is 133 x 31mm, and a graphics card is 270mm long hanging off
+ * an 89mm connector. Conflating the two is how a GPU ends up drawn smaller
+ * than the socket beside it.
+ */
+export const PART_MM: Record<PartId, { w: number; h: number }> = {
+  mobo: SPEC_MM.atxBoard,
+  cpu: SPEC_MM.cpuPackage,
+  paste: { w: 60, h: 16 },
+  cooler: SPEC_MM.cooler,
+  ram1: SPEC_MM.dimmModule,
+  ram2: SPEC_MM.dimmModule,
+  ssd: SPEC_MM.m2_2280,
+  gpu: SPEC_MM.gpu,
+  psu: SPEC_MM.atxPsu,
+};
+
+/**
+ * Where a part actually sits once installed.
+ *
+ * Anchored to its zone, then grown to the part's own footprint. Cards and
+ * modules extend DOWN and LEFT from their connector, which is the direction
+ * real hardware hangs once seated.
+ */
+export function seatBox(partId: PartId): Box | null {
+  const z = zoneFor(partId);
+  const size = PART_MM[partId];
+  if (!z || !size) return null;
+  const w = mm(size.w);
+  const h = mm(size.h);
+
+  // A DIMM stands proud of its slot; a card hangs below its connector.
+  if (partId === "ram1" || partId === "ram2") {
+    return { x: z.box.x, y: z.box.y - (h - z.box.h), w, h };
+  }
+  if (partId === "gpu") {
+    return { x: z.box.x, y: z.box.y - h * 0.18, w, h };
+  }
+  // Everything else is centred on its zone.
+  return {
+    x: z.box.x + (z.box.w - w) / 2,
+    y: z.box.y + (z.box.h - h) / 2,
+    w,
+    h,
+  };
+}
+
+/** Where a part rests on the tray, at its own footprint. */
+export function trayBox(partId: PartId): Box {
+  const t = TRAY[partId] ?? { x: 1200, y: 200, rot: 0 };
+  const size = PART_MM[partId] ?? { w: 60, h: 40 };
+  // Tray copies are shown at 62%: the bench is a workspace, and a 540-unit GPU
+  // laid out at full size would crowd out everything beside it.
+  const s = 0.62;
+  return { x: t.x, y: t.y, w: mm(size.w) * s, h: mm(size.h) * s };
 }

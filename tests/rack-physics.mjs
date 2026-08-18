@@ -132,6 +132,8 @@ import {
   mm,
   snapTarget,
   zoneFor,
+  trayBox,
+  CASE_OUTER,
 } from "../.test-build/desktop-sim/geometry.js";
 import {
   CHAIN_FOR,
@@ -1909,7 +1911,11 @@ group("Client endpoints skip the rack chain");
   eq("a bare bench will not power on", postHalt(EMPTY_BUILD).screen.includes("No motherboard"), true);
   eq("no 24-pin means nothing starts", postHalt(b3).code, "0x10");
 
-  let wired = connect(b3, "atx24");
+  // Power cables originate at the PSU, so they cannot be routed before it is
+  // fitted — connecting one to an empty basement is refused.
+  eq("ATX power needs the PSU first", connect(b3, "atx24").connected.includes("atx24"), false);
+  const powered = install(b3, "psu");
+  let wired = connect(powered, "atx24");
   eq("with ATX in, the CPU rail is next", postHalt(wired).code, "0x12");
   wired = connect(wired, "cpu8");
   eq("no memory gives one long two short", postHalt(wired).beeps, "1 long, 2 short");
@@ -2025,6 +2031,35 @@ group("Client endpoints skip the rack chain");
      snapTarget("gpu", { x: centre.x + SNAP_RADIUS + 40, y: centre.y }), null);
   eq("a part never snaps to another part's zone", snapTarget("cpu", centre), null);
   eq("distance is measured to the zone centre", Math.round(distanceTo(gpuZone.box, centre)), 0);
+
+  group("Desktop sim — the parts tray is laid out, not scattered");
+
+  const ids = ["mobo", "psu", "cpu", "paste", "cooler", "ram1", "ram2", "ssd", "gpu"];
+  const boxes = ids.map((id) => ({ id, b: trayBox(id) }));
+
+  // A tray part drawn inside the chassis covers the slot it is meant to be
+  // dragged into — which is exactly what happened before this was pinned.
+  const overlapsCase = boxes.filter(
+    ({ b }) =>
+      b.x < CASE_OUTER.x + CASE_OUTER.w &&
+      b.x + b.w > CASE_OUTER.x &&
+      b.y < CASE_OUTER.y + CASE_OUTER.h &&
+      b.y + b.h > CASE_OUTER.y,
+  );
+  eq("no tray part overlaps the case", overlapsCase.length, 0);
+
+  eq("every tray part is on the canvas",
+     boxes.every(({ b }) => b.x >= 0 && b.y >= 0 && b.x + b.w <= CANVAS.w && b.y + b.h <= CANVAS.h), true);
+
+  // And no two parts sit on top of each other.
+  let collisions = 0;
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i].b, c = boxes[j].b;
+      if (a.x < c.x + c.w && a.x + a.w > c.x && a.y < c.y + c.h && a.y + a.h > c.y) collisions++;
+    }
+  }
+  eq("no two tray parts overlap each other", collisions, 0);
 }
 
 {

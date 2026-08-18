@@ -23,7 +23,7 @@
  * viewport without the model knowing what a pixel is.
  */
 
-export type PartId = "mobo" | "cpu" | "paste" | "cooler" | "ram1" | "ram2" | "ssd" | "gpu";
+export type PartId = "mobo" | "psu" | "cpu" | "paste" | "cooler" | "ram1" | "ram2" | "ssd" | "gpu";
 
 export type CableId = "atx24" | "cpu8" | "pcie8";
 
@@ -76,6 +76,19 @@ export const PARTS: PartDef[] = [
     spec: "ATX B760",
     desk: { x: 50, y: 88, rot: -4 },
     seat: { x: 14, y: 26, w: 46, h: 58 },
+    needs: [],
+  },
+  {
+    /*
+     * The PSU mounts in the basement and does not depend on the board — but
+     * every power cable originates here, so it has to be fitted before any of
+     * them can be routed. That is expressed through the cables, not a `needs`.
+     */
+    id: "psu",
+    label: "Power supply",
+    spec: "650W ATX",
+    desk: { x: 50, y: 60, rot: 0 },
+    seat: { x: 8, y: 78, w: 30, h: 18 },
     needs: [],
     powers: ["atx24", "cpu8"],
   },
