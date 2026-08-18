@@ -270,3 +270,180 @@ export function report(b: BuildState): BuildReport {
   const done = b.installed.length + b.connected.length;
   return { complete: faults.length === 0, faults, progress: done / total };
 }
+
+// ── Telemetry ───────────────────────────────────────────────────────────────
+
+export interface Telemetry {
+  cpuTempC: number;
+  cpuFanRpm: number;
+  memoryMhz: number;
+  vcore: number;
+  cpuTempCritical: boolean;
+  cpuFanStalled: boolean;
+}
+
+/**
+ * Sensor readings, derived from what is actually built.
+ *
+ * A hardware monitor whose numbers are constants teaches nothing. Here the
+ * cooler's presence sets the temperature and the paste under it sets how well
+ * it works — mount a cooler on a bare die and it runs hot, which is a real
+ * mistake with a real symptom.
+ */
+export function telemetry(b: BuildState): Telemetry {
+  const cooled = isInstalled(b, "cooler");
+  const pasted = isInstalled(b, "paste");
+  const cpuTempC = !isInstalled(b, "cpu") ? 0 : !cooled ? 96 : !pasted ? 74 : 38;
+  const sticks = (isInstalled(b, "ram1") ? 1 : 0) + (isInstalled(b, "ram2") ? 1 : 0);
+  return {
+    cpuTempC,
+    cpuFanRpm: cooled ? (cpuTempC > 60 ? 2200 : 1150) : 0,
+    memoryMhz: sticks ? 3200 : 0,
+    vcore: cooled ? 1.24 : 1.31,
+    cpuTempCritical: cpuTempC >= 70,
+    cpuFanStalled: !cooled,
+  };
+}
+
+export interface RigSpec {
+  cpuModel: string;
+  cores: number;
+  ramGb: number;
+  diskGb: number;
+}
+
+/** Specs the OS layer reads. Absent parts genuinely reduce them. */
+export function specOf(b: BuildState): RigSpec {
+  const sticks = (isInstalled(b, "ram1") ? 1 : 0) + (isInstalled(b, "ram2") ? 1 : 0);
+  return {
+    cpuModel: isInstalled(b, "cpu") ? "Xenon X6-4400" : "not detected",
+    cores: isInstalled(b, "cpu") ? 6 : 0,
+    ramGb: sticks * 8,
+    diskGb: isInstalled(b, "ssd") ? 1024 : 0,
+  };
+}
+
+// ── POST ────────────────────────────────────────────────────────────────────
+
+export interface PostHalt {
+  code: string;
+  beeps: string;
+  screen: string;
+}
+
+/**
+ * Why the machine will not boot, in the firmware's own voice.
+ *
+ * Beep codes are paired with the on-screen text because a technician meets
+ * both — the beeps when there is no display yet. Ordered by what stops the
+ * machine soonest.
+ */
+export function postHalt(b: BuildState): PostHalt | null {
+  if (!isInstalled(b, "mobo")) {
+    return { code: "—", beeps: "silence", screen: "No motherboard fitted — nothing to power" };
+  }
+  if (!b.connected.includes("atx24")) {
+    return { code: "0x10", beeps: "silence", screen: "No 24-pin ATX power — system will not start" };
+  }
+  if (!isInstalled(b, "cpu")) {
+    return { code: "0x00", beeps: "continuous", screen: "No processor installed — system halted" };
+  }
+  if (!b.connected.includes("cpu8")) {
+    return { code: "0x12", beeps: "continuous", screen: "CPU power (8-pin) not connected" };
+  }
+  if (!isInstalled(b, "ram1") && !isInstalled(b, "ram2")) {
+    return { code: "0x53", beeps: "1 long, 2 short", screen: "Memory not detected — check DIMM seating" };
+  }
+  if (!isInstalled(b, "cooler")) {
+    return { code: "0x5A", beeps: "none", screen: "CPU Fan Error. Press F1 to Run SETUP" };
+  }
+  return null;
+}
+
+// ── BIOS ────────────────────────────────────────────────────────────────────
+
+export type BootDeviceKind = "disk" | "usb" | "network";
+
+export interface BootDevice {
+  id: string;
+  label: string;
+  kind: BootDeviceKind;
+  bootable: boolean;
+}
+
+export interface BiosSettings {
+  bootOrder: BootDevice[];
+  virtualization: boolean;
+  secureBoot: boolean;
+}
+
+/** Devices derived from the build, plus the bench USB. */
+export function biosDevices(b: BuildState, osInstalled: boolean): BootDevice[] {
+  const out: BootDevice[] = [];
+  if (isInstalled(b, "ssd")) {
+    out.push({ id: "ssd", label: "1TB NVMe (M.2)", kind: "disk", bootable: osInstalled });
+  }
+  out.push({ id: "usb", label: "USB — DeskOS Setup", kind: "usb", bootable: true });
+  out.push({ id: "pxe", label: "Network boot (PXE)", kind: "network", bootable: false });
+  return out;
+}
+
+export function defaultBios(b: BuildState, osInstalled: boolean): BiosSettings {
+  return { bootOrder: biosDevices(b, osInstalled), virtualization: true, secureBoot: true };
+}
+
+export function moveBootDevice(s: BiosSettings, id: string, dir: "up" | "down"): BiosSettings {
+  const at = s.bootOrder.findIndex((d) => d.id === id);
+  const to = dir === "up" ? at - 1 : at + 1;
+  if (at < 0 || to < 0 || to >= s.bootOrder.length) return s;
+  const next = [...s.bootOrder];
+  next.splice(at, 1);
+  next.splice(to, 0, s.bootOrder[at]);
+  return { ...s, bootOrder: next };
+}
+
+/**
+ * The first BOOTABLE device wins, not simply the first.
+ *
+ * A disk at the top with no OS on it falls through to the installer, which is
+ * exactly the real "it keeps booting to setup" complaint and its real fix.
+ */
+export function resolveBoot(s: BiosSettings): BootDevice | null {
+  return s.bootOrder.find((d) => d.bootable) ?? null;
+}
+
+// ── Provisioning ────────────────────────────────────────────────────────────
+
+export interface PendingDriver {
+  id: string;
+  device: string;
+  hint: string;
+}
+
+/** Unknown devices derived from the build — no GPU, no display driver. */
+export function pendingDrivers(b: BuildState, installed: string[]): PendingDriver[] {
+  const out: PendingDriver[] = [
+    { id: "nic", device: "Ethernet Controller", hint: "No network adapter driver present" },
+  ];
+  if (isInstalled(b, "gpu")) {
+    out.push({ id: "vga", device: "Display Adapter", hint: "Running on the basic display driver" });
+  }
+  if (isInstalled(b, "ssd")) {
+    out.push({ id: "nvme", device: "Storage Controller", hint: "Generic NVMe driver in use" });
+  }
+  return out.filter((d) => !installed.includes(d.id));
+}
+
+/**
+ * Can this machine join a domain yet?
+ *
+ * Gated on the network driver, and that ordering is the lesson: a machine with
+ * no working NIC cannot reach a domain controller, so the join fails for a
+ * reason that has nothing to do with the credentials being retyped.
+ */
+export function domainJoinBlocker(installed: string[]): string | null {
+  if (!installed.includes("nic")) {
+    return "No network adapter driver — this machine cannot reach a domain controller";
+  }
+  return null;
+}

@@ -26,14 +26,14 @@
  */
 
 import { useEffect, useState } from "react";
-import { useHardwareStore } from "@/lib/hardware/rig-store";
+import { useDesktopSimStore } from "@/lib/desktop-sim/store";
 import { AppIcon } from "@/components/ui/app-icons";
 
 /** POST halted. The screen a technician actually meets, beep code and all. */
 export function PostHaltScreen() {
-  const halt = useHardwareStore((s) => s.halt);
-  const powerOff = useHardwareStore((s) => s.powerOff);
-  const enterBios = useHardwareStore((s) => s.enterBios);
+  const halt = useDesktopSimStore((s) => s.halt);
+  const powerOff = useDesktopSimStore((s) => s.powerOff);
+  const enterBios = useDesktopSimStore((s) => s.enterBios);
   if (!halt) return null;
 
   return (
@@ -71,23 +71,28 @@ export function PostHaltScreen() {
 
 /** BIOS / UEFI setup. */
 export function BiosSetupScreen() {
-  const rig = useHardwareStore((s) => s.rig);
-  const bios = useHardwareStore((s) => s.bios);
-  const spec = useHardwareStore((s) => s.spec)();
-  const sensors = useHardwareStore((s) => s.sensors)();
-  const machine = useHardwareStore((s) => s.machine);
-  const moveBoot = useHardwareStore((s) => s.moveBoot);
-  const setFlag = useHardwareStore((s) => s.setBiosFlag);
-  const save = useHardwareStore((s) => s.saveAndReboot);
-  const powerOff = useHardwareStore((s) => s.powerOff);
+  const build = useDesktopSimStore((s) => s.build);
+  const bios = useDesktopSimStore((s) => s.bios);
+  const spec = useDesktopSimStore((s) => s.spec)();
+  const sensors = useDesktopSimStore((s) => s.sensors)();
+
+  const moveBoot = useDesktopSimStore((s) => s.moveBoot);
+  const setFlag = useDesktopSimStore((s) => s.setBiosFlag);
+  const save = useDesktopSimStore((s) => s.saveAndReboot);
+  const powerOff = useDesktopSimStore((s) => s.powerOff);
   const [now] = useState(() => new Date());
 
-  const dimms = rig.slots.filter((s) => s.kind === "ram");
+  // The two DIMM slots the desktop has, read off the build rather than a slot
+  // table — there is no slot table any more, and there does not need to be.
+  const dimms = [
+    { id: "ram1" as const, label: "DIMM A1" },
+    { id: "ram2" as const, label: "DIMM A2" },
+  ];
 
   return (
     <div className="theme-dark flex h-full flex-col bg-[#00126b] font-mono text-[12px] text-slate-100">
       <header className="border-b border-slate-400/40 px-4 py-2 text-center text-[13px] font-semibold tracking-wide">
-        Macrohard UEFI Setup Utility — {machine} platform
+        Macrohard UEFI Setup Utility — ATX desktop
       </header>
 
       <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto term-scroll p-4 md:grid-cols-2">
@@ -111,16 +116,7 @@ export function BiosSetupScreen() {
             <Line
               key={d.id}
               k={d.label}
-              v={
-                !d.part
-                  ? "empty"
-                  : d.part.faulty
-                    ? "failed self-test"
-                    : d.fasteners.every((f) => f.fastened)
-                      ? d.part.model
-                      : "present, not seated"
-              }
-              tone={d.part?.faulty ? "bad" : undefined}
+              v={build.installed.includes(d.id) ? "8GB DDR4-3200" : "empty"}
             />
           ))}
         </section>
@@ -178,7 +174,6 @@ export function BiosSetupScreen() {
           />
           <Line k="Memory frequency" v={sensors.memoryMhz ? `${sensors.memoryMhz} MHz` : "no modules"} />
           <Line k="VCore" v={`${sensors.vcore.toFixed(3)} V`} />
-          <Line k="DRAM voltage" v={`${sensors.dram.toFixed(2)} V`} />
           {sensors.cpuTempCritical && (
             <p className="mt-1.5 text-[10px] leading-relaxed text-red-400">
               Thermal warning: check that the cooler is mounted, screwed down and its fan header is
@@ -247,8 +242,8 @@ function Line({ k, v, tone }: { k: string; v: string; tone?: "bad" }) {
  * the operator can carry on in the OS layer.
  */
 export function OsInstallScreen({ onCommit }: { onCommit: (spec: { ramGb: number; diskGb: number; cpuModel: string }) => void }) {
-  const spec = useHardwareStore((s) => s.spec)();
-  const complete = useHardwareStore((s) => s.completeInstall);
+  const spec = useDesktopSimStore((s) => s.spec)();
+  const complete = useDesktopSimStore((s) => s.completeInstall);
   const [step, setStep] = useState(0);
 
   const STEPS = [
@@ -307,8 +302,8 @@ export function OsInstallScreen({ onCommit }: { onCommit: (spec: { ramGb: number
 
 /** The machine is up. The handoff point to the OS layer. */
 export function RunningScreen({ hostname }: { hostname: string | null }) {
-  const spec = useHardwareStore((s) => s.spec)();
-  const powerOff = useHardwareStore((s) => s.powerOff);
+  const spec = useDesktopSimStore((s) => s.spec)();
+  const powerOff = useDesktopSimStore((s) => s.powerOff);
   return (
     <div className="theme-dark flex h-full flex-col items-center justify-center bg-[#070c14] p-8 text-slate-100">
       <div className="w-full max-w-md text-center">
@@ -352,12 +347,12 @@ export function ProvisioningScreen({
 }: {
   onJoined: (domain: string) => void;
 }) {
-  const drivers = useHardwareStore((s) => s.drivers)();
-  const installDriver = useHardwareStore((s) => s.installDriver);
-  const joinDomain = useHardwareStore((s) => s.joinDomain);
-  const joinBlocker = useHardwareStore((s) => s.joinBlocker)();
-  const joined = useHardwareStore((s) => s.joinedDomain);
-  const finish = useHardwareStore((s) => s.finishProvisioning);
+  const drivers = useDesktopSimStore((s) => s.drivers)();
+  const installDriver = useDesktopSimStore((s) => s.installDriver);
+  const joinDomain = useDesktopSimStore((s) => s.joinDomain);
+  const joinBlocker = useDesktopSimStore((s) => s.joinBlocker)();
+  const joined = useDesktopSimStore((s) => s.joinedDomain);
+  const finish = useDesktopSimStore((s) => s.finishProvisioning);
 
   const [pane, setPane] = useState<"devices" | "domain">("devices");
   const [domain, setDomain] = useState("corp.internal");

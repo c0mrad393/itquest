@@ -34,6 +34,14 @@ import {
   type PartDef,
 } from "@/lib/desktop-sim/parts";
 import { PAL, PART_VECTOR, VectorScrews } from "./VectorParts";
+import {
+  BiosSetupScreen,
+  OsInstallScreen,
+  PostHaltScreen,
+  ProvisioningScreen,
+  RunningScreen,
+} from "./FirmwareScreens";
+import { useInfraStore } from "@/lib/infra/store";
 
 /** Desk space is 0-100 in both axes; this is the only place that changes. */
 const VB = { w: 100, h: 100 };
@@ -49,6 +57,43 @@ export default function DesktopSimulator() {
   const restart = useDesktopSimStore((s) => s.restart);
   const status = useDesktopSimStore((s) => s.status)();
   const guidance = useDesktopSimStore((s) => s.guidance)();
+  /*
+   * Every hook is read BEFORE the phase early-returns below. React counts
+   * hooks positionally, so one read further down would throw "rendered fewer
+   * hooks than expected" the first time the machine powers on.
+   */
+  const phase = useDesktopSimStore((s) => s.phase);
+  const powerOn = useDesktopSimStore((s) => s.powerOn);
+  const registeredAs = useDesktopSimStore((s) => s.registeredAs);
+  const setRegistered = useDesktopSimStore((s) => s.setRegistered);
+  const commission = useInfraStore((s) => s.commissionBenchMachine);
+  const joinToDomain = useInfraStore((s) => s.joinBenchMachineToDomain);
+
+  /*
+   * Firmware takes the whole surface, as it does on a real machine: once you
+   * press power there is no bench to look at, only what the box is showing.
+   */
+  if (phase === "post-halt") return <PostHaltScreen />;
+  if (phase === "bios") return <BiosSetupScreen />;
+  if (phase === "installing") {
+    return (
+      <OsInstallScreen
+        onCommit={(spec) => setRegistered(commission({ machine: "desktop", ...spec }))}
+      />
+    );
+  }
+  if (phase === "provisioning") {
+    return (
+      <ProvisioningScreen
+        onJoined={(domain) => {
+          // Written through to the estate, so the machine genuinely appears as
+          // a domain member rather than the bench merely claiming it did.
+          if (registeredAs) joinToDomain(registeredAs, domain);
+        }}
+      />
+    );
+  }
+  if (phase === "running") return <RunningScreen hostname={registeredAs} />;
 
   return (
     <div className="flex h-full flex-col" style={{ background: PAL.desk }}>
@@ -79,6 +124,13 @@ export default function DesktopSimulator() {
               {Math.round(status.progress * 100)}%
             </span>
           </div>
+          <button
+            onClick={powerOn}
+            className="rounded border px-2.5 py-1 text-[10px] font-medium transition-colors"
+            style={{ borderColor: PAL.pcbDark, background: PAL.pcb, color: "#fff" }}
+          >
+            Power on
+          </button>
           <button
             onClick={restart}
             className="rounded border px-2.5 py-1 text-[10px] transition-colors"

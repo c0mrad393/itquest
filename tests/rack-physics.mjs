@@ -103,29 +103,23 @@ import {
 } from "../.test-build/progression/unlocks.js";
 import { appForTicket, liveHints } from "../.test-build/tickets/hints.js";
 import {
-  blockedReason,
-  buildDesktopRig,
-  canRemove,
-  insertPart,
-  nextAction,
-  post,
-  removePart,
-  setCable,
-  toggleFastener,
-  stripToWorkbench,
-  telemetry,
-  pendingDrivers,
-  domainJoinBlocker,
-  buildLaptopRig,
-  buildServerRig,
-  buildRig,
-  postHalt,
-  defaultBios,
+  EMPTY_BUILD,
   biosDevices,
+  blockedBy,
+  canInstall,
+  connect,
+  defaultBios,
+  domainJoinBlocker,
+  install,
   moveBootDevice,
+  nextStep,
+  pendingDrivers,
+  postHalt,
+  report,
   resolveBoot,
-  rigSpec,
-} from "../.test-build/hardware/rig.js";
+  specOf,
+  telemetry,
+} from "../.test-build/desktop-sim/parts.js";
 import {
   CHAIN_FOR,
   cidrContains,
@@ -1877,265 +1871,94 @@ group("Client endpoints skip the rack chain");
 }
 
 {
-  group("Hardware bench — you cannot pull a part that is still held");
+  group("Desktop sim — the build order is physical, not a wizard");
 
-  let rig = buildDesktopRig("faulty-ram");
+  const b0 = EMPTY_BUILD;
+  eq("nothing is installed to begin with", b0.installed.length, 0);
+  eq("the board goes in first", nextStep(b0).id, "mobo");
 
-  // RAM: both clips are closed, so the stick does not move.
-  eq("a clipped stick cannot be removed", canRemove(rig, "ram-a1"), false);
-  eq("...and the model says why", blockedReason(rig, "ram-a1"), "Release both clips first");
-  eq("removing it anyway is refused", removePart(rig, "ram-a1").slots.find((s) => s.id === "ram-a1").part !== null, true);
+  // A CPU cannot precede the board it sits on, and the model says why.
+  eq("the CPU is blocked before the board", canInstall(b0, "cpu"), false);
+  eq("...and names what is missing", blockedBy(b0, "cpu"), "Fit the Motherboard first");
+  eq("installing it anyway is refused", install(b0, "cpu").installed.length, 0);
 
-  // One clip is not enough.
-  rig = toggleFastener(rig, "ram-a1", "a1-top");
-  eq("one clip open is still not enough", canRemove(rig, "ram-a1"), false);
-  rig = toggleFastener(rig, "ram-a1", "a1-bot");
-  eq("both clips open releases it", canRemove(rig, "ram-a1"), true);
+  const b1 = install(b0, "mobo");
+  eq("with the board in, the CPU is allowed", canInstall(b1, "cpu"), true);
 
-  rig = removePart(rig, "ram-a1");
-  eq("the stick comes out", rig.slots.find((s) => s.id === "ram-a1").part, null);
-  eq("...and lands on the bench", rig.tray.some((p) => p.id === "p-ram1"), true);
+  // Paste before cooler: you cannot reach the die afterwards.
+  const b2 = install(b1, "cpu");
+  eq("the cooler is blocked before paste", blockedBy(b2, "cooler"), "Fit the Thermal paste first");
+  const b3 = install(install(b2, "paste"), "cooler");
+  eq("paste then cooler is accepted", b3.installed.includes("cooler"), true);
 
-  // A clip cannot be closed over an empty slot — the one move that would let a
-  // learner "finish" a repair they have not made.
-  const closedEmpty = toggleFastener(rig, "ram-a1", "a1-top");
-  eq("a clip will not close on an empty slot",
-     closedEmpty.slots.find((s) => s.id === "ram-a1").fasteners.find((f) => f.id === "a1-top").fastened, false);
+  group("Desktop sim — POST reads the build");
 
-  // Fit the good stick and lock it down.
-  rig = insertPart(rig, "ram-a1", "p-ram-new");
-  eq("the replacement seats", rig.slots.find((s) => s.id === "ram-a1").part.id, "p-ram-new");
-  eq("a part only fits a slot of its own kind",
-     insertPart(rig, "cpu", "p-ram-new").slots.find((s) => s.id === "cpu").part.id, "p-cpu");
+  eq("a bare bench will not power on", postHalt(EMPTY_BUILD).screen.includes("No motherboard"), true);
+  eq("no 24-pin means nothing starts", postHalt(b3).code, "0x10");
 
-  rig = toggleFastener(rig, "ram-a1", "a1-top");
-  rig = toggleFastener(rig, "ram-a1", "a1-bot");
-  eq("a repaired, clipped machine passes POST", post(rig).boots, true);
+  let wired = connect(b3, "atx24");
+  eq("with ATX in, the CPU rail is next", postHalt(wired).code, "0x12");
+  wired = connect(wired, "cpu8");
+  eq("no memory gives one long two short", postHalt(wired).beeps, "1 long, 2 short");
 
-  group("Hardware bench — GPU needs its screw AND its power lead");
+  const withRam = install(wired, "ram1");
+  eq("one stick clears the memory halt", postHalt(withRam), null);
 
-  let g = buildDesktopRig("none");
-  eq("a fastened, cabled GPU is held", canRemove(g, "pcie-x16"), false);
-  g = toggleFastener(g, "pcie-x16", "gpu-bracket");
-  g = toggleFastener(g, "pcie-x16", "gpu-latch");
-  eq("released fasteners are not enough while power is attached", canRemove(g, "pcie-x16"), false);
-  eq("...and the reason names the cable", blockedReason(g, "pcie-x16"), "Disconnect the PCIe power lead first");
-  g = setCable(g, "c-gpu-pwr", false);
-  eq("with screw, latch and lead clear the card lifts", canRemove(g, "pcie-x16"), true);
+  // A cable is only connectable once the part it feeds is seated.
+  eq("PCIe power needs the card first", connect(withRam, "pcie8").connected.includes("pcie8"), false);
+  const withGpu = connect(install(withRam, "gpu"), "pcie8");
+  eq("...and is accepted once the card is in", withGpu.connected.includes("pcie8"), true);
 
-  group("Hardware bench — POST and guidance are derived");
+  group("Desktop sim — telemetry and specs follow the build");
 
-  const healthy = buildDesktopRig("none");
-  eq("an untouched healthy machine boots", post(healthy).boots, true);
-  eq("...and has nothing to guide", nextAction(healthy), null);
+  eq("a cooled, pasted CPU idles cool", telemetry(b3).cpuTempC, 38);
+  eq("...and its fan spins", telemetry(b3).cpuFanRpm > 0, true);
+  // Mounting a cooler on a bare die is a real mistake with a real symptom.
+  eq("no paste runs hot", telemetry(install(b1, "cpu")).cpuTempC > 70, true);
+  eq("no cooler at all is critical", telemetry(install(b1, "cpu")).cpuTempCritical, true);
+  eq("one stick reports 8GB", specOf(withRam).ramGb, 8);
+  eq("two sticks report 16GB", specOf(install(withRam, "ram2")).ramGb, 16);
+  eq("no SSD means no disk", specOf(withRam).diskGb, 0);
 
-  const faulty = buildDesktopRig("faulty-ram");
-  eq("a failed stick stops POST", post(faulty).boots, false);
-  eq("...and is named in the faults", post(faulty).faults.some((f) => f.includes("failed self-test")), true);
-  eq("guidance points at the failed slot", nextAction(faulty).slotId, "ram-a1");
-  eq("...and asks for the clips first", nextAction(faulty).hint, "Release both clips first");
+  group("Desktop sim — BIOS boot order and provisioning");
 
-  const unplugged = buildDesktopRig("cpu-fan-unplugged");
-  eq("an unplugged fan stops POST", post(unplugged).boots, false);
-  eq("...and guidance names the cable", nextAction(unplugged).hint, "Reconnect the CPU fan header");
-  eq("reconnecting it clears POST", post(setCable(unplugged, "c-fan", true)).boots, true);
+  const withSsd = install(withRam, "ssd");
+  eq("a blank disk is not bootable", biosDevices(withSsd, false).find((d) => d.kind === "disk").bootable, false);
+  // The disk sits first but is empty, so the firmware falls through to the USB.
+  eq("an empty disk falls through to the installer", resolveBoot(defaultBios(withSsd, false)).kind, "usb");
+  eq("with an OS on it the disk wins", resolveBoot(defaultBios(withSsd, true)).kind, "disk");
+  eq("moving the USB up changes what boots",
+     resolveBoot(moveBootDevice(defaultBios(withSsd, true), "usb", "up")).kind, "usb");
 
-  // A seated but unsecured part is a fault, not a warning.
-  const loose = toggleFastener(buildDesktopRig("none"), "fan", "fan-s1");
-  eq("a loose cooler screw fails POST", post(loose).boots, false);
-}
-
-{
-  group("Hardware bench — laptop ZIF connectors");
-
-  let lap = buildLaptopRig("none");
-  // The ribbon must not come away under a closed latch — that is how they tear.
-  eq("a latched display ribbon is held", canRemove(lap, "display"), false);
-  eq("...and the reason names the latch",
-     blockedReason(lap, "display"), "Flip up the display ZIF latch before pulling the ribbon");
-  lap = toggleFastener(lap, "display", "zif-disp");
-  eq("flipping the latch is still not enough while the ribbon is seated", canRemove(lap, "display"), false);
-  eq("...now it asks for the ribbon", blockedReason(lap, "display"), "Disconnect the display ribbon first");
-  lap = setCable(lap, "lc-disp", false);
-  eq("latch up and ribbon out releases the panel", canRemove(lap, "display"), true);
-
-  // The SoC is soldered: no fasteners, but nothing to gain by pulling it.
-  eq("a soldered SoC is required for POST",
-     buildLaptopRig("none").slots.find((s) => s.id === "cpu").required, true);
-
-  group("Hardware bench — server topology and hot-swap");
-
-  const srv = buildServerRig("none");
-  eq("the server has two sockets", srv.slots.filter((s) => s.kind === "cpu").length, 2);
-  // Eight DIMMs per socket, four either side — the flanking arrangement a
-  // dual-socket board actually has, because each bank is wired to one CPU's
-  // memory controller.
-  eq("...and sixteen DIMM slots", srv.slots.filter((s) => s.kind === "ram").length, 16);
-  eq("...half of them belonging to each socket",
-     srv.slots.filter((s) => s.kind === "ram" && s.label.startsWith("0")).length, 8);
-  // Only the first bank of each side ships populated: there is room to grow,
-  // and an empty slot is not a fault.
-  eq("four banks ship populated", srv.slots.filter((s) => s.kind === "ram" && s.part).length, 4);
-  eq("...and four drive bays", srv.slots.filter((s) => s.id.startsWith("bay-")).length, 4);
-  eq("only the first bank is required", srv.slots.filter((s) => s.kind === "ram" && s.required).length, 1);
-
-  // A hot-swap caddy is held by the handle alone — no cables, because the
-  // backplane IS the connector. That is the whole point of hot-swap.
-  eq("a seated caddy is held by its handle", blockedReason(srv, "bay-0"), "Pull the bay 0 handle to release the caddy");
-  const pulled = toggleFastener(srv, "bay-0", "bay0-h");
-  eq("pulling the handle releases the caddy with no cabling", canRemove(pulled, "bay-0"), true);
-  eq("...and the drive comes out", removePart(pulled, "bay-0").slots.find((s) => s.id === "bay-0").part, null);
-
-  eq("buildRig dispatches on machine kind", buildRig("server", "none").slots.length, srv.slots.length);
-
-  group("Hardware bench — POST halts speak firmware");
-
-  eq("a healthy desktop does not halt", postHalt(buildDesktopRig("none")), null);
-  eq("an unplugged cooler halts with the F1 prompt",
-     postHalt(buildDesktopRig("cpu-fan-unplugged")).screen, "CPU Fan Error. Press F1 to Run SETUP");
-
-  // Memory is the code every technician learns first, and it fires whether the
-  // stick is missing OR dead.
-  let noRam = buildDesktopRig("none");
-  for (const id of ["a1-top", "a1-bot"]) noRam = toggleFastener(noRam, "ram-a1", id);
-  noRam = removePart(noRam, "ram-a1");
-  for (const id of ["a2-top", "a2-bot"]) noRam = toggleFastener(noRam, "ram-a2", id);
-  noRam = removePart(noRam, "ram-a2");
-  eq("no memory gives one long two short", postHalt(noRam).beeps, "1 long, 2 short");
-
-  group("Hardware bench — BIOS boot order and the OS handoff");
-
-  const rig2 = buildDesktopRig("none");
-  const fresh = defaultBios(rig2, false);
-  eq("a blank disk is not bootable", biosDevices(rig2, false).find((d) => d.kind === "disk").bootable, false);
-  eq("the USB installer always is", biosDevices(rig2, false).find((d) => d.kind === "usb").bootable, true);
-
-  // The disk sits first but is empty, so the firmware falls through to the USB —
-  // the real "it keeps booting to setup" complaint.
-  eq("an empty first disk falls through to the installer", resolveBoot(fresh).kind, "usb");
-
-  // Once an OS is on it, the same order boots the disk instead.
-  eq("with an OS installed the disk wins", resolveBoot(defaultBios(rig2, true)).kind, "disk");
-  eq("network boot is never bootable here",
-     biosDevices(rig2, true).find((d) => d.kind === "network").bootable, false);
-
-  // Reordering is the setting — there is no priority field to disagree with it.
-  const usbFirst = moveBootDevice(defaultBios(rig2, true), "usb", "up");
-  eq("moving the USB up changes what boots", resolveBoot(usbFirst).kind, "usb");
-  eq("moving past the end is refused",
-     moveBootDevice(fresh, fresh.bootOrder[0].id, "up").bootOrder[0].id, fresh.bootOrder[0].id);
-
-  group("Hardware bench — specs are read off the hardware");
-
-  const spec = rigSpec(buildDesktopRig("none"));
-  eq("both sticks are counted", spec.ramGb, 16);
-  eq("the cpu model comes from the part", spec.cpuModel, "Xenon X6-4400");
-  eq("a TB disk is normalised to GB", spec.diskGb, 480);
-
-  // A failed stick is NOT counted — which is why imaging before replacing it
-  // produces a node that really does have less memory.
-  eq("a failed stick is excluded from the total", rigSpec(buildDesktopRig("faulty-ram")).ramGb, 8);
-  eq("two sockets report twice the cores", rigSpec(buildServerRig("none")).cores, 16);
-}
-
-{
-  group("Hardware bench — assembling from bare parts");
-
-  const bare = buildRig("desktop", "bare-build");
-  eq("a bare chassis has nothing fitted", bare.slots.every((s) => s.part === null), true);
-  eq("...every part is on the bench", bare.tray.length > 0, true);
-  eq("...every fastener is open", bare.slots.every((s) => s.fasteners.every((f) => !f.fastened)), true);
-  eq("...and no cable is seated", bare.cables.every((c) => !c.connected), true);
-  eq("an unbuilt machine does not boot", post(bare).boots, false);
-
-  // The build is graded by the SAME rules as a repair — no build mode.
-  eq("guidance points at the first required empty slot", nextAction(bare).slotId, "cpu");
-
-  // Fit the CPU, and the machine stops complaining about the socket.
-  const cpuPart = bare.tray.find((p) => p.kind === "cpu");
-  let built = insertPart(bare, "cpu", cpuPart.id);
-  eq("the CPU seats", built.slots.find((s) => s.id === "cpu").part.id, cpuPart.id);
-  eq("...and leaves the bench", built.tray.some((p) => p.id === cpuPart.id), false);
-
-  // A seated but unsecured part still fails POST, which is what makes the
-  // retention lever a step rather than a decoration.
-  eq("a seated but unfastened CPU still fails", post(built).boots, false);
-  built = toggleFastener(built, "cpu", "cpu-lever");
-  eq("...and guidance moves on once it is locked",
-     nextAction(built).slotId === "cpu", false);
-
-  // A part only goes where it belongs, so the bin cannot be forced.
-  const ramPart = bare.tray.find((p) => p.kind === "ram");
-  eq("RAM will not go into the CPU socket",
-     insertPart(bare, "cpu", ramPart.id).slots.find((s) => s.id === "cpu").part, null);
-
-  // Stripping is idempotent-ish: doing it to an already-bare rig changes nothing.
-  eq("stripping a bare rig adds no phantom parts", stripToWorkbench(bare).tray.length, bare.tray.length);
-
-  // A fully rebuilt machine posts. Assemble everything the derived guidance asks
-  // for, which is the same loop a player runs.
-  let full = buildRig("desktop", "bare-build");
-  for (let step = 0; step < 60; step++) {
-    const n = nextAction(full);
-    if (!n) break;
-    const slot = full.slots.find((s) => s.id === n.slotId);
-    if (!slot) break;
-    if (!slot.part) {
-      const part = full.tray.find((p) => p.kind === slot.kind);
-      if (part) { full = insertPart(full, slot.id, part.id); continue; }
-    }
-    const loose = slot.fasteners.find((f) => !f.fastened);
-    if (loose) { full = toggleFastener(full, slot.id, loose.id); continue; }
-    const cable = full.cables.find((c) => !c.connected);
-    if (cable) { full = setCable(full, cable.id, true); continue; }
-    break;
-  }
-  eq("following the derived guidance builds a machine that posts", post(full).boots, true);
-  eq("...with nothing left outstanding", nextAction(full), null);
-}
-
-{
-  group("Hardware bench — telemetry reacts to the build");
-
-  const healthy = buildDesktopRig("none");
-  eq("a properly cooled CPU idles cool", telemetry(healthy).cpuTempC, 38);
-  eq("...and its fan is spinning", telemetry(healthy).cpuFanRpm > 0, true);
-  eq("...and nothing is flagged", telemetry(healthy).cpuTempCritical, false);
-
-  // Unplug the fan and the temperature tells you, which is what a hardware
-  // monitor is FOR — a page of constants would teach nothing.
-  const noFanPower = buildDesktopRig("cpu-fan-unplugged");
-  eq("an unplugged fan reads zero RPM", telemetry(noFanPower).cpuFanRpm, 0);
-  eq("...and the CPU runs hot", telemetry(noFanPower).cpuTempC > 70, true);
-  eq("...and that is flagged critical", telemetry(noFanPower).cpuTempCritical, true);
-
-  // A mounted but unscrewed cooler sits between the two — a bad mount is real.
-  const looseCooler = toggleFastener(buildDesktopRig("none"), "fan", "fan-s1");
-  eq("a loose cooler runs warm but not critical", telemetry(looseCooler).cpuTempC, 61);
-
-  // Memory frequency follows what is actually fitted.
-  eq("DDR4 reports its frequency", telemetry(healthy).memoryMhz, 3200);
-  eq("a laptop's DDR5 reports higher", telemetry(buildLaptopRig("none")).memoryMhz, 4800);
-  eq("a machine with no memory reports none",
-     telemetry(buildRig("desktop", "bare-build")).memoryMhz, 0);
-
-  group("Hardware bench — provisioning is ordered by the hardware");
-
-  // Unknown devices are DERIVED: a machine with a GPU wants a display driver.
-  const withGpu = pendingDrivers(buildDesktopRig("none"), []);
-  eq("a fresh image always wants a network driver", withGpu.some((d) => d.id === "nic"), true);
-  eq("...and a display driver when a GPU is fitted", withGpu.some((d) => d.id === "vga"), true);
-
-  // Installing one clears only that one.
+  // Unknown devices are derived: no GPU, no display driver to chase.
+  eq("a fresh image always wants a NIC driver",
+     pendingDrivers(withSsd, []).some((d) => d.id === "nic"), true);
+  eq("a build with no GPU has no display driver to install",
+     pendingDrivers(withRam, []).some((d) => d.id === "vga"), false);
   eq("installing the NIC driver clears it",
-     pendingDrivers(buildDesktopRig("none"), ["nic"]).some((d) => d.id === "nic"), false);
-  eq("...and leaves the others", pendingDrivers(buildDesktopRig("none"), ["nic"]).length > 0, true);
+     pendingDrivers(withSsd, ["nic"]).some((d) => d.id === "nic"), false);
 
-  // The ordering that matters: no NIC driver, no domain join. The error is
-  // about the adapter, not the credentials the operator keeps retyping.
+  // The ordering that matters: no NIC driver, no domain join.
   eq("a machine with no network driver cannot join", domainJoinBlocker([]) !== null, true);
   eq("...and the reason names the adapter", domainJoinBlocker([]).includes("network adapter"), true);
   eq("once the NIC driver is on, the join is allowed", domainJoinBlocker(["nic"]), null);
+
+  group("Desktop sim — completion is derived");
+
+  eq("an empty bench is not complete", report(EMPTY_BUILD).complete, false);
+  eq("...and everything is outstanding", report(EMPTY_BUILD).faults.length > 0, true);
+
+  // Follow the derived guidance to the end, exactly as a player would.
+  let full = EMPTY_BUILD;
+  for (let i = 0; i < 40; i++) {
+    const step = nextStep(full);
+    if (!step) break;
+    full = step.kind === "part" ? install(full, step.id) : connect(full, step.id);
+  }
+  eq("following the guidance finishes the build", report(full).complete, true);
+  eq("...and leaves nothing outstanding", nextStep(full), null);
+  eq("...and the finished machine posts", postHalt(full), null);
+  eq("...at full progress", report(full).progress, 1);
 }
 
 {
