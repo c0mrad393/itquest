@@ -47,9 +47,10 @@ export function mm(v: number): number {
 
 /** Real dimensions, in millimetres. Sourced from the actual form factors. */
 export const SPEC_MM = {
-  atxBoard: { w: 305, h: 244 },
+  /* Portrait, as a board is drawn and as it mounts against a tray. */
+  atxBoard: { w: 244, h: 305 },
   /** Mid-tower interior, the volume the board and PSU share. */
-  caseInner: { w: 360, h: 400 },
+  caseInner: { w: 300, h: 420 },
   caseWall: 12,
   lgaSocket: { w: 37.5, h: 37.5 },
   /** A DIMM slot is long and thin — the detail the old sheet got most wrong. */
@@ -144,8 +145,8 @@ export const CASE_INNER: Box = {
  * they cannot drift apart.
  */
 export const BOARD: Box = {
-  x: CASE_INNER.x + mm(8),
-  y: CASE_INNER.y + mm(10),
+  x: CASE_INNER.x + mm(10),
+  y: CASE_INNER.y + mm(8),
   w: mm(SPEC_MM.atxBoard.w),
   h: mm(SPEC_MM.atxBoard.h),
 };
@@ -172,44 +173,57 @@ export interface Zone {
 }
 
 /**
- * Board-relative offsets, in millimetres, matching an ATX layout: socket in
- * the upper middle, DIMMs to its right, PCIe down the lower left, M.2 between
- * the expansion slots.
+ * Slot positions in NORMALISED board space: 0-100 across, 0-BOARD_ART_H down.
+ *
+ * ── WHY THIS EXISTS ─────────────────────────────────────────────────────────
+ *
+ * The drop zones and the drawn board used to be two independent sets of
+ * numbers — the art put a DIMM slot at one place and `ZONES` put its bounding
+ * box somewhere else, so a module snapped to a position with no slot under it.
+ * There was no bug to find because nothing was wrong: they simply were never
+ * the same coordinates.
+ *
+ * Now they are. `VectorMotherboard` draws from this table and `ZONES` is
+ * derived from it, so a slot cannot be drawn anywhere other than where a part
+ * lands in it.
  */
-const OFF = {
-  socket: { x: 120, y: 45 },
-  dimm0: { x: 195, y: 30 },
-  dimmPitch: 11,
-  pcie16: { x: 20, y: 150 },
-  pcie1: { x: 20, y: 120 },
-  m2: { x: 20, y: 185 },
-} as const;
+export const BOARD_ART_H = (SPEC_MM.atxBoard.h / SPEC_MM.atxBoard.w) * 100;
 
-function boardZone(id: string, label: string, accepts: PartId, ox: number, oy: number, dim: { w: number; h: number }): Zone {
-  return { id, label, accepts, box: boxOf(BOARD.x + mm(ox), BOARD.y + mm(oy), dim) };
+export interface BoardSlot {
+  id: string;
+  label: string;
+  accepts: PartId;
+  /** Normalised board space. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
-/**
- * Every drop target in the scene, with a real bounding box.
- *
- * These are the only positions a part can occupy once installed. The view does
- * not compute placement — it reads it, which is what makes a part land ON its
- * slot rather than near it.
- */
+export const BOARD_SLOTS: BoardSlot[] = [
+  { id: "socket", label: "LGA socket", accepts: "cpu", x: 30, y: 12, w: 26, h: 26 },
+  { id: "paste", label: "CPU die", accepts: "paste", x: 36, y: 18, w: 14, h: 14 },
+  { id: "cooler", label: "Cooler mount", accepts: "cooler", x: 26, y: 8, w: 34, h: 34 },
+  // Four DIMMs down the right of the socket, vertical as on a portrait board.
+  { id: "dimm-a1", label: "DIMM A1", accepts: "ram1", x: 66, y: 8, w: 4.5, h: 48 },
+  { id: "dimm-a2", label: "DIMM A2", accepts: "ram2", x: 73, y: 8, w: 4.5, h: 48 },
+  // Expansion runs horizontally across the lower half.
+  { id: "pcie-x16", label: "PCIe x16", accepts: "gpu", x: 8, y: 78, w: 62, h: 5 },
+  // M.2 sits between the expansion slots.
+  { id: "m2-1", label: "M.2 slot 1", accepts: "ssd", x: 14, y: 68, w: 46, h: 4 },
+];
+
+/** Normalised board space to canvas space. */
+export function boardSlotBox(s: BoardSlot): Box {
+  const sx = BOARD.w / 100;
+  const sy = BOARD.h / BOARD_ART_H;
+  return { x: BOARD.x + s.x * sx, y: BOARD.y + s.y * sy, w: s.w * sx, h: s.h * sy };
+}
+
 export const ZONES: Zone[] = [
-  {
-    id: "board-tray",
-    label: "Motherboard tray",
-    accepts: "mobo",
-    box: BOARD,
-  },
-  boardZone("socket", "LGA socket", "cpu", OFF.socket.x, OFF.socket.y, SPEC_MM.lgaSocket),
-  boardZone("paste", "CPU die", "paste", OFF.socket.x + 8, OFF.socket.y + 8, { w: 21, h: 21 }),
-  boardZone("cooler", "Cooler mount", "cooler", OFF.socket.x - 27, OFF.socket.y - 27, SPEC_MM.cooler),
-  boardZone("dimm-a1", "DIMM A1", "ram1", OFF.dimm0.x, OFF.dimm0.y, SPEC_MM.dimmSlot),
-  boardZone("dimm-a2", "DIMM A2", "ram2", OFF.dimm0.x, OFF.dimm0.y + OFF.dimmPitch, SPEC_MM.dimmSlot),
-  boardZone("m2-1", "M.2 slot 1", "ssd", OFF.m2.x, OFF.m2.y, SPEC_MM.m2_2280),
-  boardZone("pcie-x16", "PCIe x16", "gpu", OFF.pcie16.x, OFF.pcie16.y, SPEC_MM.pcieX16),
+  { id: "board-tray", label: "Motherboard tray", accepts: "mobo", box: BOARD },
+  // Derived, so a slot is drawn exactly where its part lands.
+  ...BOARD_SLOTS.map((s) => ({ id: s.id, label: s.label, accepts: s.accepts, box: boardSlotBox(s) })),
   { id: "psu-bay", label: "PSU bay", accepts: "psu", box: PSU_BAY },
 ];
 
@@ -228,15 +242,15 @@ export function zoneFor(partId: PartId): Zone | undefined {
  * than on decoration scattered near it.
  */
 export const STANDOFFS: { id: string; x: number; y: number }[] = [
-  { id: "so-1", x: 6.35, y: 10.16 },
-  { id: "so-2", x: 6.35, y: 154.94 },
-  { id: "so-3", x: 6.35, y: 236.22 },
-  { id: "so-4", x: 163.83, y: 10.16 },
-  { id: "so-5", x: 163.83, y: 154.94 },
-  { id: "so-6", x: 163.83, y: 236.22 },
-  { id: "so-7", x: 288.29, y: 10.16 },
-  { id: "so-8", x: 288.29, y: 154.94 },
-  { id: "so-9", x: 288.29, y: 236.22 },
+  { id: "so-1", x: 10.16, y: 6.35 },
+  { id: "so-2", x: 154.94, y: 6.35 },
+  { id: "so-3", x: 236.22, y: 6.35 },
+  { id: "so-4", x: 10.16, y: 163.83 },
+  { id: "so-5", x: 154.94, y: 163.83 },
+  { id: "so-6", x: 236.22, y: 163.83 },
+  { id: "so-7", x: 10.16, y: 288.29 },
+  { id: "so-8", x: 154.94, y: 288.29 },
+  { id: "so-9", x: 236.22, y: 288.29 },
 ].map((s) => ({ id: s.id, x: BOARD.x + mm(s.x), y: BOARD.y + mm(s.y) }));
 
 /**
@@ -254,15 +268,15 @@ export const TRAY: Record<PartId, { x: number; y: number; rot: number }> = {
    * so they drew on top of the very slots they were meant to be dragged into.
    * Every entry below is checked against its own trayBox extent.
    */
-  mobo: { x: 1150, y: 120, rot: 0 },
-  ram1: { x: 1150, y: 450, rot: 0 },
-  ram2: { x: 1340, y: 450, rot: 0 },
-  cpu: { x: 1150, y: 515, rot: 0 },
-  paste: { x: 1230, y: 525, rot: 0 },
-  cooler: { x: 1400, y: 505, rot: 0 },
-  ssd: { x: 1150, y: 640, rot: 0 },
-  gpu: { x: 1150, y: 710, rot: 0 },
-  psu: { x: 1150, y: 870, rot: 0 },
+  mobo: { x: 1148, y: 96, rot: 0 },
+  ram1: { x: 1148, y: 496, rot: 0 },
+  ram2: { x: 1330, y: 496, rot: 0 },
+  cpu: { x: 1148, y: 548, rot: 0 },
+  paste: { x: 1210, y: 558, rot: 0 },
+  cooler: { x: 1300, y: 540, rot: 0 },
+  ssd: { x: 1148, y: 606, rot: 0 },
+  gpu: { x: 1148, y: 676, rot: 0 },
+  psu: { x: 1148, y: 838, rot: 0 },
 };
 
 /** Snap radius in canvas units — the brief's 30px, in this space. */

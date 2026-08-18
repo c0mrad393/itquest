@@ -134,6 +134,10 @@ import {
   zoneFor,
   trayBox,
   CASE_OUTER,
+  BOARD_SLOTS,
+  boardSlotBox,
+  seatBox,
+  artHeight,
 } from "../.test-build/desktop-sim/geometry.js";
 import {
   CHAIN_FOR,
@@ -1985,7 +1989,9 @@ group("Client endpoints skip the rack chain");
 
   // The failure this system exists to prevent: parts sized by eye. Every
   // dimension derives from millimetres, so a screw CANNOT out-scale a DIMM.
-  eq("an ATX board is 305mm wide", mm(SPEC_MM.atxBoard.w), 610);
+  // Portrait: 244mm across, 305mm down.
+  eq("an ATX board is 244mm across", mm(SPEC_MM.atxBoard.w), 488);
+  eq("...and 305mm down", mm(SPEC_MM.atxBoard.h), 610);
   eq("a case screw head is 6mm", mm(SPEC_MM.screwHead), 12);
   eq("a screw head is far smaller than a DIMM module",
      mm(SPEC_MM.screwHead) * 4 < mm(SPEC_MM.dimmModule.w), true);
@@ -2010,8 +2016,9 @@ group("Client endpoints skip the rack chain");
   // The two DIMM slots are parallel and do not overlap.
   const a1 = ZONES.find((z) => z.id === "dimm-a1").box;
   const a2 = ZONES.find((z) => z.id === "dimm-a2").box;
-  eq("DIMM slots share an x origin", a1.x, a2.x);
-  eq("...and are stacked, not overlapping", a2.y >= a1.y + a1.h, true);
+  // On a portrait board the DIMMs stand side by side, sharing a top edge.
+  eq("DIMM slots share a top edge", Math.round(a1.y), Math.round(a2.y));
+  eq("...and sit side by side without overlapping", a2.x >= a1.x + a1.w, true);
 
   eq("there are nine standoffs on the ATX pattern", STANDOFFS.length, 9);
   eq("every standoff is under the board",
@@ -2060,6 +2067,44 @@ group("Client endpoints skip the rack chain");
     }
   }
   eq("no two tray parts overlap each other", collisions, 0);
+
+  group("Desktop sim — drawn slots and drop zones are the same coordinates");
+
+  // The board art and the drop zones both derive from BOARD_SLOTS. Previously
+  // they were independent numbers, so a module snapped to a spot with no slot
+  // painted under it. These assertions are what stop that returning.
+  const inside = (a, b) =>
+    a.x >= b.x - 0.5 && a.y >= b.y - 0.5 &&
+    a.x + a.w <= b.x + b.w + 0.5 && a.y + a.h <= b.y + b.h + 0.5;
+
+  eq("every drawn slot lies on the board",
+     BOARD_SLOTS.every((s) => inside(boardSlotBox(s), BOARD)), true);
+
+  eq("every board slot has a matching zone",
+     BOARD_SLOTS.every((s) => ZONES.some((z) => z.id === s.id)), true);
+
+  // A zone's box IS the drawn slot's box — same source, so they cannot drift.
+  eq("zone boxes equal their drawn slot boxes",
+     BOARD_SLOTS.every((s) => {
+       const z = ZONES.find((zz) => zz.id === s.id);
+       const b = boardSlotBox(s);
+       return Math.abs(z.box.x - b.x) < 0.01 && Math.abs(z.box.y - b.y) < 0.01 &&
+              Math.abs(z.box.w - b.w) < 0.01 && Math.abs(z.box.h - b.h) < 0.01;
+     }), true);
+
+  // And a seated part actually overlaps the slot it seats into.
+  const overlaps = (a, b) =>
+    a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
+  for (const id of ["cpu", "ram1", "ram2", "ssd", "gpu"]) {
+    const z = zoneFor(id);
+    const seat = seatBox(id);
+    eq(`a seated ${id} overlaps its slot`, overlaps(seat, z.box), true);
+  }
+
+  // Portrait board: taller than it is wide, as a 244 x 305mm ATX board is.
+  eq("the board is portrait", BOARD.h > BOARD.w, true);
+  eq("...and its art aspect matches", Math.round(artHeight("mobo")), 125);
 }
 
 {
