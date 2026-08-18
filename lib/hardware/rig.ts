@@ -816,3 +816,98 @@ export function rigSpec(rig: Rig): RigSpec {
     diskGb: disks.reduce((a, s) => a + gbOf(s.part?.model ?? ""), 0),
   };
 }
+
+// ── Telemetry ───────────────────────────────────────────────────────────────
+
+/**
+ * Live sensor readings, derived from what is actually fitted.
+ *
+ * A BIOS health page whose numbers are constants teaches nothing: the whole
+ * point of a hardware monitor is that it REACTS. So the cooler's presence and
+ * its cabling set the CPU temperature, the fan header sets the RPM, and pulling
+ * a stick changes the memory total on the same screen. A learner who unplugs a
+ * fan and watches the temperature climb has learned what the page is for.
+ */
+export interface Telemetry {
+  cpuTempC: number;
+  cpuFanRpm: number;
+  memoryMhz: number;
+  vcore: number;
+  dram: number;
+  /** True when a reading is outside its safe band — the BIOS colours these. */
+  cpuTempCritical: boolean;
+  cpuFanStalled: boolean;
+}
+
+export function telemetry(rig: Rig): Telemetry {
+  const coolerSlot = rig.slots.find((s) => s.kind === "fan");
+  const coolerFitted = !!coolerSlot?.part;
+  const coolerSecured = coolerSlot?.fasteners.every((f) => f.fastened) ?? false;
+  const fanCable = rig.cables.find((c) => c.id.includes("fan"));
+  const fanPowered = coolerFitted && (fanCable?.connected ?? false);
+
+  /*
+   * Idle silicon sits around 38C with a working cooler. Remove the cooler and
+   * it runs away; fit it but leave it unscrewed and it sits between — a bad
+   * mount is a real fault that a temperature reading is exactly how you catch.
+   */
+  const cpuTempC = !coolerFitted ? 94 : !fanPowered ? 78 : !coolerSecured ? 61 : 38;
+
+  const ram = rig.slots.filter((s) => s.kind === "ram" && s.part && !s.part.faulty);
+  const ddr5 = ram.some((s) => /DDR5/.test(s.part?.model ?? ""));
+
+  return {
+    cpuTempC,
+    cpuFanRpm: fanPowered ? (cpuTempC > 60 ? 2150 : 1180) : 0,
+    memoryMhz: ram.length === 0 ? 0 : ddr5 ? 4800 : 3200,
+    // Voltages track load rather than being invented per render, so the page
+    // is stable to read: a number that jitters every frame cannot be judged.
+    vcore: coolerFitted ? 1.24 : 1.31,
+    dram: ddr5 ? 1.1 : 1.35,
+    cpuTempCritical: cpuTempC >= 75,
+    cpuFanStalled: !fanPowered,
+  };
+}
+
+// ── Provisioning ────────────────────────────────────────────────────────────
+
+/**
+ * A device the freshly installed OS does not yet have a driver for.
+ *
+ * Derived from the hardware, not a fixed list: fit a GPU and the display
+ * adapter appears in Device Manager wanting a driver, leave it out and it does
+ * not. That is what makes "unknown device" a consequence of the build rather
+ * than a scripted step.
+ */
+export interface PendingDriver {
+  id: string;
+  device: string;
+  hint: string;
+}
+
+export function pendingDrivers(rig: Rig, installed: string[]): PendingDriver[] {
+  const out: PendingDriver[] = [];
+  // The NIC is on the board, so it is always present and always unknown on a
+  // fresh image — the classic "no network until you install the driver".
+  out.push({ id: "nic", device: "Ethernet Controller", hint: "No network adapter driver present" });
+  if (rig.slots.some((s) => s.kind === "gpu" && s.part)) {
+    out.push({ id: "vga", device: "Display Adapter", hint: "Running on the basic display driver" });
+  }
+  if (rig.slots.some((s) => s.kind === "storage" && s.part)) {
+    out.push({ id: "sata", device: "Storage Controller", hint: "Generic AHCI driver in use" });
+  }
+  return out.filter((d) => !installed.includes(d.id));
+}
+
+/**
+ * Can this machine join a domain yet?
+ *
+ * The network driver gates it, and that ordering is the lesson: a machine with
+ * no working NIC cannot reach a domain controller, so "join the domain" fails
+ * for a reason that has nothing to do with the credentials the operator keeps
+ * retyping. Returns the reason so the dialog can say it.
+ */
+export function domainJoinBlocker(installed: string[]): string | null {
+  if (!installed.includes("nic")) return "No network adapter driver — this machine cannot reach a domain controller";
+  return null;
+}

@@ -27,6 +27,7 @@
 
 import { useEffect, useState } from "react";
 import { useHardwareStore } from "@/lib/hardware/rig-store";
+import { AppIcon } from "@/components/ui/app-icons";
 
 /** POST halted. The screen a technician actually meets, beep code and all. */
 export function PostHaltScreen() {
@@ -73,6 +74,7 @@ export function BiosSetupScreen() {
   const rig = useHardwareStore((s) => s.rig);
   const bios = useHardwareStore((s) => s.bios);
   const spec = useHardwareStore((s) => s.spec)();
+  const sensors = useHardwareStore((s) => s.sensors)();
   const machine = useHardwareStore((s) => s.machine);
   const moveBoot = useHardwareStore((s) => s.moveBoot);
   const setFlag = useHardwareStore((s) => s.setBiosFlag);
@@ -158,6 +160,31 @@ export function BiosSetupScreen() {
               </button>
             </div>
           ))}
+        </section>
+
+        <section>
+          <h3 className="mb-1.5 border-b border-slate-400/30 pb-1 text-[11px] uppercase tracking-wider text-slate-300">
+            H/W monitor
+          </h3>
+          <Line
+            k="CPU temperature"
+            v={`${sensors.cpuTempC} °C`}
+            tone={sensors.cpuTempCritical ? "bad" : undefined}
+          />
+          <Line
+            k="CPU fan"
+            v={sensors.cpuFanRpm ? `${sensors.cpuFanRpm} RPM` : "not spinning"}
+            tone={sensors.cpuFanStalled ? "bad" : undefined}
+          />
+          <Line k="Memory frequency" v={sensors.memoryMhz ? `${sensors.memoryMhz} MHz` : "no modules"} />
+          <Line k="VCore" v={`${sensors.vcore.toFixed(3)} V`} />
+          <Line k="DRAM voltage" v={`${sensors.dram.toFixed(2)} V`} />
+          {sensors.cpuTempCritical && (
+            <p className="mt-1.5 text-[10px] leading-relaxed text-red-400">
+              Thermal warning: check that the cooler is mounted, screwed down and its fan header is
+              plugged in.
+            </p>
+          )}
         </section>
 
         <section>
@@ -305,6 +332,176 @@ export function RunningScreen({ hostname }: { hostname: string | null }) {
         >
           Power off
         </button>
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * The corporate desktop, freshly imaged and not yet finished.
+ *
+ * Two jobs remain and they are ORDERED by the model, not by this screen: the
+ * network driver has to go on before a domain join can reach a controller. A
+ * learner who tries the join first gets the real error — which is about the
+ * NIC, not about their password — and that is the whole point of doing it in
+ * this sequence.
+ */
+export function ProvisioningScreen({
+  onJoined,
+}: {
+  onJoined: (domain: string) => void;
+}) {
+  const drivers = useHardwareStore((s) => s.drivers)();
+  const installDriver = useHardwareStore((s) => s.installDriver);
+  const joinDomain = useHardwareStore((s) => s.joinDomain);
+  const joinBlocker = useHardwareStore((s) => s.joinBlocker)();
+  const joined = useHardwareStore((s) => s.joinedDomain);
+  const finish = useHardwareStore((s) => s.finishProvisioning);
+
+  const [pane, setPane] = useState<"devices" | "domain">("devices");
+  const [domain, setDomain] = useState("corp.internal");
+  const [user, setUser] = useState("CORP\\Administrator");
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <div className="theme-dark flex h-full flex-col bg-[#0d1b2e] text-slate-100">
+      {/* Desktop wallpaper + window */}
+      <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+        <div className="flex h-full w-full max-w-2xl flex-col overflow-hidden rounded-md border border-slate-600/50 bg-[#161b22] shadow-2xl">
+          <header className="flex items-center gap-2 border-b border-slate-700 bg-[#1f252e] px-3 py-2">
+            <span className="text-[11px] font-semibold text-slate-100">
+              {pane === "devices" ? "Device Manager" : "System Properties — Computer Name"}
+            </span>
+            <div className="ml-auto flex gap-1">
+              {(["devices", "domain"] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPane(p)}
+                  className={`rounded px-2 py-1 text-[10px] transition-colors ${
+                    pane === p ? "bg-sky-500/25 text-slate-50" : "text-slate-400 hover:bg-slate-100/10"
+                  }`}
+                >
+                  {p === "devices" ? "Devices" : "Domain"}
+                </button>
+              ))}
+            </div>
+          </header>
+
+          <div className="min-h-0 flex-1 overflow-y-auto term-scroll p-3">
+            {pane === "devices" ? (
+              drivers.length === 0 ? (
+                <p className="text-[11px] leading-relaxed text-emerald-300">
+                  All devices are working properly. No unknown devices remain.
+                </p>
+              ) : (
+                <>
+                  <p className="mb-2 text-[11px] text-slate-400">
+                    {drivers.length} device{drivers.length === 1 ? "" : "s"} need a driver.
+                  </p>
+                  {drivers.map((d) => (
+                    <div
+                      key={d.id}
+                      className="mb-1.5 flex items-center gap-2 rounded border border-amber-500/40 bg-amber-500/10 px-2.5 py-2"
+                    >
+                      <span className="text-amber-400">
+                        <AppIcon id="alert" size={13} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[11px] text-slate-100">{d.device}</span>
+                        <span className="block text-[10px] text-slate-400">{d.hint}</span>
+                      </span>
+                      <button
+                        onClick={() => installDriver(d.id)}
+                        className="shrink-0 rounded border border-slate-600 px-2 py-1 text-[10px] text-slate-200 transition-colors hover:bg-slate-100/10"
+                      >
+                        Install driver
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )
+            ) : joined ? (
+              <div className="text-[11px] leading-relaxed">
+                <p className="text-emerald-300">
+                  Welcome to the <span className="font-mono">{joined}</span> domain.
+                </p>
+                <p className="mt-1.5 text-slate-400">
+                  A restart is required for the change to take effect. The machine will be handed
+                  over registered to the estate.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <label className="block">
+                  <span className="mb-0.5 block text-[10px] text-slate-400">Domain</span>
+                  <input
+                    value={domain}
+                    onChange={(e) => setDomain(e.target.value.trim())}
+                    className="w-full rounded border border-slate-600 bg-[#0d1117] px-2 py-1 font-mono text-[11px] text-slate-100"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-0.5 block text-[10px] text-slate-400">Domain administrator</span>
+                  <input
+                    value={user}
+                    onChange={(e) => setUser(e.target.value)}
+                    className="w-full rounded border border-slate-600 bg-[#0d1117] px-2 py-1 font-mono text-[11px] text-slate-100"
+                  />
+                </label>
+                <button
+                  onClick={() => {
+                    if (!joinDomain(domain)) {
+                      // The refusal comes from the model, so the message names
+                      // the real cause instead of blaming the credentials.
+                      setError(joinBlocker);
+                      return;
+                    }
+                    setError(null);
+                    onJoined(domain);
+                  }}
+                  className="w-full rounded border border-emerald-400/60 bg-emerald-500/20 px-2 py-1.5 text-[11px] transition-colors hover:bg-emerald-500/30"
+                >
+                  Join domain
+                </button>
+                {error && (
+                  <p className="rounded border border-red-500/40 bg-red-500/10 p-2 text-[10px] leading-relaxed text-red-300">
+                    {error}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <footer className="flex items-center gap-2 border-t border-slate-700 bg-[#1f252e] px-3 py-2">
+            <span className="text-[10px] text-slate-500">
+              {drivers.length === 0 && joined
+                ? "Provisioning complete."
+                : `${drivers.length} driver${drivers.length === 1 ? "" : "s"} outstanding · ${joined ? "domain joined" : "workgroup"}`}
+            </span>
+            <button
+              onClick={finish}
+              disabled={drivers.length > 0 || !joined}
+              className="ml-auto rounded border border-slate-600 px-3 py-1 text-[10px] text-slate-200 transition-colors hover:bg-slate-100/10 disabled:opacity-40"
+            >
+              Hand over machine
+            </button>
+          </footer>
+        </div>
+      </div>
+
+      {/* Taskbar */}
+      <div className="flex shrink-0 items-center gap-2 border-t border-slate-700/70 bg-[#0f141c] px-3 py-1.5">
+        <span className="grid h-3.5 w-3.5 grid-cols-2 gap-[1.5px]">
+          <span className="rounded-[1px] bg-sky-400" />
+          <span className="rounded-[1px] bg-sky-400/75" />
+          <span className="rounded-[1px] bg-sky-400/75" />
+          <span className="rounded-[1px] bg-sky-400" />
+        </span>
+        <span className="text-[10px] text-slate-400">Corporate desktop</span>
+        <span className="ml-auto font-mono text-[10px] text-slate-500">
+          {joined ?? "WORKGROUP"}
+        </span>
       </div>
     </div>
   );

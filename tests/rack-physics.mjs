@@ -113,6 +113,9 @@ import {
   setCable,
   toggleFastener,
   stripToWorkbench,
+  telemetry,
+  pendingDrivers,
+  domainJoinBlocker,
   buildLaptopRig,
   buildServerRig,
   buildRig,
@@ -2089,6 +2092,50 @@ group("Client endpoints skip the rack chain");
   }
   eq("following the derived guidance builds a machine that posts", post(full).boots, true);
   eq("...with nothing left outstanding", nextAction(full), null);
+}
+
+{
+  group("Hardware bench — telemetry reacts to the build");
+
+  const healthy = buildDesktopRig("none");
+  eq("a properly cooled CPU idles cool", telemetry(healthy).cpuTempC, 38);
+  eq("...and its fan is spinning", telemetry(healthy).cpuFanRpm > 0, true);
+  eq("...and nothing is flagged", telemetry(healthy).cpuTempCritical, false);
+
+  // Unplug the fan and the temperature tells you, which is what a hardware
+  // monitor is FOR — a page of constants would teach nothing.
+  const noFanPower = buildDesktopRig("cpu-fan-unplugged");
+  eq("an unplugged fan reads zero RPM", telemetry(noFanPower).cpuFanRpm, 0);
+  eq("...and the CPU runs hot", telemetry(noFanPower).cpuTempC > 70, true);
+  eq("...and that is flagged critical", telemetry(noFanPower).cpuTempCritical, true);
+
+  // A mounted but unscrewed cooler sits between the two — a bad mount is real.
+  const looseCooler = toggleFastener(buildDesktopRig("none"), "fan", "fan-s1");
+  eq("a loose cooler runs warm but not critical", telemetry(looseCooler).cpuTempC, 61);
+
+  // Memory frequency follows what is actually fitted.
+  eq("DDR4 reports its frequency", telemetry(healthy).memoryMhz, 3200);
+  eq("a laptop's DDR5 reports higher", telemetry(buildLaptopRig("none")).memoryMhz, 4800);
+  eq("a machine with no memory reports none",
+     telemetry(buildRig("desktop", "bare-build")).memoryMhz, 0);
+
+  group("Hardware bench — provisioning is ordered by the hardware");
+
+  // Unknown devices are DERIVED: a machine with a GPU wants a display driver.
+  const withGpu = pendingDrivers(buildDesktopRig("none"), []);
+  eq("a fresh image always wants a network driver", withGpu.some((d) => d.id === "nic"), true);
+  eq("...and a display driver when a GPU is fitted", withGpu.some((d) => d.id === "vga"), true);
+
+  // Installing one clears only that one.
+  eq("installing the NIC driver clears it",
+     pendingDrivers(buildDesktopRig("none"), ["nic"]).some((d) => d.id === "nic"), false);
+  eq("...and leaves the others", pendingDrivers(buildDesktopRig("none"), ["nic"]).length > 0, true);
+
+  // The ordering that matters: no NIC driver, no domain join. The error is
+  // about the adapter, not the credentials the operator keeps retyping.
+  eq("a machine with no network driver cannot join", domainJoinBlocker([]) !== null, true);
+  eq("...and the reason names the adapter", domainJoinBlocker([]).includes("network adapter"), true);
+  eq("once the NIC driver is on, the join is allowed", domainJoinBlocker(["nic"]), null);
 }
 
 {

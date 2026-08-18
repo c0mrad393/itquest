@@ -39,7 +39,13 @@ import {
 } from "@/lib/hardware/rig";
 import { useInfraStore } from "@/lib/infra/store";
 import { AppIcon } from "@/components/ui/app-icons";
-import { BiosSetupScreen, OsInstallScreen, PostHaltScreen, RunningScreen } from "./BiosScreen";
+import {
+  BiosSetupScreen,
+  OsInstallScreen,
+  PostHaltScreen,
+  ProvisioningScreen,
+  RunningScreen,
+} from "./BiosScreen";
 import {
   BOARD,
   BOARD_SIZE,
@@ -97,6 +103,7 @@ export default function DesktopHardwareLab() {
   const fault = useHardwareStore((s) => s.fault);
   const powerOn = useHardwareStore((s) => s.powerOn);
   const commissionNode = useInfraStore((s) => s.commissionBenchMachine);
+  const joinNodeToDomain = useInfraStore((s) => s.joinBenchMachineToDomain);
   const [registered, setRegistered] = useState<string | null>(null);
   /*
    * The part currently in hand.
@@ -130,6 +137,18 @@ export default function DesktopHardwareLab() {
     return (
       <OsInstallScreen
         onCommit={(spec) => setRegistered(commissionNode({ machine, ...spec }))}
+      />
+    );
+  }
+  if (phase === "provisioning") {
+    return (
+      <ProvisioningScreen
+        onJoined={(domain) => {
+          // The join is written through to the estate, so the node the operator
+          // built genuinely appears as a domain member rather than the bench
+          // merely claiming it did.
+          if (registered) joinNodeToDomain(registered, domain);
+        }}
       />
     );
   }

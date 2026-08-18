@@ -309,6 +309,15 @@ interface InfraStore {
    * comes up with less memory. Returns the hostname so the bench can name it.
    */
   commissionBenchMachine: (build: BenchBuildInput) => string;
+  /**
+   * Join a bench-built machine to a domain.
+   *
+   * Separate from commissioning because it IS separate: setup lays down an OS,
+   * and joining is an administrative act performed afterwards, gated on the
+   * machine having a working network adapter. Folding the two together would
+   * hide the step the provisioning exercise exists to teach.
+   */
+  joinBenchMachineToDomain: (hostname: string, domain: string) => void;
   ensureEdgeGateway: () => NodeId;
   addFirewallRule: (nodeId: NodeId, rule: FirewallRule) => void;
   updateFirewallRule: (nodeId: NodeId, ruleId: string, patch: Partial<FirewallRule>) => void;
@@ -1413,6 +1422,20 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       // Uptime restarts with the machine. Left alone it would claim months of
       // continuous service on a box that just rebooted.
       clone.health = { ...clone.health, uptimeSeconds: 0 };
+      return withNode(s, nodeId, clone);
+    }),
+
+  joinBenchMachineToDomain: (hostname, domain) =>
+    set((s) => {
+      const entry = Object.entries(s.infra.nodes).find(([, n]) => n.hostname === hostname);
+      if (!entry) return s;
+      const [nodeId, node] = entry;
+      const clone = structuredClone(node);
+      clone.domain = domain;
+      // The DC is the resolver for its own domain, so a joined machine points
+      // at it — a member that still resolves via the ISP would not find the DC.
+      const dc = Object.values(s.infra.nodes).find((n) => n.domain === domain && n.os === "windows");
+      if (dc?.connection.ip) clone.network.dnsServers = [dc.connection.ip];
       return withNode(s, nodeId, clone);
     }),
 

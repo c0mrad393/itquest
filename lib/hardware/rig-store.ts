@@ -28,6 +28,9 @@ import {
   postHalt,
   resolveBoot,
   rigSpec,
+  domainJoinBlocker,
+  pendingDrivers,
+  telemetry,
   nextAction,
   post,
   removePart,
@@ -40,6 +43,8 @@ import {
   type Rig,
   type RigFault,
   type RigSpec,
+  type PendingDriver,
+  type Telemetry,
 } from "./rig";
 
 /**
@@ -49,7 +54,15 @@ import {
  * client uses one: `poweredOn && !inBios && !installing` has states that cannot
  * happen, and every one of them is a bug waiting to be written.
  */
-export type MachinePhase = "off" | "post-halt" | "bios" | "booting" | "installing" | "running";
+export type MachinePhase =
+  | "off"
+  | "post-halt"
+  | "bios"
+  | "booting"
+  | "installing"
+  /** OS is up but unprovisioned: drivers missing, not domain-joined. */
+  | "provisioning"
+  | "running";
 
 interface HardwareStore {
   rig: Rig;
@@ -65,6 +78,10 @@ interface HardwareStore {
   bios: BiosSettings;
   /** Set once an OS has been laid down, which makes the disk bootable. */
   osInstalled: boolean;
+  /** Driver ids the operator has installed. Empty on a fresh image. */
+  driversInstalled: string[];
+  /** The domain this machine joined, or null. */
+  joinedDomain: string | null;
 
   loadScenario: (fault: RigFault, machine?: MachineKind) => void;
   select: (slotId: string | null) => void;
@@ -90,10 +107,18 @@ interface HardwareStore {
   saveAndReboot: () => void;
   /** The installer finished; the disk is now bootable. */
   completeInstall: () => void;
+  installDriver: (driverId: string) => void;
+  /** Refused when the model says the machine cannot reach a DC yet. */
+  joinDomain: (domain: string) => boolean;
+  /** Provisioning done — the machine is handed over. */
+  finishProvisioning: () => void;
 
   /** Derived, never stored — see the note on `post`. */
   postResult: () => PostResult;
   spec: () => RigSpec;
+  sensors: () => Telemetry;
+  drivers: () => PendingDriver[];
+  joinBlocker: () => string | null;
   hint: () => { slotId: string; hint: string } | null;
 }
 
@@ -108,6 +133,8 @@ export const useHardwareStore = create<HardwareStore>((set, get) => ({
   halt: null,
   bios: defaultBios(START, false),
   osInstalled: false,
+  driversInstalled: [],
+  joinedDomain: null,
 
   loadScenario: (fault, machine) => {
     const kind = machine ?? get().machine;
@@ -118,6 +145,7 @@ export const useHardwareStore = create<HardwareStore>((set, get) => ({
     set({
       rig, fault, machine: kind, selected: null,
       phase: "off", halt: null, osInstalled: false, bios: defaultBios(rig, false),
+      driversInstalled: [], joinedDomain: null,
     });
   },
   select: (slotId) => set({ selected: slotId }),
@@ -172,9 +200,35 @@ export const useHardwareStore = create<HardwareStore>((set, get) => ({
     set({ phase: target.kind === "usb" ? "installing" : "running" });
   },
 
-  completeInstall: () => set({ osInstalled: true, phase: "running" }),
+  /*
+   * Setup finishes into PROVISIONING, not into "running".
+   *
+   * A freshly imaged machine is not a finished machine — it has no drivers and
+   * belongs to no domain. Jumping straight to a working desktop would skip the
+   * two steps that make this an IT exercise rather than a build video.
+   */
+  completeInstall: () => set({ osInstalled: true, phase: "provisioning" }),
+
+  installDriver: (driverId) =>
+    set((s) =>
+      s.driversInstalled.includes(driverId)
+        ? s
+        : { driversInstalled: [...s.driversInstalled, driverId] },
+    ),
+
+  joinDomain: (domain) => {
+    // The MODEL decides whether this can work; the dialog only reports it.
+    if (domainJoinBlocker(get().driversInstalled)) return false;
+    set({ joinedDomain: domain });
+    return true;
+  },
+
+  finishProvisioning: () => set({ phase: "running" }),
 
   postResult: () => post(get().rig),
   spec: () => rigSpec(get().rig),
+  sensors: () => telemetry(get().rig),
+  drivers: () => pendingDrivers(get().rig, get().driversInstalled),
+  joinBlocker: () => domainJoinBlocker(get().driversInstalled),
   hint: () => nextAction(get().rig),
 }));
