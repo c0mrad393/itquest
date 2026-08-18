@@ -121,6 +121,19 @@ import {
   telemetry,
 } from "../.test-build/desktop-sim/parts.js";
 import {
+  BOARD,
+  CANVAS,
+  CASE_INNER,
+  SNAP_RADIUS,
+  SPEC_MM,
+  STANDOFFS,
+  ZONES,
+  distanceTo,
+  mm,
+  snapTarget,
+  zoneFor,
+} from "../.test-build/desktop-sim/geometry.js";
+import {
   CHAIN_FOR,
   cidrContains,
   defaultEdgeRules,
@@ -1959,6 +1972,59 @@ group("Client endpoints skip the rack chain");
   eq("...and leaves nothing outstanding", nextStep(full), null);
   eq("...and the finished machine posts", postHalt(full), null);
   eq("...at full progress", report(full).progress, 1);
+}
+
+{
+  group("Desktop sim — one coordinate space, real proportions");
+
+  // The failure this system exists to prevent: parts sized by eye. Every
+  // dimension derives from millimetres, so a screw CANNOT out-scale a DIMM.
+  eq("an ATX board is 305mm wide", mm(SPEC_MM.atxBoard.w), 610);
+  eq("a case screw head is 6mm", mm(SPEC_MM.screwHead), 12);
+  eq("a screw head is far smaller than a DIMM module",
+     mm(SPEC_MM.screwHead) * 4 < mm(SPEC_MM.dimmModule.w), true);
+  eq("a DIMM slot is long and thin, not square",
+     mm(SPEC_MM.dimmSlot.w) > mm(SPEC_MM.dimmSlot.h) * 20, true);
+  eq("a GPU is wider than the socket it plugs beside",
+     mm(SPEC_MM.gpu.w) > mm(SPEC_MM.lgaSocket.w) * 5, true);
+
+  // Containment: the board fits its case, and the case fits the canvas.
+  eq("the board fits inside the case", BOARD.w <= CASE_INNER.w, true);
+  eq("...in both axes", BOARD.h <= CASE_INNER.h, true);
+  eq("the whole scene fits the canvas",
+     ZONES.every((z) => z.box.x >= 0 && z.box.y >= 0 &&
+                        z.box.x + z.box.w <= CANVAS.w &&
+                        z.box.y + z.box.h <= CANVAS.h), true);
+
+  // Sockets are board-relative, so they cannot drift away from it.
+  const socket = ZONES.find((z) => z.id === "socket");
+  eq("the socket sits on the board", socket.box.x > BOARD.x && socket.box.x < BOARD.x + BOARD.w, true);
+  eq("...vertically too", socket.box.y > BOARD.y && socket.box.y < BOARD.y + BOARD.h, true);
+
+  // The two DIMM slots are parallel and do not overlap.
+  const a1 = ZONES.find((z) => z.id === "dimm-a1").box;
+  const a2 = ZONES.find((z) => z.id === "dimm-a2").box;
+  eq("DIMM slots share an x origin", a1.x, a2.x);
+  eq("...and are stacked, not overlapping", a2.y >= a1.y + a1.h, true);
+
+  eq("there are nine standoffs on the ATX pattern", STANDOFFS.length, 9);
+  eq("every standoff is under the board",
+     STANDOFFS.every((s) => s.x >= BOARD.x && s.x <= BOARD.x + BOARD.w &&
+                            s.y >= BOARD.y && s.y <= BOARD.y + BOARD.h), true);
+
+  group("Desktop sim — snapping is bounded, not magnetic");
+
+  const gpuZone = zoneFor("gpu");
+  const centre = { x: gpuZone.box.x + gpuZone.box.w / 2, y: gpuZone.box.y + gpuZone.box.h / 2 };
+  eq("a drop on the slot centre snaps", snapTarget("gpu", centre).id, "pcie-x16");
+  eq("a drop just inside the radius snaps",
+     snapTarget("gpu", { x: centre.x + SNAP_RADIUS - 5, y: centre.y }).id, "pcie-x16");
+  // Outside the radius it must NOT snap, or a part dropped across the bench
+  // would teleport into a slot the user never aimed at.
+  eq("a drop outside the radius does not snap",
+     snapTarget("gpu", { x: centre.x + SNAP_RADIUS + 40, y: centre.y }), null);
+  eq("a part never snaps to another part's zone", snapTarget("cpu", centre), null);
+  eq("distance is measured to the zone centre", Math.round(distanceTo(gpuZone.box, centre)), 0);
 }
 
 {
