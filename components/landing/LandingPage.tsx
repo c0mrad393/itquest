@@ -1,481 +1,833 @@
 "use client";
 
 /**
- * ITQuest — Landing page
- * =======================
- * The thirty seconds before anyone plays anything. Its whole job is to make
- * the DEPTH legible: this is not a clicker with server graphics, it is a
- * simulation with a power budget, an address space and a disaster-recovery
- * sequence you can get wrong.
+ * ITQuest — public landing page (itquest.org)
+ * ===========================================
+ * The public entry point: prospective learners, institutions evaluating the
+ * platform, and reviewers who will judge it in about fifteen seconds.
  *
- * ── WHY THIS PAGE COMMITS TO DARK ───────────────────────────────────────────
+ * The page's job is to make one claim legible fast: ITQuest is not a website
+ * ABOUT IT work, it is a virtual operating system you work INSIDE. So the
+ * centrepiece is a mock OS window — real window chrome, a taskbar-style tab
+ * rail, a status bar — that foreshadows the actual application.
  *
- * Every other surface in the product follows the operator's theme, and this
- * one deliberately does not. The theme is a preference belonging to a signed-in
- * operator; a visitor who has never launched the simulator has not expressed
- * one, and the landing page is a single authored composition rather than a
- * workspace. So it paints its own ground explicitly, and pins the theme on its
- * root container so nothing underneath it can flip. Both of those are wrong
- * anywhere else in this codebase and right here; the two comments below say
- * exactly why, so nobody "fixes" them later.
+ * ── FOUR THINGS HERE ARE LOAD-BEARING ───────────────────────────────────────
  *
- * ── THE BENTO GRID IS ASYMMETRIC ON PURPOSE ─────────────────────────────────
+ * 1. `theme-dark` is stamped on the page ROOT. This page paints its own ground
+ *    (#04060d) and is the one surface a visitor sees before any theme
+ *    preference exists. Custom properties inherit, so without the pin a
+ *    light-mode visitor gets the inverting neutral ramp over a near-black
+ *    background — dark ink on dark, unreadable.
  *
- * Six equal cards read as a feature list, which is what the page had and what
- * made it feel thin. Alternating wide and narrow — 2-1, 1-2, 2-1 across three
- * columns — makes the grid say something before a word of it is read: these
- * are not six equivalent bullet points.
+ * 2. ACCENT holds LITERAL HEX, not ramp tokens. In this design system
+ *    `cyan`, `sky`, `indigo` and `blue` all collapse onto `--info-*`, so a
+ *    multi-colour module grid written with Tailwind colour names renders as a
+ *    set of identical cards. Every accent below is a literal so it survives.
  *
- * The spans must total a multiple of three. They did not at first (8 cells in
- * a 3-column grid), which left a hole in the bottom-right corner that read as
- * an unfinished layout rather than a deliberate one. Anyone adding a seventh
- * card has to re-balance the whole set, not append to it.
+ * 3. The root must NOT carry `overflow-x-hidden`. CSS computes the other axis
+ *    to `auto` when one axis is `hidden`, which silently turns the page into a
+ *    nested scroll container. The ambient blur wrapper clips its own blobs.
  *
- * ── ANIMATION ───────────────────────────────────────────────────────────────
+ * 4. The saved-game path is real. A returning visitor is offered Resume rather
+ *    than being silently dropped into a new estate, and the check runs AFTER
+ *    mount because localStorage does not exist during SSR.
  *
- * Real keyframes in globals.css, not `animate-in`: that utility ships with
- * tailwindcss-animate, which this project does not install, so those classes
- * would have compiled to nothing at all. Everything here also collapses under
- * `prefers-reduced-motion`.
- *
- * SVG icons and typographic glyphs only — no emoji.
+ * No emoji anywhere — the project's standing rule. Every glyph is an SVG icon.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { hasSavedGame, savedProfile, useSessionStore } from "@/lib/host/session";
 import {
-  IconActivity,
   IconBolt,
+  IconCable,
+  IconChartBar,
   IconCheck,
-  IconLock,
-  IconCart,
   IconChevronRight,
+  IconClock,
+  IconCloudNodes,
+  IconContrast,
+  IconDisk,
+  IconGrid,
+  IconIdCard,
+  IconLaptop,
+  IconLinux,
+  IconMonitor,
+  IconPanel,
+  IconPolicy,
+  IconRecycle,
+  IconRemoteIn,
+  IconRouter,
+  IconServer,
   IconShield,
-  IconSwitch,
+  IconSignal,
+  IconSliders,
+  IconStore,
+  IconTerminal,
   IconTicket,
+  IconTrophy,
+  IconUsers,
+  IconWindows,
   IconWrench,
 } from "@/components/ui/icons";
 
 const VERSION = "v1.2.0-core";
+const CONTACT = "contact@itquest.org";
 
-/**
- * The bento cards.
- *
- * `span` is the grid weight; `accent` keys into ACCENT below for the icon, its
- * glow and the hairline. The keys name the SUBJECT rather than the hue, so
- * re-colouring a card never means renaming what it is about. Kept as data so
- * the grid below stays a layout rather than six hand-placed blocks.
- */
-const PILLARS = [
-  {
-    icon: IconTicket,
-    title: "Dynamic Ticketing & Tiers",
-    body:
-      "A live event engine raises work continuously, scaled to the size of the company. Cascade failures put the reported symptom two steps downstream of the actual fault, so the job is diagnosis before action.",
-    stats: ["4 tiers", "200+ classes", "Cascade chains"],
-    span: "lg:col-span-2",
-    accent: "ticketing",
-  },
-  {
-    icon: IconShield,
-    title: "Disaster Recovery",
-    body:
-      "Ransomware that spreads on a live network. Isolate, wipe, restore — in that order, or the clean copy goes back under the same key. On-premises backups get encrypted too; offsite is the tier that survives.",
-    stats: ["Isolate / Wipe / Restore", "Offsite tiers", "Permanent loss"],
-    span: "",
-    accent: "recovery",
-  },
-  {
-    icon: IconWrench,
-    title: "Hardware Lab",
-    body:
-      "Open the chassis. Pull the baffle, seat the DIMM, drive the screws, flash the BIOS, image the disk. Tickets deep-link straight to the device that needs the part.",
-    stats: ["Component-level", "BIOS & imaging", "Deep-linked"],
-    span: "",
-    accent: "hardware",
-  },
-  {
-    icon: IconSwitch,
-    title: "Network Architecture",
-    body:
-      "Managed PoE switches with a real power budget that sheds ports when you overload it. Bit-exact addressing with conflict detection, rogue DHCP hunts, and video traffic that genuinely saturates an undersized uplink.",
-    stats: ["PoE budgets", "IPAM & conflicts", "Congestion"],
-    span: "lg:col-span-2",
-    accent: "network",
-  },
-  {
-    icon: IconActivity,
-    title: "Estate Monitoring",
-    body:
-      "Live telemetry across the estate, with a health score that compounds faults rather than hiding them behind an average. Every reading derives from the same state the panels act on.",
-    stats: ["Real-time", "Health scoring", "Topology"],
-    span: "lg:col-span-2",
-    accent: "telemetry",
-  },
-  {
-    icon: IconCart,
-    title: "Marketplace & Economy",
-    body:
-      "Every fix has a price. Buy the parts, license the tooling, size the backup tier — on a budget that has to cover the next incident too.",
-    stats: ["Procurement", "Licensing", "Budget"],
-    span: "",
-    accent: "economy",
-  },
-] as const;
-
-/**
- * The six card accents, as LITERAL hexes rather than palette utilities.
- *
- * This looks like a step backwards and is not. v0.9.1 folded the raw Tailwind
- * families onto the five semantic ones, so `cyan`, `sky`, `indigo` and `blue`
- * are now four names for `--info-*` — one single blue. Written with utilities,
- * three of the six cards below painted the identical colour and the hero's
- * three-stop gradient really had two. Measured on the live page: cyan, indigo
- * and sky all returned rgb(130, 183, 255).
- *
- * That collapse is correct everywhere else — a status colour should have one
- * meaning and one value. It is wrong here, because these are not statuses.
- * Nothing on this page reports a condition; the colours are decoration that
- * has to stay distinguishable at a glance, which is exactly the job the
- * semantic ramp refuses to do. So the marketing surface opts out and names its
- * own inks, while every operational surface keeps inheriting.
- *
- * Tailwind cannot see interpolated class names, so each string is written out
- * whole rather than assembled from the key.
- *
- * DELIBERATELY UNANNOTATED. A `Record<string, …>` here would type every string
- * as a valid key, and the lookup below would hand back `undefined` for a typo —
- * which is not a wrong colour, it is a crash on `a.ring` that takes the whole
- * page down. Inferring the literal keys instead makes a mismatch between a
- * card's `accent` and this map a compile error, which is where it belongs.
- */
+/** See the header note: literal hex, because the ramp would collapse these. */
 const ACCENT = {
-  ticketing: { text: "text-[#67e8f9]", glow: "bg-[#22d3ee]/20", ring: "group-hover:border-[#22d3ee]/40", chip: "text-[#a5f3fc]/70" },
-  recovery: { text: "text-[#fda4af]", glow: "bg-[#f43f5e]/20", ring: "group-hover:border-[#fb7185]/40", chip: "text-[#fecdd3]/70" },
-  hardware: { text: "text-[#fcd34d]", glow: "bg-[#f59e0b]/20", ring: "group-hover:border-[#fbbf24]/40", chip: "text-[#fde68a]/70" },
-  network: { text: "text-[#a5b4fc]", glow: "bg-[#6366f1]/25", ring: "group-hover:border-[#818cf8]/40", chip: "text-[#c7d2fe]/70" },
-  economy: { text: "text-[#6ee7b7]", glow: "bg-[#10b981]/20", ring: "group-hover:border-[#34d399]/40", chip: "text-[#a7f3d0]/70" },
-  telemetry: { text: "text-[#c4b5fd]", glow: "bg-[#8b5cf6]/20", ring: "group-hover:border-[#a78bfa]/40", chip: "text-[#ddd6fe]/70" },
-};
+  webos: { text: "text-[#67e8f9]", dot: "bg-[#22d3ee]", glow: "bg-[#22d3ee]/20", chip: "bg-[#22d3ee]/10 border-[#22d3ee]/30 text-[#a5f3fc]" },
+  helpdesk: { text: "text-[#fcd34d]", dot: "bg-[#f59e0b]", glow: "bg-[#f59e0b]/20", chip: "bg-[#f59e0b]/10 border-[#fbbf24]/30 text-[#fde68a]" },
+  server: { text: "text-[#a5b4fc]", dot: "bg-[#6366f1]", glow: "bg-[#6366f1]/25", chip: "bg-[#6366f1]/10 border-[#818cf8]/30 text-[#c7d2fe]" },
+  infra: { text: "text-[#6ee7b7]", dot: "bg-[#10b981]", glow: "bg-[#10b981]/20", chip: "bg-[#10b981]/10 border-[#34d399]/30 text-[#a7f3d0]" },
+  progress: { text: "text-[#c4b5fd]", dot: "bg-[#8b5cf6]", glow: "bg-[#8b5cf6]/20", chip: "bg-[#8b5cf6]/10 border-[#a78bfa]/30 text-[#ddd6fe]" },
+} as const;
+
+type AccentKey = keyof typeof ACCENT;
+
+interface Capability {
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+}
+
+interface ModuleTab {
+  id: string;
+  /** Short label for the taskbar-style rail. */
+  label: string;
+  icon: React.ReactNode;
+  accent: AccentKey;
+  headline: string;
+  lede: string;
+  capabilities: Capability[];
+  /** Optional console transcript — shown where CLI fluency is the point. */
+  console?: { title: string; lines: { prompt?: string; text: string; tone?: "in" | "out" | "ok" | "warn" }[] };
+}
+
+const MODULES: ModuleTab[] = [
+  {
+    id: "webos",
+    label: "Web-OS Core",
+    icon: <IconMonitor size={15} />,
+    accent: "webos",
+    headline: "Not a website about IT. An operating system you work inside.",
+    lede: "ITQuest boots a complete desktop environment in the browser — windows you drag, resize, stack and minimise, a live taskbar, a start menu, notifications and a system tray. Nothing to install, no virtual machine to provision. The realism is the point: you learn the shape of the work, not a diagram of it.",
+    capabilities: [
+      {
+        icon: <IconPanel size={17} />,
+        title: "Real window management",
+        body: "Draggable, resizable, focus-stacked windows with a taskbar, start menu and system tray — the interaction model of a desktop OS, running in a tab.",
+      },
+      {
+        icon: <IconSliders size={17} />,
+        title: "Customisable workspace",
+        body: "Arrange your desktop, pin the apps you use, tune the layout and open a command palette to jump anywhere by keyboard.",
+      },
+      {
+        icon: <IconContrast size={17} />,
+        title: "Light and dark themes",
+        body: "A full token-driven theming system across every window and applet, following your system preference until you override it.",
+      },
+      {
+        icon: <IconGrid size={17} />,
+        title: "A suite of real applications",
+        body: "Helpdesk, directory, gateway, storage, hardware bench and more — each a working tool with its own state, not a screenshot.",
+      },
+    ],
+  },
+  {
+    id: "helpdesk",
+    label: "Helpdesk & Economy",
+    icon: <IconTicket size={15} />,
+    accent: "helpdesk",
+    headline: "Tickets arrive on a clock. Budget is finite. Choose well.",
+    lede: "Work reaches you the way it reaches a real technician: as a queue of tickets with deadlines, written by users who describe symptoms rather than causes. Every fix costs money and time, so triage is a genuine decision — and the economy makes it one.",
+    capabilities: [
+      {
+        icon: <IconClock size={17} />,
+        title: "Time-bound ticket queue",
+        body: "Dynamic tickets carry SLA deadlines. Let one expire and you feel it in satisfaction and budget, exactly as an under-staffed desk does.",
+      },
+      {
+        icon: <IconTicket size={17} />,
+        title: "Symptoms, not answers",
+        body: "Tickets report what the user sees. Diagnosis is yours: read the estate, form a hypothesis, verify it, then fix the actual cause.",
+      },
+      {
+        icon: <IconStore size={17} />,
+        title: "Procurement and the shop",
+        body: "Buy hardware, licences and services from a virtual catalogue. Stock, lead time and price are all real constraints on your plan.",
+      },
+      {
+        icon: <IconChartBar size={17} />,
+        title: "Budget and resource allocation",
+        body: "Run the department to a budget. Over-provision and you burn capital; under-provision and the estate degrades until tickets cascade.",
+      },
+    ],
+  },
+  {
+    id: "server",
+    label: "Server & Directory",
+    icon: <IconServer size={15} />,
+    accent: "server",
+    headline: "Remote into the estate. Windows Server, Linux, GUI and shell.",
+    lede: "Open a simulated RDP session and land on a real server desktop — nested inside your own, with its own windows and its own tools. Administer the domain from the directory console or from a terminal, then drill down from a user object straight into that employee's client machine to fix what they actually reported.",
+    capabilities: [
+      {
+        icon: <IconRemoteIn size={17} />,
+        title: "Simulated RDP sessions",
+        body: "Connect into Windows Server and Linux hosts. Each session is a live environment with its own state, not a static mock-up.",
+      },
+      {
+        icon: <IconUsers size={17} />,
+        title: "Active Directory and domain controllers",
+        body: "Create and manage users, groups and organisational units; promote and troubleshoot domain controllers; resolve join failures at their cause.",
+      },
+      {
+        icon: <IconPolicy size={17} />,
+        title: "Group Policy with real precedence",
+        body: "Author GPOs and link them at the right scope. Inheritance and precedence are modelled, so a policy applied at the wrong level genuinely misbehaves.",
+      },
+      {
+        icon: <IconLaptop size={17} />,
+        title: "Drill down to the client",
+        body: "Go from a directory object to the employee's desktop and remote in — profile faults, mapped drives, stale credentials and all.",
+      },
+      {
+        icon: <IconTerminal size={17} />,
+        title: "PowerShell and Bash",
+        body: "Every task has a shell path as well as a GUI path. Both drive the same underlying state, so either route is a legitimate solution.",
+      },
+      {
+        icon: <IconWindows size={17} />,
+        title: "Cross-platform estate",
+        body: "Windows and Linux hosts side by side, with the service models, file permissions and tooling that actually differ between them.",
+      },
+    ],
+    console: {
+      title: "Terminal — dc01",
+      lines: [
+        { prompt: "PS C:\\>", text: "Get-ADUser -Filter {Enabled -eq $false} | Select Name", tone: "in" },
+        { text: "j.okafor    Disabled 14d ago", tone: "out" },
+        { text: "m.laurent   Disabled  3d ago", tone: "out" },
+        { prompt: "[ops@edge ~]$", text: "systemctl status nginx", tone: "in" },
+        { text: "Active: failed (Result: exit-code)", tone: "warn" },
+        { prompt: "[ops@edge ~]$", text: "nginx -t && systemctl restart nginx", tone: "in" },
+        { text: "configuration file test is successful", tone: "ok" },
+      ],
+    },
+  },
+  {
+    id: "infra",
+    label: "Cloud, Network & BDR",
+    icon: <IconCloudNodes size={15} />,
+    accent: "infra",
+    headline: "From the patch panel to the cloud console — and back from disaster.",
+    lede: "Infrastructure is modelled physically and logically. Route the cable, patch the port, budget the PoE, then climb the stack to firewall rules, NAT, DHCP and cloud services. When something catastrophic lands, your recovery is only as good as the backup policy you set up beforehand.",
+    capabilities: [
+      {
+        icon: <IconCable size={17} />,
+        title: "Physical networking",
+        body: "Cable routing, switch patching, PoE power budgets and camera-to-NVR topology — with the constraints that bite in a real comms room.",
+      },
+      {
+        icon: <IconRouter size={17} />,
+        title: "Software-defined troubleshooting",
+        body: "An enterprise edge gateway with firewall rules, NAT and port forwarding, DHCP scopes and reservations, and intrusion detection.",
+      },
+      {
+        icon: <IconCloudNodes size={17} />,
+        title: "Cloud services",
+        body: "Monitor, manage and troubleshoot simulated cloud workloads alongside on-premise systems, in one hybrid estate.",
+      },
+      {
+        icon: <IconDisk size={17} />,
+        title: "Backup and disaster recovery",
+        body: "Schedule backups across storage tiers, manage snapshots and prove your retention actually covers what you would need.",
+      },
+      {
+        icon: <IconRecycle size={17} />,
+        title: "Recover from catastrophe",
+        body: "Ransomware and total-loss events really compromise the estate. Restoring is a procedure you carry out, not a button that undoes it.",
+      },
+      {
+        icon: <IconSignal size={17} />,
+        title: "Live monitoring",
+        body: "Telemetry, traffic graphs and health dashboards update continuously, so you can watch a fault propagate and a fix take hold.",
+      },
+    ],
+  },
+  {
+    id: "progress",
+    label: "Ranks & Progression",
+    icon: <IconTrophy size={15} />,
+    accent: "progress",
+    headline: "Measured on the things the job is actually measured on.",
+    lede: "Progression tracks resolution speed, diagnostic accuracy and budget efficiency — the three axes a real IT department is judged by. Rank up, unlock harder infrastructure, and compare where you stand against everyone else working the same estate.",
+    capabilities: [
+      {
+        icon: <IconTrophy size={17} />,
+        title: "Global leaderboards",
+        body: "Ranked on resolution speed, accuracy and budget efficiency, so a fast guess never outscores a correct diagnosis.",
+      },
+      {
+        icon: <IconIdCard size={17} />,
+        title: "Profile and levelling",
+        body: "Level your technician, shape a specialism and carry a profile that reflects what you have actually proven you can do.",
+      },
+      {
+        icon: <IconBolt size={17} />,
+        title: "Progressive unlocks",
+        body: "The estate grows with you. New sites, racks and systems arrive as your capability does, so complexity never lands all at once.",
+      },
+      {
+        icon: <IconWrench size={17} />,
+        title: "Scenario library",
+        body: "Multi-stage incidents with cascading consequences, drawn from real failure patterns — each with one findable root cause.",
+      },
+    ],
+  },
+];
+
+interface Audience {
+  title: string;
+  body: string;
+  points: string[];
+}
+
+const AUDIENCES: Audience[] = [
+  {
+    title: "Students & Self-Learners",
+    body: "Learn by doing, through practical exercises that map directly onto the work.",
+    points: ["Build a PC from bare parts", "Diagnose faults with real symptoms", "Job-ready hardware and OS skills"],
+  },
+  {
+    title: "Universities, Colleges & Academies",
+    body: "Scalable, browser-based lab infrastructure for a modern IT curriculum.",
+    points: ["No hardware budget per seat", "Consistent scenarios across a cohort", "Runs in any modern browser"],
+  },
+  {
+    title: "Practitioners & Job Seekers",
+    body: "Refine hardware and sysadmin skills against realistic enterprise workflows.",
+    points: ["Enterprise domain and directory tasks", "Perimeter firewall and NAT work", "Interview-ready practical fluency"],
+  },
+];
+
+/** Qualitative descriptors, not invented metrics. */
+const PILLARS = [
+  { icon: <IconMonitor size={15} />, label: "Full Web-OS", sub: "Nothing to install" },
+  { icon: <IconTerminal size={15} />, label: "GUI + CLI", sub: "PowerShell and Bash" },
+  { icon: <IconLinux size={15} />, label: "Windows + Linux", sub: "One hybrid estate" },
+  { icon: <IconShield size={15} />, label: "Risk-free", sub: "Break anything safely" },
+];
+
+type LegalDoc = "privacy" | "terms";
 
 export default function LandingPage() {
   const router = useRouter();
   const startNewGame = useSessionStore((s) => s.startNewGame);
   const [saved, setSaved] = useState<{ level: number; username: string } | null>(null);
+  const [legal, setLegal] = useState<LegalDoc | null>(null);
+  const [tab, setTab] = useState(0);
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const railRef = useRef<HTMLDivElement | null>(null);
 
-  // Read after mount — the save lives in localStorage, which does not exist
-  // during SSR.
+  // After mount: localStorage does not exist during SSR, and reading it in
+  // render would make the server and client markup disagree.
   useEffect(() => {
     if (!hasSavedGame()) return;
     const p = savedProfile();
     setSaved({ level: p.level, username: p.username });
   }, []);
 
-  /**
-   * A new game wipes the slot and does a REAL page load.
-   *
-   * `generateWorld` runs in the infra store's initializer, which already ran
-   * on this landing page. A client-side push would carry that world into the
-   * desktop; only a document load rebuilds it.
-   */
-  function startGame() {
-    startNewGame();
-    window.location.assign("/desktop");
-  }
+  // Escape closes a legal modal — a dialog that traps the reader is worse than
+  // no dialog, and reviewers will press Escape.
+  useEffect(() => {
+    if (!legal) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setLegal(null);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [legal]);
 
-  function continueGame() {
+  // Keep the selected tab visible in the rail. On narrow screens the rail
+  // scrolls, and a tab chosen by keyboard can otherwise sit off-screen.
+  //
+  // Two deliberate choices: this drives the RAIL's own scrollLeft rather than
+  // scrollIntoView, which would also move the page vertically; and it assigns
+  // scrollLeft directly instead of scrollTo({behavior:"smooth"}), which is
+  // silently a no-op in some engines and is dropped outright for readers who
+  // ask for reduced motion — leaving the selected tab off-screen either way.
+  useEffect(() => {
+    const rail = railRef.current;
+    const el = tabRefs.current[tab];
+    if (!rail || !el) return;
+    const left = el.offsetLeft - (rail.clientWidth - el.clientWidth) / 2;
+    rail.scrollLeft = Math.max(0, left);
+  }, [tab]);
+
+  // Arrow-key traversal is what makes a tablist a tablist to a screen reader
+  // and to anyone not using a mouse.
+  const onTabKey = useCallback((e: React.KeyboardEvent) => {
+    const last = MODULES.length - 1;
+    let next: number | null = null;
+    if (e.key === "ArrowRight") next = tab === last ? 0 : tab + 1;
+    else if (e.key === "ArrowLeft") next = tab === 0 ? last : tab - 1;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = last;
+    if (next === null) return;
+    e.preventDefault();
+    setTab(next);
+    tabRefs.current[next]?.focus();
+  }, [tab]);
+
+  function launch() {
+    if (!saved) startNewGame();
     router.push("/desktop");
   }
 
+  const active = MODULES[tab];
+  const activeAccent = ACCENT[active.accent];
+
   return (
-    /*
-     * `theme-dark` is stamped HERE, on the page root, and it is load-bearing.
-     *
-     * v0.9.1 REDEFINED the neutral ramp as CSS variables and inverts it in
-     * light mode, with `slate`/`zinc`/`stone` aliased onto it. So every
-     * `text-slate-400` on this page resolves through `--g-400` — and on a
-     * visitor whose OS is set to light, that is a dark ink, painted onto the
-     * near-black ground this page hardcodes. Confirmed live: `<html>` carried
-     * `theme-light` and the body copy went to roughly the background colour.
-     *
-     * Stamping the dark token set on this container pins those variables for
-     * everything inside it, whatever `<html>` says. Cheap, local, and it fails
-     * safe — a neutral added here later inherits the pin for free rather than
-     * quietly becoming the next invisible line of text.
-     *
-     * The card accents do not rely on this: they are literal hexes, for the
-     * separate reason documented on ACCENT above.
-     */
-    <div className="landing-root theme-dark relative min-h-screen overflow-hidden bg-[#04060d] font-sans text-slate-200 antialiased">
-      {/* ── Atmosphere ──────────────────────────────────────────────────── */}
-
-      {/* Grid. Two layers at different scales so it reads as depth rather than
-          as graph paper, and masked to fade out before it reaches the content. */}
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 opacity-[0.35]"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(255,255,255,0.028) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.028) 1px, transparent 1px)",
-          backgroundSize: "56px 56px",
-          maskImage: "radial-gradient(ellipse 90% 60% at 50% 0%, #000 40%, transparent 100%)",
-          WebkitMaskImage: "radial-gradient(ellipse 90% 60% at 50% 0%, #000 40%, transparent 100%)",
-        }}
-      />
-
-      {/* Ambient orbs. `blur-3xl` at low opacity — colour without shape, which
-          is what keeps them atmosphere instead of decoration. */}
-      <div aria-hidden className="pointer-events-none fixed inset-0">
-        <div className="orb-drift absolute -top-32 left-1/4 h-[38rem] w-[38rem] rounded-full bg-[#4f46e5]/20 blur-3xl" />
-        <div className="orb-drift absolute -right-24 top-1/4 h-[30rem] w-[30rem] rounded-full bg-[#06b6d4]/[0.14] blur-3xl" style={{ animationDelay: "-6s" }} />
-        <div className="orb-drift absolute -left-32 bottom-0 h-[34rem] w-[34rem] rounded-full bg-[#10b981]/[0.10] blur-3xl" style={{ animationDelay: "-12s" }} />
+    <div className="landing-root theme-dark relative min-h-screen bg-[#04060d] font-sans text-slate-200 antialiased">
+      {/* Ambient field. Pointer-events off so it can never eat a CTA click, and
+          it clips its own blobs so the ROOT needs no overflow rule. */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -left-40 -top-40 h-[32rem] w-[32rem] rounded-full bg-[#22d3ee]/10 blur-[120px]" />
+        <div className="absolute -right-32 top-1/4 h-[28rem] w-[28rem] rounded-full bg-[#6366f1]/10 blur-[120px]" />
+        <div className="absolute bottom-1/4 left-1/3 h-[24rem] w-[24rem] rounded-full bg-[#8b5cf6]/10 blur-[120px]" />
+        {/* Desktop-wallpaper dot grid — foreshadows the OS aesthetic. */}
+        <div
+          className="absolute inset-0 opacity-[0.35]"
+          style={{
+            backgroundImage: "radial-gradient(circle at 1px 1px, rgba(148,163,184,0.10) 1px, transparent 0)",
+            backgroundSize: "38px 38px",
+          }}
+        />
       </div>
 
       {/* ── Nav ─────────────────────────────────────────────────────────── */}
-      <header className="relative z-10 mx-auto flex max-w-7xl items-center gap-3 px-6 py-6">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-[#67e8f9] backdrop-blur-xl">
-          <IconBolt size={16} />
+      <header className="relative z-10 mx-auto flex max-w-6xl items-center gap-3 px-5 py-5 sm:px-8">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#22d3ee]/15 text-[#67e8f9]">
+          <IconBolt size={17} />
         </span>
-        <span className="text-[15px] font-bold tracking-tight text-white">ITQuest</span>
-        <span className="hidden rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-[10px] text-slate-400 sm:inline">
-          {VERSION}
-        </span>
-
-        <nav className="ml-auto flex items-center gap-2">
-          <a
-            href="#command-center"
-            className="hidden rounded-lg px-3 py-2 text-[13px] text-slate-400 transition hover:text-white sm:block"
-          >
-            Systems
-          </a>
-          <button
-            onClick={saved ? continueGame : startGame}
-            className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[13px] font-medium text-slate-200 backdrop-blur-xl transition-all hover:border-white/20 hover:bg-white/10 hover:text-white"
-          >
-            {saved ? "Continue" : "Launch"}
-          </button>
+        <span className="text-[15px] font-semibold tracking-tight text-white">ITQuest</span>
+        <span className="hidden font-mono text-[10px] text-slate-500 sm:inline">{VERSION}</span>
+        <nav className="ml-auto hidden items-center gap-6 text-[13px] text-slate-400 md:flex">
+          <a href="#platform" className="transition-colors hover:text-white">Platform</a>
+          <a href="#audience" className="transition-colors hover:text-white">For educators</a>
+          <a href="#contact" className="transition-colors hover:text-white">Contact</a>
         </nav>
+        <button
+          onClick={launch}
+          className="ml-auto rounded-lg bg-white px-4 py-2 text-[13px] font-semibold text-[#04060d] transition-transform hover:scale-[1.03] md:ml-0"
+        >
+          {saved ? "Resume" : "Launch lab"}
+        </button>
       </header>
 
       {/* ── Hero ────────────────────────────────────────────────────────── */}
-      <section className="relative z-10 mx-auto max-w-5xl px-6 pb-24 pt-14 text-center sm:pt-24">
-        <div className="rise-in" style={{ animationDelay: "60ms" }}>
-          <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-[11px] font-medium tracking-wide text-slate-300 backdrop-blur-xl">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="halo-pulse absolute inline-flex h-full w-full rounded-full bg-[#34d399]" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#34d399]" />
-            </span>
-            Tier 1 Helpdesk to Tier 4 Critical Infrastructure
+      <section className="relative z-10 mx-auto max-w-4xl px-5 pb-14 pt-10 text-center sm:px-8 sm:pt-16">
+        <span className="inline-flex items-center gap-2 rounded-full border border-[#22d3ee]/25 bg-[#22d3ee]/10 px-3.5 py-1.5 text-[11px] font-medium text-[#a5f3fc]">
+          {/* A pulsing dot, not a construction emoji — house rule. */}
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#22d3ee] opacity-75" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#67e8f9]" />
           </span>
-        </div>
+          Project in Active Development · Public Beta
+        </span>
 
-        <h1
-          className="rise-in mt-7 text-[2.75rem] font-black leading-[1.05] tracking-[-0.03em] text-white sm:text-6xl md:text-7xl"
-          style={{ animationDelay: "140ms" }}
-        >
-          The Enterprise IT &amp;
-          <br />
-          <span className="bg-gradient-to-r from-[#67e8f9] via-[#a5b4fc] to-[#6ee7b7] bg-clip-text text-transparent">
-            Cyber Warfare
-          </span>{" "}
-          Simulator
+        <h1 className="mt-7 text-balance text-[2rem] font-bold leading-[1.12] tracking-tight text-white sm:text-[2.9rem] lg:text-[3.4rem]">
+          Master IT Infrastructure &amp; Hardware Through{" "}
+          <span className="bg-gradient-to-r from-[#67e8f9] via-[#a5b4fc] to-[#c4b5fd] bg-clip-text text-transparent">
+            Hands-On Interactive Simulation
+          </span>
         </h1>
 
-        <p
-          className="rise-in mx-auto mt-6 max-w-2xl text-[15px] leading-relaxed text-slate-400 sm:text-[17px]"
-          style={{ animationDelay: "220ms" }}
-        >
-          Build, manage and defend the ultimate IT infrastructure. Power budgets, address
-          space, backup tiers and incident response — modelled properly, so every decision
-          matters.
+        <p className="mx-auto mt-6 max-w-2xl text-pretty text-[15px] leading-relaxed text-slate-400 sm:text-[16px]">
+          A complete virtual operating system in your browser. ITQuest is built for IT students,
+          universities, colleges, tech academies and practitioners to assemble hardware, configure
+          BIOS and operating systems, run an enterprise domain and troubleshoot live networks — in a
+          risk-free lab that behaves like the real thing.
         </p>
 
-        {/* Primary CTA. The halo is a separate ring rather than a scale on the
-            button itself: growing the button would move the label out from
-            under the cursor mid-hover. */}
-        <div className="rise-in mt-11 flex flex-col items-center gap-4" style={{ animationDelay: "300ms" }}>
-          <div className="group relative">
-            <span
-              aria-hidden
-              className="halo-pulse absolute -inset-1 rounded-2xl bg-gradient-to-r from-[#06b6d4] via-[#6366f1] to-[#10b981] blur-lg"
-            />
-            <button
-              onClick={saved ? continueGame : startGame}
-              className="relative flex items-center gap-3 rounded-2xl border border-white/20 bg-[#0a0f1c] px-9 py-4 text-[15px] font-bold tracking-wide text-white transition-all duration-300 hover:scale-[1.02] hover:border-white/30 active:scale-[0.99]"
-            >
-              {saved ? "RESUME SESSION" : "INITIALIZE SYSTEM"}
-              <IconChevronRight size={16} className="transition-transform duration-300 group-hover:translate-x-1" />
-            </button>
-          </div>
-
-          {saved ? (
-            <p className="text-[12px] text-slate-500">
-              Signed in as{" "}
-              <span className="font-medium text-slate-300">{saved.username}</span> · level{" "}
-              {saved.level}
-              {" · "}
-              <button onClick={startGame} className="underline decoration-dotted underline-offset-2 transition hover:text-slate-300">
-                start a new estate
-              </button>
-            </p>
-          ) : (
-            <p className="text-[12px] text-slate-500">No account needed. Runs entirely in your browser.</p>
-          )}
-        </div>
-      </section>
-
-      {/* ── Command centre ──────────────────────────────────────────────── */}
-      <section id="command-center" className="relative z-10 mx-auto max-w-7xl px-6 pb-24">
-        <div className="rise-in mb-10 text-center" style={{ animationDelay: "80ms" }}>
-          <h2 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-            Command Center
-          </h2>
-          <p className="mx-auto mt-3 max-w-2xl text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            Six systems. One estate. Everything connected.
-          </p>
-          <p className="mx-auto mt-3 max-w-2xl text-[14px] leading-relaxed text-slate-400">
-            Pull a switch port and a camera stops recording, the backbone load drops and a
-            ticket re-grades itself. Nothing here is a separate minigame.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {PILLARS.map((p, i) => {
-            const a = ACCENT[p.accent];
-            const Icon = p.icon;
-            return (
-              <article
-                key={p.title}
-                className={`rise-in group relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] p-6 backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:bg-white/[0.07] ${a.ring} ${p.span}`}
-                style={{ animationDelay: `${140 + i * 70}ms` }}
-              >
-                {/* The card's own glow, revealed on hover. Sits behind the
-                    content and never under the text itself. */}
-                <span
-                  aria-hidden
-                  className={`pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full ${a.glow} opacity-0 blur-3xl transition-opacity duration-500 group-hover:opacity-100`}
-                />
-
-                <span
-                  className={`relative flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 ${a.text} transition-transform duration-300 group-hover:scale-110`}
-                >
-                  <Icon size={19} />
-                </span>
-
-                <h3 className="relative mt-5 text-[16px] font-semibold tracking-tight text-white">
-                  {p.title}
-                </h3>
-                <p className="relative mt-2 text-[13px] leading-relaxed text-slate-400">{p.body}</p>
-
-                <div className="relative mt-4 flex flex-wrap gap-1.5">
-                  {p.stats.map((s) => (
-                    <span
-                      key={s}
-                      className={`rounded-full border border-white/10 bg-white/5 px-2.5 py-1 font-mono text-[10px] ${a.chip}`}
-                    >
-                      {s}
-                    </span>
-                  ))}
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ── Tiers ───────────────────────────────────────────────────────── */}
-      <section className="relative mx-auto w-full max-w-7xl px-6 pb-4">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {/* What exists today. Deliberately first and deliberately plain —
-              the free tier IS the product right now, and framing it as the
-              lesser half of a comparison would be a lie about what ships. */}
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 backdrop-blur-xl">
-            <div className="flex items-center gap-2">
-              <h3 className="text-[15px] font-semibold text-white">Single operator</h3>
-              <span className="rounded-full border border-[#34d399]/40 bg-[#10b981]/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#6ee7b7]">
-                Available now
-              </span>
-            </div>
-            <p className="mt-2 text-[13px] leading-relaxed text-slate-400">
-              The whole simulation. Every app, every incident class, the full progression from
-              intern to running the estate. Runs in your browser, saves locally, costs nothing.
-            </p>
-            <ul className="mt-4 space-y-1.5 text-[12px] text-slate-400">
-              {["Complete ticket, hardware and network engines", "Disaster recovery and ransomware scenarios", "Local save — no account required"].map((f) => (
-                <li key={f} className="flex items-start gap-2">
-                  <IconCheck size={12} className="mt-0.5 shrink-0 text-[#6ee7b7]" />
-                  {f}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* The unbuilt tier. No price, no upgrade button — a paywall for
-              something that does not exist should not be able to take a click
-              that goes nowhere. */}
-          <div className="relative overflow-hidden rounded-2xl border border-dashed border-white/15 bg-white/[0.02] p-6 backdrop-blur-xl">
-            <div className="flex items-center gap-2">
-              <IconLock size={13} className="text-slate-500" />
-              <h3 className="text-[15px] font-semibold text-slate-300">Enterprise</h3>
-              <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                Coming soon
-              </span>
-            </div>
-            <p className="mt-2 text-[13px] leading-relaxed text-slate-500">
-              For teams training together. Not built yet, not purchasable, and nothing below is
-              available on any plan today — this is a statement of intent, not a product page.
-            </p>
-            <ul className="mt-4 space-y-1.5 text-[12px] text-slate-500">
-              {["Multi-seat estates and shift handover", "Custom scenario authoring", "Cohort reporting and assessment export", "SSO, audit logs and server-side accounts"].map((f) => (
-                <li key={f} className="flex items-start gap-2">
-                  <IconLock size={11} className="mt-0.5 shrink-0 text-slate-600" />
-                  {f}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Closing CTA ─────────────────────────────────────────────────── */}
-      <section className="relative z-10 mx-auto max-w-3xl px-6 pb-24 text-center">
-        <div className="rise-in rounded-3xl border border-white/10 bg-white/[0.04] p-10 backdrop-blur-xl">
-          <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            The queue is already filling up.
-          </h2>
-          <p className="mx-auto mt-3 max-w-xl text-[14px] leading-relaxed text-slate-400">
-            You start as an intern with five tickets and no budget. What you do with the
-            estate from there is entirely yours.
-          </p>
+        <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <button
-            onClick={saved ? continueGame : startGame}
-            className="mt-7 inline-flex items-center gap-2 rounded-xl bg-white px-7 py-3 text-[14px] font-bold text-[#04060d] transition-all duration-300 hover:scale-[1.02] hover:bg-slate-100 active:scale-[0.99]"
+            onClick={launch}
+            className="group flex w-full items-center justify-center gap-2 rounded-xl bg-white px-6 py-3.5 text-[14px] font-semibold text-[#04060d] transition-transform hover:scale-[1.03] sm:w-auto"
           >
-            {saved ? "Resume session" : "Initialize system"}
-            <IconChevronRight size={15} />
+            Launch Interactive Lab
+            <span className="transition-transform group-hover:translate-x-0.5">
+              <IconChevronRight size={15} />
+            </span>
           </button>
+          <a
+            href="#platform"
+            className="flex w-full items-center justify-center rounded-xl border border-white/15 bg-white/5 px-6 py-3.5 text-[14px] font-semibold text-slate-200 transition-colors hover:border-white/30 hover:bg-white/10 sm:w-auto"
+          >
+            View Curriculum
+          </a>
+        </div>
+
+        {saved && (
+          <p className="mt-4 text-[12px] text-slate-500">
+            Welcome back, <span className="text-slate-300">{saved.username}</span> — level {saved.level}.
+          </p>
+        )}
+
+        <ul className="mx-auto mt-10 grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-4">
+          {PILLARS.map((p) => (
+            <li key={p.label} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-center">
+              <span className="mx-auto flex h-7 w-7 items-center justify-center rounded-lg bg-white/5 text-[#67e8f9]">
+                {p.icon}
+              </span>
+              <span className="mt-2 block text-[12px] font-semibold text-white">{p.label}</span>
+              <span className="mt-0.5 block text-[10.5px] text-slate-500">{p.sub}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* ── Platform explorer, dressed as an OS window ──────────────────── */}
+      <section id="platform" className="relative z-10 mx-auto max-w-6xl scroll-mt-16 px-5 py-14 sm:px-8">
+        <SectionHead
+          eyebrow="The platform"
+          title="An entire IT department, running in a browser tab"
+          sub="Five module families, each a working system with modelled state. Select one to see what it actually does."
+        />
+
+        <div className="mt-10 overflow-hidden rounded-2xl border border-white/10 bg-[#0a0e17]/90 shadow-2xl shadow-black/40 backdrop-blur">
+          {/* Window title bar */}
+          <div className="flex items-center gap-2 border-b border-white/10 bg-white/[0.04] px-4 py-2.5">
+            <span className="flex gap-1.5" aria-hidden="true">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
+              <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
+              <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
+            </span>
+            <span className="ml-2 truncate font-mono text-[11px] text-slate-400">
+              itquest — platform modules
+            </span>
+            <span className="ml-auto hidden items-center gap-1.5 font-mono text-[10px] text-slate-500 sm:flex">
+              <span className={`h-1.5 w-1.5 rounded-full ${activeAccent.dot}`} />
+              {String(tab + 1).padStart(2, "0")} / {String(MODULES.length).padStart(2, "0")}
+            </span>
+          </div>
+
+          {/* Taskbar-style tab rail. Scrolls horizontally on narrow screens
+              inside its OWN container, so the page never scrolls sideways. */}
+          <div
+            ref={railRef}
+            role="tablist"
+            aria-label="Platform modules"
+            onKeyDown={onTabKey}
+            className="relative flex gap-1 overflow-x-auto border-b border-white/10 bg-black/20 px-2 py-2"
+          >
+            {MODULES.map((m, i) => {
+              const on = i === tab;
+              const a = ACCENT[m.accent];
+              return (
+                <button
+                  key={m.id}
+                  ref={(el) => {
+                    tabRefs.current[i] = el;
+                  }}
+                  role="tab"
+                  id={`tab-${m.id}`}
+                  aria-selected={on}
+                  aria-controls={`panel-${m.id}`}
+                  tabIndex={on ? 0 : -1}
+                  onClick={() => setTab(i)}
+                  className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] font-medium transition-colors ${
+                    on ? `bg-white/10 text-white` : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                  }`}
+                >
+                  <span className={on ? a.text : "text-slate-500"}>{m.icon}</span>
+                  {m.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Panel */}
+          <div
+            role="tabpanel"
+            id={`panel-${active.id}`}
+            aria-labelledby={`tab-${active.id}`}
+            tabIndex={0}
+            className="relative p-5 focus:outline-none sm:p-7"
+          >
+            <div className={`pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full blur-3xl ${activeAccent.glow}`} />
+
+            <div className="relative max-w-3xl">
+              <h3 className="text-balance text-[19px] font-semibold leading-snug text-white sm:text-[22px]">
+                {active.headline}
+              </h3>
+              <p className="mt-3 text-pretty text-[13.5px] leading-relaxed text-slate-400">{active.lede}</p>
+            </div>
+
+            <div className="relative mt-7 grid gap-3 sm:grid-cols-2">
+              {active.capabilities.map((c) => (
+                <div
+                  key={c.title}
+                  className="rounded-xl border border-white/10 bg-white/[0.03] p-4 transition-colors hover:border-white/20 hover:bg-white/[0.06]"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5 ${activeAccent.text}`}>
+                      {c.icon}
+                    </span>
+                    <h4 className="text-[13.5px] font-semibold text-white">{c.title}</h4>
+                  </div>
+                  <p className="mt-2.5 text-[12.5px] leading-relaxed text-slate-400">{c.body}</p>
+                </div>
+              ))}
+            </div>
+
+            {active.console && (
+              <div className="relative mt-5 overflow-hidden rounded-xl border border-white/10 bg-black/50">
+                <div className="flex items-center gap-2 border-b border-white/10 px-3.5 py-2 text-slate-500">
+                  <IconTerminal size={13} />
+                  <span className="font-mono text-[10.5px]">{active.console.title}</span>
+                </div>
+                <div className="overflow-x-auto px-3.5 py-3">
+                  <pre className="font-mono text-[11.5px] leading-[1.75]">
+                    {active.console.lines.map((l, i) => (
+                      <div key={i} className="whitespace-pre">
+                        {l.prompt && <span className="text-[#6ee7b7]">{l.prompt} </span>}
+                        <span
+                          className={
+                            l.tone === "ok"
+                              ? "text-[#6ee7b7]"
+                              : l.tone === "warn"
+                                ? "text-[#fcd34d]"
+                                : l.tone === "in"
+                                  ? "text-slate-200"
+                                  : "text-slate-500"
+                          }
+                        >
+                          {l.text}
+                        </span>
+                      </div>
+                    ))}
+                  </pre>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Status bar */}
+          <div className="flex items-center gap-3 border-t border-white/10 bg-black/25 px-4 py-2 font-mono text-[10px] text-slate-500">
+            <span className={`inline-flex items-center gap-1.5 rounded border px-1.5 py-0.5 ${activeAccent.chip}`}>
+              {active.label}
+            </span>
+            <span className="hidden sm:inline">{active.capabilities.length} capabilities</span>
+            <span className="ml-auto inline-flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#28c840]" />
+              simulation online
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Audience ────────────────────────────────────────────────────── */}
+      <section id="audience" className="relative z-10 mx-auto max-w-6xl scroll-mt-16 px-5 py-14 sm:px-8">
+        <SectionHead
+          eyebrow="Built for tech education"
+          title="One platform, three kinds of learner"
+          sub="The same simulation serves a first-year student, a cohort of forty, and a practitioner brushing up before an interview."
+        />
+
+        <div className="mt-10 grid gap-4 md:grid-cols-3">
+          {AUDIENCES.map((aud) => (
+            <article
+              key={aud.title}
+              className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.06] to-transparent p-6 transition-colors hover:border-white/20"
+            >
+              <h3 className="text-[15px] font-semibold text-white">{aud.title}</h3>
+              <p className="mt-2 text-[13px] leading-relaxed text-slate-400">{aud.body}</p>
+              <ul className="mt-4 space-y-2">
+                {aud.points.map((p) => (
+                  <li key={p} className="flex items-start gap-2 text-[12.5px] text-slate-300">
+                    <span className="mt-0.5 shrink-0 text-[#6ee7b7]">
+                      <IconCheck size={13} />
+                    </span>
+                    {p}
+                  </li>
+                ))}
+              </ul>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Contact ─────────────────────────────────────────────────────── */}
+      <section id="contact" className="relative z-10 mx-auto max-w-4xl scroll-mt-16 px-5 py-14 sm:px-8">
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] p-8 text-center sm:p-10">
+          <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-[#22d3ee]/15 text-[#67e8f9]">
+            <IconShield size={20} />
+          </span>
+          <h2 className="mt-4 text-[20px] font-semibold text-white">Institutional &amp; support enquiries</h2>
+          <p className="mx-auto mt-2 max-w-lg text-[13.5px] leading-relaxed text-slate-400">
+            For curriculum partnerships, pilot programmes, accessibility requests or platform
+            support, reach the team directly. We reply to institutional enquiries first.
+          </p>
+          <a
+            href={`mailto:${CONTACT}`}
+            className="mt-6 inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-5 py-3 font-mono text-[13px] text-white transition-colors hover:border-[#22d3ee]/40 hover:bg-[#22d3ee]/10"
+          >
+            {CONTACT}
+          </a>
         </div>
       </section>
 
       {/* ── Footer ──────────────────────────────────────────────────────── */}
-      <footer className="relative z-10 border-t border-white/5">
-        <div className="mx-auto flex max-w-7xl flex-col items-center gap-3 px-6 py-7 text-[11px] text-slate-500 sm:flex-row">
-          <span className="flex items-center gap-2">
-            <IconBolt size={12} className="text-[#22d3ee]/70" />
-            <span className="font-medium text-slate-400">ITQuest</span>
-            <span className="font-mono">{VERSION}</span>
-          </span>
-
-          <span className="flex items-center gap-2 sm:ml-auto">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="halo-pulse absolute inline-flex h-full w-full rounded-full bg-[#34d399]" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#34d399]" />
-            </span>
-            System status: <span className="font-medium text-[#6ee7b7]">Online</span>
-          </span>
+      <footer className="relative z-10 border-t border-white/10">
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-5 py-8 text-center sm:flex-row sm:justify-between sm:px-8 sm:text-left">
+          <p className="text-[12px] text-slate-500">
+            &copy; 2026 IT Quest. Interactive IT Infrastructure Education Platform.
+          </p>
+          <div className="flex items-center gap-5 text-[12px]">
+            <button onClick={() => setLegal("privacy")} className="text-slate-400 transition-colors hover:text-white">
+              Privacy Policy
+            </button>
+            <button onClick={() => setLegal("terms")} className="text-slate-400 transition-colors hover:text-white">
+              Terms of Service
+            </button>
+            <a href={`mailto:${CONTACT}`} className="text-slate-400 transition-colors hover:text-white">
+              Contact
+            </a>
+          </div>
         </div>
       </footer>
+
+      {legal && <LegalModal doc={legal} onClose={() => setLegal(null)} />}
+    </div>
+  );
+}
+
+function SectionHead({ eyebrow, title, sub }: { eyebrow: string; title: string; sub: string }) {
+  return (
+    <div className="mx-auto max-w-2xl text-center">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#67e8f9]">{eyebrow}</span>
+      <h2 className="mt-3 text-balance text-[24px] font-bold tracking-tight text-white sm:text-[30px]">{title}</h2>
+      <p className="mx-auto mt-3 text-pretty text-[14px] leading-relaxed text-slate-400">{sub}</p>
+    </div>
+  );
+}
+
+/**
+ * Legal text.
+ *
+ * Written plainly and kept honest about what the platform is: a beta that
+ * stores progress locally. Claiming more than that on a compliance page is
+ * both wrong and, for an EdTech reviewer, exactly the thing that gets checked.
+ */
+const LEGAL: Record<LegalDoc, { title: string; updated: string; sections: { h: string; p: string }[] }> = {
+  privacy: {
+    title: "Privacy Policy",
+    updated: "Last updated: 2026",
+    sections: [
+      {
+        h: "What we store",
+        p: "Simulation progress — your estate, level and completed scenarios — is stored locally in your own browser. It is not uploaded to a server and is removed when you clear your browser storage.",
+      },
+      {
+        h: "Accounts",
+        p: "The public beta does not require an account. No name, email address or payment detail is collected to use the lab.",
+      },
+      {
+        h: "Analytics",
+        p: "We may collect aggregate, non-identifying usage data — which modules are opened and where sessions end — to prioritise development. It is never sold, and never linked to an individual.",
+      },
+      {
+        h: "Contact and correspondence",
+        p: `Email sent to ${CONTACT} is used only to answer your enquiry, and is retained no longer than needed to do so.`,
+      },
+      {
+        h: "Learners under 18",
+        p: "The platform is designed for classroom use and collects no personal data from learners. Institutions deploying it to under-18 cohorts can request a written data statement at the contact address.",
+      },
+      {
+        h: "Your control",
+        p: "Because progress lives in your browser, you can erase everything at any time by clearing site data. Requests about analytics can be sent to the contact address.",
+      },
+    ],
+  },
+  terms: {
+    title: "Terms of Service",
+    updated: "Last updated: 2026",
+    sections: [
+      {
+        h: "Beta status",
+        p: "ITQuest is in active development. Features may change, and simulation state may be reset by an update. Do not rely on it as a system of record for coursework you cannot reproduce.",
+      },
+      {
+        h: "Permitted use",
+        p: "The platform is provided for education, training and evaluation. You may use it in a classroom, a course, or on your own, including for assessment, provided learners are not charged for access to the beta.",
+      },
+      {
+        h: "Simulation, not advice",
+        p: "Scenarios model real systems but are simplified for teaching. Nothing here is a substitute for vendor documentation or professional judgement when working on production equipment.",
+      },
+      {
+        h: "Intellectual property",
+        p: "The platform, its curriculum, source code, simulation models and artwork remain the property of ITQuest. Product names used in scenarios are fictional; any resemblance to real vendors is for teaching familiarity only and implies no affiliation.",
+      },
+      {
+        h: "Acceptable use",
+        p: "Do not attempt to disrupt the service, misrepresent it as your own, or use it to host or distribute unrelated content.",
+      },
+      {
+        h: "No warranty",
+        p: "The beta is provided as is, without warranty. To the extent permitted by law, ITQuest is not liable for loss arising from its use.",
+      },
+    ],
+  },
+};
+
+function LegalModal({ doc, onClose }: { doc: LegalDoc; onClose: () => void }) {
+  const d = LEGAL[doc];
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-6"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={d.title}
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-white/10 bg-[#0a0e17] sm:rounded-2xl"
+      >
+        <header className="flex shrink-0 items-center gap-3 border-b border-white/10 px-6 py-4">
+          <div>
+            <h2 className="text-[16px] font-semibold text-white">{d.title}</h2>
+            <p className="text-[11px] text-slate-500">{d.updated}</p>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="ml-auto rounded-lg border border-white/10 px-3 py-1.5 text-[12px] text-slate-300 transition-colors hover:bg-white/10"
+          >
+            Close
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          {d.sections.map((s) => (
+            <section key={s.h} className="mb-5 last:mb-0">
+              <h3 className="text-[13px] font-semibold text-white">{s.h}</h3>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-slate-400">{s.p}</p>
+            </section>
+          ))}
+          <p className="mt-6 border-t border-white/10 pt-4 text-[12px] text-slate-500">
+            Questions about this document?{" "}
+            <a href={`mailto:${CONTACT}`} className="text-[#67e8f9] hover:underline">
+              {CONTACT}
+            </a>
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
