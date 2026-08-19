@@ -70,9 +70,9 @@ import {
   IconWindows,
   IconWrench,
 } from "@/components/ui/icons";
-
-const VERSION = "v1.2.0-core";
-const CONTACT = "contact@itquest.org";
+import Navbar from "./Navbar";
+import Footer from "./Footer";
+import { CONTACT, type LegalDoc } from "./brand";
 
 /** See the header note: literal hex, because the ramp would collapse these. */
 const ACCENT = {
@@ -321,8 +321,6 @@ const PILLARS = [
   { icon: <IconShield size={15} />, label: "Risk-free", sub: "Break anything safely" },
 ];
 
-type LegalDoc = "privacy" | "terms";
-
 export default function LandingPage() {
   const router = useRouter();
   const startNewGame = useSessionStore((s) => s.startNewGame);
@@ -407,24 +405,7 @@ export default function LandingPage() {
       </div>
 
       {/* ── Nav ─────────────────────────────────────────────────────────── */}
-      <header className="relative z-10 mx-auto flex max-w-6xl items-center gap-3 px-5 py-5 sm:px-8">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#22d3ee]/15 text-[#67e8f9]">
-          <IconBolt size={17} />
-        </span>
-        <span className="text-[15px] font-semibold tracking-tight text-white">ITQuest</span>
-        <span className="hidden font-mono text-[10px] text-slate-500 sm:inline">{VERSION}</span>
-        <nav className="ml-auto hidden items-center gap-6 text-[13px] text-slate-400 md:flex">
-          <a href="#platform" className="transition-colors hover:text-white">Platform</a>
-          <a href="#audience" className="transition-colors hover:text-white">For educators</a>
-          <a href="#contact" className="transition-colors hover:text-white">Contact</a>
-        </nav>
-        <button
-          onClick={launch}
-          className="ml-auto rounded-lg bg-white px-4 py-2 text-[13px] font-semibold text-[#04060d] transition-transform hover:scale-[1.03] md:ml-0"
-        >
-          {saved ? "Resume" : "Launch lab"}
-        </button>
-      </header>
+      <Navbar saved={!!saved} onLaunch={launch} />
 
       {/* ── Hero ────────────────────────────────────────────────────────── */}
       <section className="relative z-10 mx-auto max-w-4xl px-5 pb-14 pt-10 text-center sm:px-8 sm:pt-16">
@@ -680,24 +661,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── Footer ──────────────────────────────────────────────────────── */}
-      <footer className="relative z-10 border-t border-white/10">
-        <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-5 py-8 text-center sm:flex-row sm:justify-between sm:px-8 sm:text-left">
-          <p className="text-[12px] text-slate-500">
-            &copy; 2026 IT Quest. Interactive IT Infrastructure Education Platform.
-          </p>
-          <div className="flex items-center gap-5 text-[12px]">
-            <button onClick={() => setLegal("privacy")} className="text-slate-400 transition-colors hover:text-white">
-              Privacy Policy
-            </button>
-            <button onClick={() => setLegal("terms")} className="text-slate-400 transition-colors hover:text-white">
-              Terms of Service
-            </button>
-            <a href={`mailto:${CONTACT}`} className="text-slate-400 transition-colors hover:text-white">
-              Contact
-            </a>
-          </div>
-        </div>
-      </footer>
+      <Footer onOpenLegal={setLegal} />
 
       {legal && <LegalModal doc={legal} onClose={() => setLegal(null)} />}
     </div>

@@ -2,10 +2,30 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { THEME_BOOT_SCRIPT } from "@/lib/host/theme";
 
+const DESCRIPTION =
+  "A gamified IT Operations & Cybersecurity simulation platform with a dual CLI/GUI troubleshooting workspace.";
+
 export const metadata: Metadata = {
+  // Resolves the file-convention icon and og:image paths to absolute URLs for
+  // crawlers, and silences Next's metadataBase warning.
+  metadataBase: new URL("https://itquest.org"),
   title: "ITQuest — IT Operations & Cyber Simulation",
-  description:
-    "A gamified IT Operations & Cybersecurity simulation platform with a dual CLI/GUI troubleshooting workspace.",
+  description: DESCRIPTION,
+  // The favicon (app/icon.png), Apple touch icon (app/apple-icon.png) and
+  // social preview (app/opengraph-image.png) are supplied by Next's file
+  // conventions in this directory, so they are not re-declared here.
+  openGraph: {
+    title: "ITQuest — IT Operations & Cyber Simulation",
+    description: DESCRIPTION,
+    siteName: "IT Quest",
+    type: "website",
+    url: "https://itquest.org",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "ITQuest — IT Operations & Cyber Simulation",
+    description: DESCRIPTION,
+  },
 };
 
 export default function RootLayout({
