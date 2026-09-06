@@ -501,6 +501,36 @@ export function VectorScrews() {
 }
 
 /** Part id → illustration, so the view never switches on a part type. */
+/**
+ * A DIMM as it looks ONCE SEATED — the view from above the board.
+ *
+ * `VectorRam` is the module lying flat on the bench, which is right for the
+ * tray and wrong for the slot: a seated DIMM stands perpendicular to the board,
+ * so from above you see its length, the top edge of the heat spreader, and the
+ * retention clip closed at each end. Drawn at 100 x 11.28 — the seated
+ * footprint's own aspect — so the shared uniform-scale transform cannot
+ * distort it.
+ */
+export function VectorRamSeated({ highlighted }: VectorProps) {
+  return (
+    <g>
+      {/* Retention clips, closed over the module's notched ends */}
+      <rect x="0" y="0.6" width="4" height="10" rx="1" fill={PAL.slotWhite} />
+      <rect x="96" y="0.6" width="4" height="10" rx="1" fill={PAL.slotWhite} />
+      {/* Module body seated between them */}
+      <rect x="4" y="1.4" width="92" height="8.4" rx="0.8" fill={PAL.pcbGreen} />
+      {/* Heat spreader crown — the face you actually see looking down */}
+      <rect x="5" y="1.9" width="90" height="6" rx="0.7" fill={PAL.slotYellow} />
+      <rect x="5" y="1.9" width="90" height="2.2" rx="0.7" fill={PAL.vrmGold} opacity="0.55" />
+      {/* Spreader fins, along the crown */}
+      {Array.from({ length: 22 }, (_, i) => (
+        <rect key={i} x={7 + i * 4} y="2.4" width="1.6" height="5" rx="0.3" fill={PAL.vrmGoldDark} opacity="0.4" />
+      ))}
+      {highlighted && <Ring x={-1.5} y={-1} w={103} h={13} r={1.5} />}
+    </g>
+  );
+}
+
 export const PART_VECTOR: Record<string, (p: VectorProps) => React.ReactElement> = {
   mobo: VectorMotherboard,
   cpu: VectorCpu,
@@ -511,4 +541,13 @@ export const PART_VECTOR: Record<string, (p: VectorProps) => React.ReactElement>
   ssd: VectorSsd,
   gpu: VectorGpu,
   psu: VectorPsu,
+};
+
+/**
+ * Art used only once a part is seated, where the seated view genuinely differs
+ * from the loose part. Anything absent here simply keeps its bench artwork.
+ */
+export const SEAT_VECTOR: Record<string, (p: VectorProps) => React.ReactElement> = {
+  ram1: VectorRamSeated,
+  ram2: VectorRamSeated,
 };

@@ -317,22 +317,62 @@ export const PART_MM: Record<PartId, { w: number; h: number }> = {
 };
 
 /**
+ * Footprint a part occupies ONCE SEATED, where that differs from its body.
+ *
+ * ── WHY THIS EXISTS ─────────────────────────────────────────────────────────
+ *
+ * `PART_MM` is the part lying on the bench: a DIMM is 133 x 31mm, and that is
+ * exactly how it should look in the tray. But a seated DIMM does not lie down —
+ * it STANDS in its slot, perpendicular to the board. Looked at from above, the
+ * 31mm is height out of the board plane and what you actually see is the
+ * module's 133mm length and roughly 15mm of body-plus-clips across.
+ *
+ * Using the flat 133 x 31 footprint for the seat is what laid a DIMM sideways
+ * across the board and pushed it 100 units past the board's right edge, out
+ * through the wall of the case.
+ */
+export const SEAT_MM: Partial<Record<PartId, { w: number; h: number }>> = {
+  ram1: { w: 15, h: SPEC_MM.dimmModule.w },
+  ram2: { w: 15, h: SPEC_MM.dimmModule.w },
+};
+
+/**
+ * Degrees the ARTWORK turns when seated.
+ *
+ * A DIMM is drawn lengthwise (a long horizontal strip) because that is how it
+ * reads in the tray. Its slot on a portrait board runs vertically, so the art
+ * must turn a quarter to lie along the slot instead of across it.
+ */
+export const SEAT_ROT: Partial<Record<PartId, number>> = { ram1: 90, ram2: 90 };
+
+/** Seated footprint, falling back to the part's own body. */
+export function seatDims(partId: PartId): { w: number; h: number } {
+  return SEAT_MM[partId] ?? PART_MM[partId];
+}
+
+/**
  * Where a part actually sits once installed.
  *
- * Anchored to its zone, then grown to the part's own footprint. Cards and
- * modules extend DOWN and LEFT from their connector, which is the direction
- * real hardware hangs once seated.
+ * Anchored to its zone, then grown to the part's SEATED footprint. Cards hang
+ * down and left from their connector, which is the direction real hardware
+ * hangs; modules that stand in a slot are centred on it.
  */
 export function seatBox(partId: PartId): Box | null {
   const z = zoneFor(partId);
-  const size = PART_MM[partId];
+  const size = seatDims(partId);
   if (!z || !size) return null;
   const w = mm(size.w);
   const h = mm(size.h);
 
-  // A DIMM stands proud of its slot; a card hangs below its connector.
+  // A DIMM is centred on its slot and stands a little proud at both ends,
+  // the way a module is longer than the connector holding it.
   if (partId === "ram1" || partId === "ram2") {
-    return { x: z.box.x, y: z.box.y - (h - z.box.h), w, h };
+    return {
+      x: z.box.x + (z.box.w - w) / 2,
+      y: z.box.y + (z.box.h - h) / 2,
+      w,
+      h,
+    };
   }
   if (partId === "gpu") {
     return { x: z.box.x, y: z.box.y - h * 0.18, w, h };
@@ -369,21 +409,42 @@ export function trayBox(partId: PartId): Box {
  * the view scales by a single factor. A part can then only ever be its true
  * shape.
  */
-export function artHeight(partId: PartId): number {
-  const d = PART_MM[partId];
-  return (d.h / d.w) * 100;
+export function artHeight(partId: PartId, seated = false): number {
+  const d = seated ? seatDims(partId) : PART_MM[partId];
+  // A seated part whose art turns a quarter is still DRAWN lengthwise, so its
+  // artboard aspect is the seated footprint transposed back to the drawn axis.
+  const turned = seated && (SEAT_ROT[partId] ?? 0) % 180 !== 0;
+  return turned ? (d.w / d.h) * 100 : (d.h / d.w) * 100;
 }
 
 /**
  * Where a part's art lands, preserving aspect.
  *
- * Fits the art to the seat's WIDTH and lets the height follow, so a card fills
- * its slot along the axis that matters and never squashes across it.
+ * Returns a complete SVG transform. Art is always drawn in a 100 x artHeight
+ * box and placed with ONE uniform scale — two different factors is what
+ * stretched every part before, and it is the thing this function exists to
+ * make impossible.
+ *
+ * When a part turns to meet its slot, the art rotates about the seat's centre.
+ * The scale then comes from the seat's SHORT axis against the artboard height,
+ * because a quarter turn swaps which axis the art's width spans.
  */
-export function artTransform(partId: PartId, box: Box): { scale: number; x: number; y: number } {
-  const scale = box.w / 100;
-  const h = artHeight(partId) * scale;
-  // Vertically centred on the seat, so a tall part straddles a thin slot the
-  // way a real module stands proud of the connector it sits in.
-  return { scale, x: box.x, y: box.y + (box.h - h) / 2 };
+export function artTransform(partId: PartId, box: Box, seated = false): string {
+  const rot = seated ? SEAT_ROT[partId] ?? 0 : 0;
+  const artH = artHeight(partId, seated);
+
+  if (rot % 360 === 0) {
+    const scale = box.w / 100;
+    const h = artH * scale;
+    // Vertically centred on the seat, so a tall part straddles a thin slot the
+    // way a real module stands proud of the connector it sits in.
+    return `translate(${box.x} ${box.y + (box.h - h) / 2}) scale(${scale})`;
+  }
+
+  const scale = box.w / artH;
+  const cx = box.x + box.w / 2;
+  const cy = box.y + box.h / 2;
+  // Right-to-left: centre the artboard on the origin, scale, turn, then move
+  // the origin to the seat's centre.
+  return `translate(${cx} ${cy}) rotate(${rot}) scale(${scale}) translate(-50 ${-artH / 2})`;
 }

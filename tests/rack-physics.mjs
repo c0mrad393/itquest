@@ -119,6 +119,7 @@ import {
   resolveBoot,
   specOf,
   telemetry,
+  railReading,
 } from "../.test-build/desktop-sim/parts.js";
 import {
   BOARD,
@@ -2100,6 +2101,82 @@ group("Client endpoints skip the rack chain");
     const z = zoneFor(id);
     const seat = seatBox(id);
     eq(`a seated ${id} overlaps its slot`, overlaps(seat, z.box), true);
+  }
+
+  /*
+   * Overlap alone is far too weak, and it is why a DIMM lay sideways across
+   * the board for as long as it did: a horizontal module anchored at the
+   * slot's left edge DOES overlap that slot, so the assertion above passed
+   * while the module ran 100 units past the board and out through the case
+   * wall. The properties below are the ones that actually pin the geometry.
+   */
+
+  // Nothing mounted on the board may hang off it. The GPU is exempt: a 270mm
+  // card genuinely overhangs a 244mm board, which is why it is checked
+  // against the chassis instead.
+  for (const id of ["cpu", "paste", "cooler", "ram1", "ram2", "ssd"]) {
+    const s = seatBox(id);
+    eq(`a seated ${id} stays on the board`,
+       s.x >= BOARD.x - 0.01 && s.x + s.w <= BOARD.x + BOARD.w + 0.01 &&
+       s.y >= BOARD.y - 0.01 && s.y + s.h <= BOARD.y + BOARD.h + 0.01, true);
+  }
+
+  // And nothing at all may end up outside the chassis.
+  for (const id of ["cpu", "paste", "cooler", "ram1", "ram2", "ssd", "gpu", "psu"]) {
+    const s = seatBox(id);
+    eq(`a seated ${id} stays inside the case`,
+       s.x >= CASE_INNER.x - 0.01 && s.x + s.w <= CASE_INNER.x + CASE_INNER.w + 0.01 &&
+       s.y >= CASE_INNER.y - 0.01 && s.y + s.h <= CASE_INNER.y + CASE_INNER.h + 0.01, true);
+  }
+
+  // A module that stands in a slot runs ALONG it, not across it. This is the
+  // single assertion that makes a sideways DIMM impossible.
+  for (const id of ["ram1", "ram2"]) {
+    const z = zoneFor(id);
+    const s = seatBox(id);
+    const slotVertical = z.box.h > z.box.w;
+    eq(`a seated ${id} runs along its slot`, s.h > s.w, slotVertical);
+    // Centred across the slot, and proud of it at both ends.
+    eq(`...centred on it`,
+       Math.abs((s.x + s.w / 2) - (z.box.x + z.box.w / 2)) < 0.01 &&
+       Math.abs((s.y + s.h / 2) - (z.box.y + z.box.h / 2)) < 0.01, true);
+    eq(`...and stands proud of it`, s.h > z.box.h, true);
+  }
+
+  // Two sticks side by side must not occupy the same space.
+  eq("the two seated DIMMs do not overlap", overlaps(seatBox("ram1"), seatBox("ram2")), false);
+
+  // A seated DIMM keeps its true proportion: 133mm long against ~15mm across.
+  {
+    const s = seatBox("ram1");
+    eq("a seated DIMM is far longer than it is wide", s.h / s.w > 5, true);
+  }
+
+  group("Desktop sim — the multimeter reads the loom, it does not change it");
+
+  {
+    // A rail with no supply behind it is dead, and says why.
+    const bare = { installed: [], connected: [] };
+    eq("no PSU reads zero", railReading(bare, "cpu8").actualV, 0);
+    eq("...and is not live", railReading(bare, "cpu8").live, false);
+    eq("...and names the cause", /No power supply/.test(railReading(bare, "cpu8").note), true);
+
+    // Fitted but unplugged is the fault a learner actually has to find.
+    const psuOnly = { installed: ["psu"], connected: [] };
+    eq("an unplugged rail reads zero", railReading(psuOnly, "cpu8").actualV, 0);
+    eq("...and blames the connector", /not seated/.test(railReading(psuOnly, "cpu8").note), true);
+
+    // Plugged in, it reads close to nominal.
+    const wired = { installed: ["psu"], connected: ["cpu8", "atx24"] };
+    const cpu = railReading(wired, "cpu8");
+    eq("a seated 12V rail is live", cpu.live, true);
+    eq("...and reads within a tenth of nominal", Math.abs(cpu.actualV - cpu.nominalV) < 0.1, true);
+    eq("the ATX rail is a 3.3V rail", railReading(wired, "atx24").nominalV, 3.3);
+
+    // Probing is read-only. This is the whole point of a meter.
+    const before = JSON.stringify(wired);
+    railReading(wired, "pcie8");
+    eq("probing mutates nothing", JSON.stringify(wired), before);
   }
 
   // Portrait board: taller than it is wide, as a 244 x 305mm ATX board is.

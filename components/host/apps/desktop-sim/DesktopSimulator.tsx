@@ -37,7 +37,10 @@ import {
   blockedBy,
   cableReady,
   isInstalled,
+  railReading,
+  type CableId,
   type PartId,
+  type RailReading,
 } from "@/lib/desktop-sim/parts";
 import {
   BOARD,
@@ -57,7 +60,7 @@ import {
   zoneFor,
   type Box,
 } from "@/lib/desktop-sim/geometry";
-import { PAL, PART_VECTOR, VectorScrews } from "./VectorParts";
+import { PAL, PART_VECTOR, SEAT_VECTOR, VectorScrews } from "./VectorParts";
 import {
   BiosSetupScreen,
   OsInstallScreen,
@@ -100,6 +103,15 @@ export default function DesktopSimulator() {
   const [tool, setTool] = useState<ToolId | null>(null);
   const screwMode = tool === "screwdriver";
   const [screws, setScrews] = useState<string[]>([]);
+  /*
+   * Combing is cosmetic, so it lives here rather than in the build model. The
+   * store carries what the machine IS — what is fitted and what is plugged in.
+   * A tidy loom changes none of that, and putting it in the model would make
+   * POST and the win-conditions answerable by cable dressing.
+   */
+  const [combed, setCombed] = useState<CableId[]>([]);
+  /** Last multimeter probe. Derived on read, held only to render the panel. */
+  const [reading, setReading] = useState<RailReading | null>(null);
 
   /** Client point to canvas point, through the SVG's own transform. */
   const toCanvas = useCallback((e: { clientX: number; clientY: number }) => {
@@ -133,6 +145,9 @@ export default function DesktopSimulator() {
 
   const dragged = drag ? PARTS.find((p) => p.id === drag.partId) ?? null : null;
   const dragTarget = drag ? snapTarget(drag.partId, { x: drag.x, y: drag.y }) : null;
+  // The CPU die, which the paste tool targets. Falls back to the board so the
+  // optional chain below never has to guard a missing zone.
+  const pasteZone = zoneFor("paste")?.box ?? BOARD;
 
   function onPointerDown(e: React.PointerEvent, partId: PartId) {
     if (screwMode) return;
@@ -147,6 +162,28 @@ export default function DesktopSimulator() {
     if (!drag) return;
     const p = toCanvas(e);
     setDrag({ ...drag, x: p.x, y: p.y });
+  }
+
+  /**
+   * A cable does whatever the tool in your hand does to it.
+   *
+   * Bare hands route it, the comb dresses a run you have already made, and the
+   * multimeter probes it without changing anything — a meter that altered the
+   * circuit would teach the opposite of what a meter is for.
+   */
+  function onCable(id: CableId) {
+    if (tool === "multimeter") {
+      setReading(railReading(build, id));
+      return;
+    }
+    if (tool === "comb") {
+      // Nothing to dress until the run exists.
+      if (!build.connected.includes(id)) return;
+      setCombed((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+      return;
+    }
+    if (screwMode) return;
+    route(id);
   }
 
   function onPointerUp(e: React.PointerEvent) {
@@ -174,14 +211,45 @@ export default function DesktopSimulator() {
                 Build bench — ATX desktop
               </div>
               <div className="truncate text-[10px]" style={{ color: BENCH.textDim }}>
-                {screwMode
+                {tool === "screwdriver"
                   ? "Screw mode — click a standoff to drive it."
-                  : guidance
-                    ? `${guidance.label} — drag it into the case.`
-                    : "Build complete. Power on to POST."}
+                  : tool === "paste"
+                    ? isInstalled(build, "paste")
+                      ? "Paste already applied."
+                      : blockedBy(build, "paste")
+                        ? "Fit the CPU before pasting it."
+                        : "Dab the CPU die — the highlighted patch."
+                    : tool === "comb"
+                      ? "Click a routed cable to dress it."
+                      : tool === "multimeter"
+                        ? "Probe a cable to read its rail."
+                        : guidance
+                          ? `${guidance.label} — drag it into the case.`
+                          : "Build complete. Power on to POST."}
               </div>
             </div>
-            <div className="ml-auto flex items-center gap-2">
+
+            {/* Multimeter readout — only while the probe is in hand. */}
+            {tool === "multimeter" && (
+              <div
+                className="ml-auto shrink-0 rounded border px-2.5 py-1 font-mono text-[10px]"
+                style={{ borderColor: BENCH.line, background: "#0b0f13", color: BENCH.textDim }}
+              >
+                {reading ? (
+                  <span>
+                    <span style={{ color: BENCH.text }}>{reading.label}</span>{" "}
+                    <span style={{ color: reading.live ? BENCH.ok : "#e0574a" }}>
+                      {reading.actualV.toFixed(2)}V
+                    </span>{" "}
+                    <span>/ {reading.nominalV.toFixed(1)}V nominal — {reading.note}</span>
+                  </span>
+                ) : (
+                  <span>Probe a rail to take a reading.</span>
+                )}
+              </div>
+            )}
+
+            <div className={`${tool === "multimeter" ? "" : "ml-auto"} flex items-center gap-2`}>
               <div className="h-1.5 w-24 overflow-hidden rounded-full" style={{ background: BENCH.line }}>
                 <div
                   className="h-full rounded-full transition-all duration-300"
@@ -202,6 +270,8 @@ export default function DesktopSimulator() {
                 onClick={() => {
                   restart();
                   setScrews([]);
+                  setCombed([]);
+                  setReading(null);
                 }}
                 className="rounded border px-2.5 py-1 text-[10px]"
                 style={{ borderColor: BENCH.line, color: BENCH.textDim }}
@@ -348,11 +418,35 @@ export default function DesktopSimulator() {
               if (!b) return null;
               return (
                 <g key={p.id} filter="url(#ds-lift)" className="ds-seat">
-                  <PartArt id={p.id} box={b} />
+                  <PartArt id={p.id} box={b} seated />
                 </g>
               );
             })}
           </g>
+
+          {/*
+            The thermal-paste tool: a second, equally legitimate route to the
+            same state. Dragging the tube in and dabbing the die with the tool
+            both call `place("paste")`, so the model cannot tell them apart —
+            the same GUI-or-CLI parity the rest of the estate is built on.
+
+            This sits AFTER the sockets and the seated CPU deliberately. SVG has
+            no z-index, so an earlier target is a buried one: drawn up with the
+            board it rendered correctly and swallowed every click, because the
+            socket cavity and the CPU art were painted over the top of it.
+          */}
+          {tool === "paste" && !isInstalled(build, "paste") && !blockedBy(build, "paste") && (
+            <rect
+              {...rectOf(pasteZone)}
+              rx="3"
+              fill={BENCH.ok}
+              opacity="0.22"
+              className="cursor-pointer"
+              onClick={() => place("paste")}
+            >
+              <title>Apply thermal paste to the CPU die</title>
+            </rect>
+          )}
 
           {/* ── LAYER 5 — cables, rear-grommet routed ──────────────────── */}
           <g>
@@ -397,12 +491,49 @@ export default function DesktopSimulator() {
                 </>
               );
 
+              /*
+               * A combed run is the same route pulled square. Real cable combs
+               * do exactly this: they hold the conductors parallel so the loom
+               * leaves the connector at a right angle instead of drooping, so
+               * the dressed version swaps the slack curve for straight legs.
+               */
+              const isCombed = combed.includes(c.id);
+              const combIn = `M${from.x} ${from.y} L${entry.x} ${from.y} L${entry.x} ${entry.y}`;
+              const combOut = `M${exit.x} ${exit.y} L${to.x + mm(16)} ${exit.y} L${to.x + mm(16)} ${to.y} L${to.x} ${to.y}`;
+
               return (
-                <g key={c.id} onClick={() => route(c.id)} className="cursor-pointer" opacity={done ? 1 : 0.28}>
+                <g key={c.id} onClick={() => onCable(c.id)} className="cursor-pointer" opacity={done ? 1 : 0.28}>
                   {/* Hidden run, dimmed — it is behind the tray. */}
                   <path d={behind} stroke="#0c1013" strokeWidth="9" fill="none" opacity="0.5" strokeDasharray="7 7" />
-                  {sleeve(stubIn)}
-                  {sleeve(stubOut)}
+                  {sleeve(isCombed ? combIn : stubIn)}
+                  {sleeve(isCombed ? combOut : stubOut)}
+                  {isCombed && (
+                    /* The comb itself, clipped over the dressed leg. */
+                    <g>
+                      <rect
+                        x={to.x + mm(16) - mm(3)}
+                        y={exit.y + (to.y - exit.y) / 2 - mm(5)}
+                        width={mm(6)}
+                        height={mm(10)}
+                        rx="1.5"
+                        fill="#2c333b"
+                        stroke="#59636d"
+                        strokeWidth="1"
+                      />
+                      {[0, 1, 2].map((i) => (
+                        <rect
+                          key={i}
+                          x={to.x + mm(16) - mm(2)}
+                          y={exit.y + (to.y - exit.y) / 2 - mm(3.4) + i * mm(2.6)}
+                          width={mm(4)}
+                          height="1.6"
+                          rx="0.8"
+                          fill={c.colour}
+                          opacity="0.75"
+                        />
+                      ))}
+                    </g>
+                  )}
                   {/* Connector shell at the header */}
                   <rect x={to.x - mm(7)} y={to.y - mm(4)} width={mm(14)} height={mm(8)} rx="2" fill={PAL.paper} />
                 </g>
@@ -519,13 +650,16 @@ export default function DesktopSimulator() {
  * lets the same component render on the tray and in a socket at different
  * sizes without a second copy.
  */
-function PartArt({ id, box }: { id: PartId; box: Box }) {
-  const Vector = PART_VECTOR[id];
+function PartArt({ id, box, seated = false }: { id: PartId; box: Box; seated?: boolean }) {
+  // A seated part may have its own view — a DIMM standing in a slot looks
+  // nothing like the same DIMM lying on the bench. Anything without one keeps
+  // its bench artwork.
+  const Vector = (seated && SEAT_VECTOR[id]) || PART_VECTOR[id];
   if (!Vector) return null;
-  // UNIFORM scale. Two different factors is what stretched every part.
-  const t = artTransform(id, box);
+  // UNIFORM scale, and the quarter turn for parts that stand in their slot.
+  // Two different scale factors is what stretched every part.
   return (
-    <g transform={`translate(${t.x} ${t.y}) scale(${t.scale})`}>
+    <g transform={artTransform(id, box, seated)}>
       <Vector />
     </g>
   );

@@ -460,3 +460,52 @@ export function domainJoinBlocker(installed: string[]): string | null {
   }
   return null;
 }
+
+// ── Multimeter ──────────────────────────────────────────────────────────────
+
+export interface RailReading {
+  id: CableId;
+  label: string;
+  /** What the rail should read when the loom is right. */
+  nominalV: number;
+  /** What the probe actually shows. */
+  actualV: number;
+  live: boolean;
+  /** Plain-language cause when a rail reads dead. */
+  note: string;
+}
+
+/**
+ * What a multimeter reads on a rail.
+ *
+ * DERIVED, never stored: a reading is a fact about the build at the instant
+ * you probe it, so recording one would let the panel disagree with the loom
+ * the moment a cable is pulled.
+ *
+ * The teaching is in the dead cases. A rail reads 0.00V when there is no PSU
+ * to supply it or the plug is not seated, which is exactly the fault a learner
+ * has to find when a machine will not POST — and it is findable here with the
+ * same instrument and the same reasoning as on a real bench.
+ */
+export function railReading(b: BuildState, id: CableId): RailReading {
+  const def = CABLES.find((c) => c.id === id);
+  const label = def ? def.label : id;
+  const nominalV = id === "atx24" ? 3.3 : 12.0;
+
+  if (!isInstalled(b, "psu")) {
+    return { id, label, nominalV, actualV: 0, live: false, note: "No power supply fitted — nothing is driving this rail." };
+  }
+  if (!b.connected.includes(id)) {
+    return { id, label, nominalV, actualV: 0, live: false, note: "Plug not seated — the rail is open at the connector." };
+  }
+  // A healthy rail sits a hair off nominal, the way a real one does under load.
+  const drift = id === "atx24" ? 0.02 : id === "cpu8" ? -0.06 : -0.03;
+  return {
+    id,
+    label,
+    nominalV,
+    actualV: Math.round((nominalV + drift) * 100) / 100,
+    live: true,
+    note: "Within tolerance.",
+  };
+}
