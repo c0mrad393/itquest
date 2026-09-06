@@ -1463,7 +1463,22 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
     const nodeId = hostname.toLowerCase();
 
     const node = buildBenchNode({ ...build, nodeId, hostname, ip, gateway: gwIp, domain: sample?.domain });
-    set((s) => ({ infra: { ...s.infra, nodes: { ...s.infra.nodes, [nodeId]: node } } }));
+    /*
+     * Record the commissioning on the security slice as well as adding the
+     * node. The reconciler watches infra, so this is what lets a build ticket
+     * grade the moment the machine appears — without it the operator finishes
+     * a workstation and nothing anywhere notices.
+     */
+    set((s) => ({
+      infra: {
+        ...s.infra,
+        nodes: { ...s.infra.nodes, [nodeId]: node },
+        security: {
+          ...s.infra.security,
+          benchCommissioned: dedupe(s.infra.security.benchCommissioned ?? [], nodeId),
+        },
+      },
+    }));
     return hostname;
   },
 

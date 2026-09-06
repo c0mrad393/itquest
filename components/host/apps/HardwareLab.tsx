@@ -17,7 +17,7 @@ import { useDialogueStore } from "@/lib/dialogue/store";
 import { useFieldOpsStore } from "@/lib/hardware/store";
 import { isHardwareTicket, jobForTicket, STAGE_LABEL, type HardwareJob, type WorkshopStage } from "@/lib/hardware/types";
 import AdvancedAssembly from "./hardware/AdvancedAssembly";
-import DesktopSimulator from "./desktop-sim/DesktopSimulator";
+import DesktopSimulator, { type BenchAssignment } from "./desktop-sim/DesktopSimulator";
 import BiosSim from "./hardware/BiosSim";
 import ImagingSuite, { type NetExpectation } from "./hardware/ImagingSuite";
 import type { Ticket } from "@/lib/core";
@@ -85,6 +85,23 @@ export default function HardwareLab() {
   const selected = hardware.find((t) => t.id === selectedId) ?? null;
   const job = selected ? jobForTicket(selected) : null;
 
+  /*
+   * A build job is worked at the BENCH, not in the swap workshop. The workshop
+   * pipeline is built around a defective part on a node that already exists;
+   * a build has neither, so pointing it there would open a teardown screen for
+   * a machine that has not been made yet.
+   */
+  const assignment: BenchAssignment | undefined =
+    selected && job?.build
+      ? {
+          ticketCode: selected.code,
+          forWhom: job.build.forWhom,
+          minRamGb: job.build.minRamGb,
+          minDiskGb: job.build.minDiskGb,
+          joinDomain: job.build.joinDomain,
+        }
+      : undefined;
+
   const done = selectedId ? steps[selectedId] ?? {} : {};
   const provisioned = job ? job.stages.every((r) => done[r]) : false;
   const dispatch = selectedId ? dispatches[selectedId] : undefined;
@@ -112,7 +129,7 @@ export default function HardwareLab() {
 
       {view === "sim" ? (
         <div className="min-h-0 flex-1">
-          <DesktopSimulator />
+          <DesktopSimulator assignment={assignment} />
         </div>
       ) : view === "tickets" ? (
         <div className="flex min-h-0 flex-1">
@@ -144,7 +161,7 @@ export default function HardwareLab() {
 
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
             {!selected || !job ? <Empty text="Select a deployment ticket." /> : (
-              <DeploymentDetail ticket={selected} job={job} done={done} provisioned={provisioned} dispatch={dispatch} onGoToWorkshop={() => setView("workshop")} onDispatch={dispatchTeam} />
+              <DeploymentDetail ticket={selected} job={job} done={done} provisioned={provisioned} dispatch={dispatch} onGoToWorkshop={() => setView(job.build ? "sim" : "workshop")} onDispatch={dispatchTeam} />
             )}
           </div>
         </div>
@@ -177,7 +194,20 @@ export default function HardwareLab() {
               />
             )
           ) : (
-            <Workshop ticket={selected} job={job} done={done} onProvisioned={() => setView("tickets")} />
+            job.build ? (
+              <EmptyState
+                icon={<IconWrench size={22} />}
+                title="This one is built at the bench"
+                body={`${selected.code} asks for a machine to be built from bare parts, not for a part to be swapped. The PC Simulator is where that work happens.`}
+                action={
+                  <button className="btn-secondary btn-sm" onClick={() => setView("sim")}>
+                    Open the PC bench
+                  </button>
+                }
+              />
+            ) : (
+              <Workshop ticket={selected} job={job} done={done} onProvisioned={() => setView("tickets")} />
+            )
           )}
         </div>
       )}
@@ -196,6 +226,48 @@ function DeploymentDetail({ ticket, job, done, provisioned, dispatch, onGoToWork
   const replacePart = useInfraStore((s) => s.cascadeReplacePart);
   const [benchError, setBenchError] = useState<string | null>(null);
   const completed = dispatch?.status === "completed";
+
+  /*
+   * A build has no swap checklist and no field dispatch. There is no failed
+   * part to tick off and nobody to send to a rack — the machine is made at the
+   * bench and commissioned straight onto the estate, so the panel that fits it
+   * is a work order, not a repair job.
+   */
+  if (job.build) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-4">
+        <div>
+          <div className="text-base font-semibold text-gray-50">{ticket.title}</div>
+          <div className="mt-1 font-mono text-[11px] text-gray-500">
+            {ticket.code} · workstation build · for {job.build.forWhom}
+          </div>
+        </div>
+        <p className="text-xs leading-relaxed text-gray-400">{ticket.description}</p>
+
+        <div className="rounded-lg border border-edge bg-panelalt/50 p-3">
+          <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+            Sign-off requires
+          </div>
+          <ul className="space-y-1.5 text-xs text-gray-300">
+            <li>At least {job.build.minRamGb}GB of memory fitted</li>
+            <li>At least a {job.build.minDiskGb}GB disk</li>
+            {job.build.joinDomain && <li>The machine joined to the domain</li>}
+          </ul>
+          <div className="mt-2 text-[10px] text-gray-500">
+            Graded on what is actually in the machine when it reaches the estate — not on
+            reaching the end of the flow.
+          </div>
+          <button
+            onClick={onGoToWorkshop}
+            className="mt-3 rounded-md border border-info/40 px-3 py-1.5 text-xs font-semibold text-info hover:bg-info/10"
+          >
+            Open the PC bench →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       <div>

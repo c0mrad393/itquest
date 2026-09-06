@@ -261,6 +261,19 @@ export interface WindowsNodeState extends BaseNode {
   /** Present when GPMC is available on this node. */
   groupPolicy?: GroupPolicyState;
 
+  /**
+   * What was physically fitted, for a machine built on the PC bench.
+   *
+   * The commissioning doc has always promised these are "read off what was
+   * physically fitted" — they were passed in and then dropped on the floor,
+   * so a machine handed over with one stick of RAM was indistinguishable
+   * from a correctly built one. Recording them is what lets a build ticket
+   * grade the SPEC and not merely the fact that something appeared.
+   *
+   * Optional: only bench-built nodes carry it.
+   */
+  benchSpec?: { cpuModel: string; ramGb: number; diskGb: number };
+
   /** Procedural presentation (wallpaper/theme/desktop) — endpoints only. */
   visualState?: EndpointVisualState;
   /** Mapped network drives (This PC → Network Locations). */

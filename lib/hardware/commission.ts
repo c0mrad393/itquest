@@ -85,6 +85,8 @@ export function buildBenchNode(b: BenchBuild): WindowsNodeState {
       uptimeSeconds: 240,
     },
     tags: ["bench-built", b.machine],
+    // What was actually fitted. Leave a stick out and the estate knows.
+    benchSpec: { cpuModel: b.cpuModel, ramGb: b.ramGb, diskGb: b.diskGb },
     workloads: [],
     os: "windows",
     edition: b.machine === "server" ? "Macrohard ServerOS 2024 Standard" : "Macrohard DeskOS 12 Pro",

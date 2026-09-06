@@ -70,8 +70,30 @@ export interface ImagingSpec {
   mode: "install" | "repair";
 }
 
+/**
+ * A machine built from bare parts at the PC bench, rather than a part swap.
+ *
+ * ── WHY THIS IS ITS OWN SHAPE ───────────────────────────────────────────────
+ *
+ * `AssemblySpec` describes a SWAP: a node that exists, a part on it that has
+ * failed, and the replacement that must satisfy it. A build has none of those
+ * — there is no node yet, nothing is defective, and the thing being graded is
+ * what the finished machine turns out to BE. Forcing a build through the swap
+ * shape would mean inventing a defective part on a host that does not exist.
+ */
+export interface BenchBuildSpec {
+  /** What the finished machine must carry before it is handed over. */
+  minRamGb: number;
+  minDiskGb: number;
+  /** Whether it has to be joined to the domain before sign-off. */
+  joinDomain: boolean;
+  /** Who the machine is for — shown on the work order. */
+  forWhom: string;
+}
+
 export interface HardwareJob {
   ticketId: string;
+  /** Empty for a build: the machine does not exist until the bench makes it. */
   targetNodeId: string;
   targetHostname: string;
   title: string;
@@ -79,6 +101,8 @@ export interface HardwareJob {
   assembly?: AssemblySpec;
   bios?: BiosSpec;
   imaging?: ImagingSpec;
+  /** Present only for bench builds. Mutually exclusive with `assembly`. */
+  build?: BenchBuildSpec;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -155,12 +179,34 @@ type Ctx = {
   templateId: string;
   title?: string;
   tags?: string[];
-  dynamicContext: { targetNodeId?: string; targetHostname?: string };
+  dynamicContext: { targetNodeId?: string; targetHostname?: string; targetUserName?: string };
 };
 
 export function jobForTicket(t: Ctx): HardwareJob | null {
   const targetNodeId = t.dynamicContext.targetNodeId;
   const targetHostname = t.dynamicContext.targetHostname ?? "UNKNOWN";
+
+  /*
+   * Build jobs are decided BEFORE the target-node guard, because a machine
+   * that has not been built yet has no node to point at. Everything below the
+   * guard is a repair on something that already exists.
+   */
+  if (t.templateId === "hw-t1-new-starter-build") {
+    return {
+      ticketId: t.id,
+      targetNodeId: "",
+      targetHostname,
+      title: t.title ?? "",
+      stages: ["assembly", "bios", "imaging"],
+      build: {
+        minRamGb: 16,
+        minDiskGb: 512,
+        joinDomain: true,
+        forWhom: t.dynamicContext.targetUserName ?? targetHostname,
+      },
+    };
+  }
+
   if (!targetNodeId) return null;
   const base = { ticketId: t.id, targetNodeId, targetHostname, title: t.title ?? "" };
 

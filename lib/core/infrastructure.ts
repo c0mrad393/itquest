@@ -80,6 +80,20 @@ export interface SecurityState {
   /** Nodes whose hardware was replaced + field-dispatched (Hardware Lab). */
   hardwareReplaced: NodeId[];
   /**
+   * Machines built from bare parts on the PC bench and commissioned onto the
+   * estate (Hardware Lab -> PC Simulator).
+   *
+   * Optional because saves written before the bench could be graded do not
+   * carry it, and bumping the save version would discard every estate in
+   * flight to add one array. Read it as `?? []`.
+   *
+   * This is the seam that lets bench work be MARKED. The reconciler grades
+   * against infra and does not watch the field-ops store, so a build that
+   * only wrote session state would leave its ticket open forever — the
+   * operator finishes the machine and nothing anywhere notices.
+   */
+  benchCommissioned?: NodeId[];
+  /**
    * Hosts the operator powered down while they were still carrying live
    * workloads (v0.4.0). Each entry is an outage the business felt, and the
    * reconciler turns it into a critical incident with an SLA cost — the price

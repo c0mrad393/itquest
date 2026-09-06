@@ -83,7 +83,23 @@ interface DragState {
   dy: number;
 }
 
-export default function DesktopSimulator() {
+/**
+ * A ticket the bench is working, when it is working one.
+ *
+ * The bench stays usable with no assignment at all — free practice is a
+ * legitimate mode and the most common way someone meets it. An assignment
+ * only adds the work order: who the machine is for and what it must satisfy
+ * before it can be signed off.
+ */
+export interface BenchAssignment {
+  ticketCode: string;
+  forWhom: string;
+  minRamGb: number;
+  minDiskGb: number;
+  joinDomain: boolean;
+}
+
+export default function DesktopSimulator({ assignment }: { assignment?: BenchAssignment } = {}) {
   const build = useDesktopSimStore((s) => s.build);
   const place = useDesktopSimStore((s) => s.place);
   const route = useDesktopSimStore((s) => s.route);
@@ -199,6 +215,22 @@ export default function DesktopSimulator() {
   return (
     <div className="flex h-full flex-col" style={{ background: BENCH.deck }}>
       <StatusBar build={build} complete={status.complete} powered={false} />
+
+      {assignment && (
+        <div
+          className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 text-[10px]"
+          style={{ borderColor: BENCH.line, background: "#0d1319" }}
+        >
+          <span className="font-mono font-semibold" style={{ color: BENCH.accent }}>
+            {assignment.ticketCode}
+          </span>
+          <span style={{ color: BENCH.text }}>Build for {assignment.forWhom}</span>
+          <span style={{ color: BENCH.textDim }}>
+            Sign-off needs {assignment.minRamGb}GB memory, a {assignment.minDiskGb}GB disk
+            {assignment.joinDomain ? ", and the machine joined to the domain" : ""}.
+          </span>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">

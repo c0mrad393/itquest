@@ -121,6 +121,7 @@ import {
   telemetry,
   railReading,
 } from "../.test-build/desktop-sim/parts.js";
+import { buildBenchNode } from "../.test-build/hardware/commission.js";
 import {
   BOARD,
   CANVAS,
@@ -2150,6 +2151,54 @@ group("Client endpoints skip the rack chain");
   {
     const s = seatBox("ram1");
     eq("a seated DIMM is far longer than it is wide", s.h / s.w > 5, true);
+  }
+
+  group("Bench → estate — a build is graded on what is in the machine");
+
+  {
+    // The specs used to be accepted and dropped on the floor, so a machine
+    // handed over with one stick was indistinguishable from a correct one.
+    const node = buildBenchNode({
+      machine: "desktop", cpuModel: "6-core", ramGb: 16, diskGb: 512,
+      nodeId: "acme-ws-9", hostname: "ACME-WS-9", ip: "10.0.0.60", gateway: "10.0.0.1",
+    });
+    eq("a commissioned machine records what was fitted", node.benchSpec.ramGb, 16);
+    eq("...including the disk", node.benchSpec.diskGb, 512);
+    eq("...and is tagged as bench-built", node.tags.includes("bench-built"), true);
+
+    // Under-built machines are visibly under-built, which is what lets a
+    // sign-off refuse them rather than pass anything that reaches the estate.
+    const short = buildBenchNode({
+      machine: "desktop", cpuModel: "6-core", ramGb: 8, diskGb: 256,
+      nodeId: "acme-ws-10", hostname: "ACME-WS-10", ip: "10.0.0.61", gateway: "10.0.0.1",
+    });
+    eq("a half-built machine reports the memory it actually has", short.benchSpec.ramGb, 8);
+
+    // Commissioning does NOT join a domain. That is a separate act, and the
+    // build ticket grades it separately.
+    eq("a freshly imaged machine is not domain-joined", node.domain, undefined);
+  }
+
+  group("Bench → tickets — the build job is its own shape");
+
+  {
+    const t = {
+      id: "TCK-9001", templateId: "hw-t1-new-starter-build", title: "New starter build",
+      dynamicContext: { targetUserName: "Nia Petrov", targetHostname: "new-starter workstation" },
+    };
+    const job = jobForTicket(t);
+    eq("a build ticket yields a job", job !== null, true);
+    // The guard every repair job passes would have rejected this one: there is
+    // no node yet, because the bench is what makes it.
+    eq("...without needing a node that does not exist yet", job.targetNodeId, "");
+    eq("...carrying a build spec, not a swap spec", Boolean(job.build) && !job.assembly, true);
+    eq("...naming who it is for", job.build.forWhom, "Nia Petrov");
+    eq("...and requiring a domain join", job.build.joinDomain, true);
+
+    // A repair ticket with no target still yields nothing, which is what keeps
+    // un-actionable rows out of the Lab.
+    eq("a repair with no target is still refused",
+       jobForTicket({ id: "TCK-9002", templateId: "hw-t1-ram-upgrade", dynamicContext: {} }), null);
   }
 
   group("Desktop sim — the multimeter reads the loom, it does not change it");

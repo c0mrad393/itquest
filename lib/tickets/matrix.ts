@@ -389,6 +389,70 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
     healthyNode: (_infra, ctx) => ctx.targetNodeId,
   },
 
+  /*
+   * The bench's own ticket.
+   *
+   * Every other hardware family is a REPAIR on a node that already exists, so
+   * none of them could be graded by the PC Simulator — it builds a machine
+   * from bare parts and commissions a new one. That left the most realistic
+   * bench in the product unable to answer a single ticket.
+   *
+   * This is the job it actually does, and the one a first-line technician does
+   * most often: build a workstation from stock, image it, and join it to the
+   * domain for someone starting on Monday.
+   */
+  "hw-t1-new-starter-build": {
+    id: "hw-t1-new-starter-build",
+    category: "System & Web Services",
+    difficulty: "Tier_1_Easy",
+    track: "helpdesk",
+    severity: "medium",
+    priority: "P3",
+    slaDuration: 40 * 60,
+    responseSeconds: 8 * 60,
+    xpReward: 280,
+    personaId: "persona-tara-calm",
+    tags: ["hardware", "deployment", "provisioning"],
+    origin: "dashboard",
+    summary: "A new starter needs a workstation built from stock and joined to the domain.",
+    hints: [
+      "Hardware Lab -> PC Simulator -> seat every part, then route the power cables",
+      "Power on, set the boot device in UEFI, then install the OS",
+      "Finish in Provisioning: install the outstanding drivers, then join the domain",
+    ],
+    playable: true,
+    makeContext: () => ({
+      targetUserName: "Nia Petrov",
+      targetHostname: "new-starter workstation",
+      serviceName: "Workstation build",
+    }),
+    title: () => "New starter needs a workstation built and joined to the domain",
+    description: (ctx) =>
+      `User request:\n**${ctx.targetUserName ?? "A new starter"}** joins the Finance team on Monday and has no machine.\n\nWhat we have:\n- A full set of parts in stock on the bench\n- A spare licence and an address free on the LAN\n\nObjective:\n- Build the workstation at the bench: **every part seated and the power cables routed**\n- Bring it up, set the boot device and **install the operating system**\n- Install the outstanding drivers and **join it to the domain**\n\nIt needs at least **16GB of memory** and a **512GB** disk to be signed off.`,
+    requester: (_ctx, org) => ({ name: "Marta Kelvin", role: "HR Operations", email: `marta.kelvin@${mailDomain(org)}`, department: "HR" }),
+    /*
+     * Nothing to break. This is a request, not an incident: the estate is
+     * healthy and the work is to ADD to it. Injecting a fault to make the
+     * ticket feel urgent would be fiction the operator cannot act on.
+     */
+    win: (infra) => {
+      const built = infra.security.benchCommissioned ?? [];
+      return built.some((id) => {
+        const n = infra.nodes[id as NodeId];
+        // Narrowed rather than cast: only a Windows node carries benchSpec,
+        // and an `as` here would hide the day a Linux build lands.
+        if (!n || n.os !== "windows") return false;
+        // Joined, and actually specced to what was asked for. A machine handed
+        // over with one stick in it is not a machine that passes sign-off.
+        return (
+          Boolean(n.domain) &&
+          (n.benchSpec?.ramGb ?? 0) >= 16 &&
+          (n.benchSpec?.diskGb ?? 0) >= 512
+        );
+      });
+    },
+  },
+
   "hw-t2-rack-disk": {
     id: "hw-t2-rack-disk",
     category: "System & Web Services",
