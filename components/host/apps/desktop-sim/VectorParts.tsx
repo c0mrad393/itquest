@@ -20,7 +20,7 @@
  * alone, and no component knows where on the bench it will end up.
  */
 
-import { BOARD_ART_H, BOARD_SLOTS } from "@/lib/desktop-sim/geometry";
+import { DESKTOP } from "@/lib/desktop-sim/chassis";
 
 export interface VectorProps {
   installed?: boolean;
@@ -100,8 +100,8 @@ export function VectorMotherboard({ highlighted }: VectorProps) {
    * numbers now.
    */
   // Board art height, from the same source the zones use.
-  const H = BOARD_ART_H;
-  const slot = (id: string) => BOARD_SLOTS.find((s) => s.id === id);
+  const H = DESKTOP.boardArtH;
+  const slot = (id: string) => DESKTOP.slots.find((s) => s.id === id);
   const socket = slot("socket");
   const a1 = slot("dimm-a1");
   const a2 = slot("dimm-a2");

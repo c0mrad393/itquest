@@ -23,7 +23,7 @@
  */
 
 import type { ReactNode } from "react";
-import { PARTS, isInstalled, type BuildState, type PartId } from "@/lib/desktop-sim/parts";
+import { chassisOfBuild, isFaulty, isInstalled, partsOf, type BuildState, type PartId } from "@/lib/desktop-sim/parts";
 
 /** Bench palette — dark brushed metal, amber accents, neon-blue interaction. */
 export const BENCH = {
@@ -112,7 +112,8 @@ export function StatusBar({
   complete: boolean;
   powered: boolean;
 }) {
-  const seated = build.installed.length;
+  const parts = partsOf(chassisOfBuild(build));
+  const seated = build.installed.filter((p) => !build.faulty.includes(p)).length;
   return (
     <div
       className="flex shrink-0 items-center gap-5 border-b px-4 py-2 font-mono text-[10px] tracking-wide"
@@ -120,7 +121,7 @@ export function StatusBar({
     >
       <Stat
         label="BUILD STATUS"
-        value={complete ? "Assembly Complete" : `In progress — ${seated}/${PARTS.length} seated`}
+        value={complete ? "Assembly Complete" : `In progress — ${seated}/${parts.length} seated`}
         tone={complete ? BENCH.ok : BENCH.warn}
       />
       <Stat label="BIOS VERSION" value="1.23" tone={BENCH.text} />
@@ -227,10 +228,13 @@ export function ToolRail({
         <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-widest" style={{ color: BENCH.textDim }}>
           Inventory
         </h3>
-        {PARTS.map((p) => {
-          const seated = isInstalled(build, p.id);
+        {partsOf(chassisOfBuild(build)).map((p) => {
+          const failed = isFaulty(build, p.id);
+          // A failed part is fitted but is not DONE, so it must not read as
+          // green in the list the operator is working down.
+          const seated = isInstalled(build, p.id) && !failed;
           const blocked = blockedFor(p.id);
-          const tone = seated ? BENCH.ok : blocked ? BENCH.textDim : BENCH.amber;
+          const tone = failed ? BENCH.bad ?? BENCH.amber : seated ? BENCH.ok : blocked ? BENCH.textDim : BENCH.amber;
           return (
             <button
               key={p.id}

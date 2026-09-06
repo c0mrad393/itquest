@@ -12,9 +12,16 @@
  */
 
 import { create } from "zustand";
+import { CHASSIS, type Chassis, type ChassisId } from "./chassis";
 import {
   EMPTY_BUILD,
   biosDevices,
+  canRemove,
+  chassisOfBuild,
+  emptyBuild,
+  populatedBuild,
+  remove,
+  removeBlockedBy,
   canInstall,
   connect,
   defaultBios,
@@ -75,8 +82,18 @@ interface DesktopSimStore {
   pick: (id: PartId | null) => void;
   hover: (id: PartId | null) => void;
   place: (id: PartId) => void;
+  /** Take a part back out. The other half of a repair. */
+  pull: (id: PartId) => void;
   route: (id: CableId) => void;
   restart: () => void;
+  /** Put a fresh, empty machine of this type on the bench. */
+  startBuild: (chassis: ChassisId) => void;
+  /**
+   * Put an ASSEMBLED machine on the bench with named parts failed. This is
+   * what a repair ticket opens: the work is to get the bad part out and a
+   * sound one in, not to build the box again.
+   */
+  startRepair: (chassis: ChassisId, faulty: PartId[]) => void;
 
   // ── Power and firmware ──
   powerOn: () => void;
@@ -99,6 +116,9 @@ interface DesktopSimStore {
   joinBlocker: () => string | null;
   guidance: () => Step | null;
   placeable: (id: PartId) => boolean;
+  removable: (id: PartId) => boolean;
+  removeReason: (id: PartId) => string | null;
+  chassis: () => Chassis;
 }
 
 export const useDesktopSimStore = create<DesktopSimStore>((set, get) => ({
@@ -119,13 +139,39 @@ export const useDesktopSimStore = create<DesktopSimStore>((set, get) => ({
   // Illegal placements are refused inside the model, so a view that forgets to
   // check `canInstall` gets "nothing happened" rather than an impossible build.
   place: (id) => set((s) => ({ build: install(s.build, id), held: null })),
+  pull: (id) => set((s) => ({ build: remove(s.build, id), held: null })),
   route: (id) => set((s) => ({ build: connect(s.build, id) })),
   restart: () =>
-    set({
-      build: reset(), held: null, hovered: null,
-      phase: "bench", halt: null, osInstalled: false,
-      driversInstalled: [], joinedDomain: null, registeredAs: null,
-      bios: defaultBios(EMPTY_BUILD, false),
+    set((s) => {
+      const fresh = reset(s.build.chassis);
+      return {
+        build: fresh, held: null, hovered: null,
+        phase: "bench", halt: null, osInstalled: false,
+        driversInstalled: [], joinedDomain: null, registeredAs: null,
+        bios: defaultBios(fresh, false),
+      };
+    }),
+
+  startBuild: (chassis) =>
+    set(() => {
+      const fresh = emptyBuild(chassis);
+      return {
+        build: fresh, held: null, hovered: null,
+        phase: "bench", halt: null, osInstalled: false,
+        driversInstalled: [], joinedDomain: null, registeredAs: null,
+        bios: defaultBios(fresh, false),
+      };
+    }),
+
+  startRepair: (chassis, faulty) =>
+    set(() => {
+      const b = populatedBuild(CHASSIS[chassis], faulty);
+      return {
+        build: b, held: null, hovered: null,
+        phase: "bench", halt: null, osInstalled: false,
+        driversInstalled: [], joinedDomain: null, registeredAs: null,
+        bios: defaultBios(b, false),
+      };
     }),
 
   /*
@@ -182,4 +228,7 @@ export const useDesktopSimStore = create<DesktopSimStore>((set, get) => ({
   joinBlocker: () => domainJoinBlocker(get().driversInstalled),
   guidance: () => nextStep(get().build),
   placeable: (id) => canInstall(get().build, id),
+  removable: (id) => canRemove(get().build, id),
+  removeReason: (id) => removeBlockedBy(get().build, id),
+  chassis: () => chassisOfBuild(get().build),
 }));

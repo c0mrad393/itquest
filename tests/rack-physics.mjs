@@ -123,24 +123,34 @@ import {
 } from "../.test-build/desktop-sim/parts.js";
 import { buildBenchNode } from "../.test-build/hardware/commission.js";
 import {
-  BOARD,
   CANVAS,
-  CASE_INNER,
   SNAP_RADIUS,
   SPEC_MM,
-  STANDOFFS,
-  ZONES,
+  zonesOf,
   distanceTo,
   mm,
   snapTarget,
   zoneFor,
   trayBox,
-  CASE_OUTER,
-  BOARD_SLOTS,
   boardSlotBox,
   seatBox,
   artHeight,
+  contains,
+  overlaps as boxOverlaps,
 } from "../.test-build/desktop-sim/geometry.js";
+import { CHASSIS, DESKTOP, LAPTOP, SERVER } from "../.test-build/desktop-sim/chassis.js";
+
+/*
+ * The desktop's own numbers, which most of the spatial specs below are written
+ * against. Named here rather than imported as module constants because there
+ * are three machines now and none of them gets to be the implicit one.
+ */
+const BOARD = DESKTOP.board;
+const CASE_INNER = DESKTOP.inner;
+const CASE_OUTER = DESKTOP.outer;
+const STANDOFFS = DESKTOP.standoffs;
+const BOARD_SLOTS = DESKTOP.slots;
+const ZONES = zonesOf(DESKTOP);
 import {
   CHAIN_FOR,
   cidrContains,
@@ -2029,22 +2039,22 @@ group("Client endpoints skip the rack chain");
 
   group("Desktop sim — snapping is bounded, not magnetic");
 
-  const gpuZone = zoneFor("gpu");
+  const gpuZone = zoneFor(DESKTOP, "gpu");
   const centre = { x: gpuZone.box.x + gpuZone.box.w / 2, y: gpuZone.box.y + gpuZone.box.h / 2 };
-  eq("a drop on the slot centre snaps", snapTarget("gpu", centre).id, "pcie-x16");
+  eq("a drop on the slot centre snaps", snapTarget(DESKTOP, "gpu", centre).id, "pcie-x16");
   eq("a drop just inside the radius snaps",
-     snapTarget("gpu", { x: centre.x + SNAP_RADIUS - 5, y: centre.y }).id, "pcie-x16");
+     snapTarget(DESKTOP, "gpu", { x: centre.x + SNAP_RADIUS - 5, y: centre.y }).id, "pcie-x16");
   // Outside the radius it must NOT snap, or a part dropped across the bench
   // would teleport into a slot the user never aimed at.
   eq("a drop outside the radius does not snap",
-     snapTarget("gpu", { x: centre.x + SNAP_RADIUS + 40, y: centre.y }), null);
-  eq("a part never snaps to another part's zone", snapTarget("cpu", centre), null);
+     snapTarget(DESKTOP, "gpu", { x: centre.x + SNAP_RADIUS + 40, y: centre.y }), null);
+  eq("a part never snaps to another part's zone", snapTarget(DESKTOP, "cpu", centre), null);
   eq("distance is measured to the zone centre", Math.round(distanceTo(gpuZone.box, centre)), 0);
 
   group("Desktop sim — the parts tray is laid out, not scattered");
 
   const ids = ["mobo", "psu", "cpu", "paste", "cooler", "ram1", "ram2", "ssd", "gpu"];
-  const boxes = ids.map((id) => ({ id, b: trayBox(id) }));
+  const boxes = ids.map((id) => ({ id, b: trayBox(DESKTOP, id) }));
 
   // A tray part drawn inside the chassis covers the slot it is meant to be
   // dragged into — which is exactly what happened before this was pinned.
@@ -2080,7 +2090,7 @@ group("Client endpoints skip the rack chain");
     a.x + a.w <= b.x + b.w + 0.5 && a.y + a.h <= b.y + b.h + 0.5;
 
   eq("every drawn slot lies on the board",
-     BOARD_SLOTS.every((s) => inside(boardSlotBox(s), BOARD)), true);
+     BOARD_SLOTS.every((s) => inside(boardSlotBox(DESKTOP, s), BOARD)), true);
 
   eq("every board slot has a matching zone",
      BOARD_SLOTS.every((s) => ZONES.some((z) => z.id === s.id)), true);
@@ -2089,7 +2099,7 @@ group("Client endpoints skip the rack chain");
   eq("zone boxes equal their drawn slot boxes",
      BOARD_SLOTS.every((s) => {
        const z = ZONES.find((zz) => zz.id === s.id);
-       const b = boardSlotBox(s);
+       const b = boardSlotBox(DESKTOP, s);
        return Math.abs(z.box.x - b.x) < 0.01 && Math.abs(z.box.y - b.y) < 0.01 &&
               Math.abs(z.box.w - b.w) < 0.01 && Math.abs(z.box.h - b.h) < 0.01;
      }), true);
@@ -2099,8 +2109,8 @@ group("Client endpoints skip the rack chain");
     a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
   for (const id of ["cpu", "ram1", "ram2", "ssd", "gpu"]) {
-    const z = zoneFor(id);
-    const seat = seatBox(id);
+    const z = zoneFor(DESKTOP, id);
+    const seat = seatBox(DESKTOP, id);
     eq(`a seated ${id} overlaps its slot`, overlaps(seat, z.box), true);
   }
 
@@ -2116,7 +2126,7 @@ group("Client endpoints skip the rack chain");
   // card genuinely overhangs a 244mm board, which is why it is checked
   // against the chassis instead.
   for (const id of ["cpu", "paste", "cooler", "ram1", "ram2", "ssd"]) {
-    const s = seatBox(id);
+    const s = seatBox(DESKTOP, id);
     eq(`a seated ${id} stays on the board`,
        s.x >= BOARD.x - 0.01 && s.x + s.w <= BOARD.x + BOARD.w + 0.01 &&
        s.y >= BOARD.y - 0.01 && s.y + s.h <= BOARD.y + BOARD.h + 0.01, true);
@@ -2124,7 +2134,7 @@ group("Client endpoints skip the rack chain");
 
   // And nothing at all may end up outside the chassis.
   for (const id of ["cpu", "paste", "cooler", "ram1", "ram2", "ssd", "gpu", "psu"]) {
-    const s = seatBox(id);
+    const s = seatBox(DESKTOP, id);
     eq(`a seated ${id} stays inside the case`,
        s.x >= CASE_INNER.x - 0.01 && s.x + s.w <= CASE_INNER.x + CASE_INNER.w + 0.01 &&
        s.y >= CASE_INNER.y - 0.01 && s.y + s.h <= CASE_INNER.y + CASE_INNER.h + 0.01, true);
@@ -2133,8 +2143,8 @@ group("Client endpoints skip the rack chain");
   // A module that stands in a slot runs ALONG it, not across it. This is the
   // single assertion that makes a sideways DIMM impossible.
   for (const id of ["ram1", "ram2"]) {
-    const z = zoneFor(id);
-    const s = seatBox(id);
+    const z = zoneFor(DESKTOP, id);
+    const s = seatBox(DESKTOP, id);
     const slotVertical = z.box.h > z.box.w;
     eq(`a seated ${id} runs along its slot`, s.h > s.w, slotVertical);
     // Centred across the slot, and proud of it at both ends.
@@ -2145,11 +2155,11 @@ group("Client endpoints skip the rack chain");
   }
 
   // Two sticks side by side must not occupy the same space.
-  eq("the two seated DIMMs do not overlap", overlaps(seatBox("ram1"), seatBox("ram2")), false);
+  eq("the two seated DIMMs do not overlap", overlaps(seatBox(DESKTOP, "ram1"), seatBox(DESKTOP, "ram2")), false);
 
   // A seated DIMM keeps its true proportion: 133mm long against ~15mm across.
   {
-    const s = seatBox("ram1");
+    const s = seatBox(DESKTOP, "ram1");
     eq("a seated DIMM is far longer than it is wide", s.h / s.w > 5, true);
   }
 
@@ -2205,18 +2215,18 @@ group("Client endpoints skip the rack chain");
 
   {
     // A rail with no supply behind it is dead, and says why.
-    const bare = { installed: [], connected: [] };
+    const bare = { chassis: "desktop", installed: [], connected: [], faulty: [] };
     eq("no PSU reads zero", railReading(bare, "cpu8").actualV, 0);
     eq("...and is not live", railReading(bare, "cpu8").live, false);
     eq("...and names the cause", /No power supply/.test(railReading(bare, "cpu8").note), true);
 
     // Fitted but unplugged is the fault a learner actually has to find.
-    const psuOnly = { installed: ["psu"], connected: [] };
+    const psuOnly = { chassis: "desktop", installed: ["psu"], connected: [], faulty: [] };
     eq("an unplugged rail reads zero", railReading(psuOnly, "cpu8").actualV, 0);
     eq("...and blames the connector", /not seated/.test(railReading(psuOnly, "cpu8").note), true);
 
     // Plugged in, it reads close to nominal.
-    const wired = { installed: ["psu"], connected: ["cpu8", "atx24"] };
+    const wired = { chassis: "desktop", installed: ["psu"], connected: ["cpu8", "atx24"], faulty: [] };
     const cpu = railReading(wired, "cpu8");
     eq("a seated 12V rail is live", cpu.live, true);
     eq("...and reads within a tenth of nominal", Math.abs(cpu.actualV - cpu.nominalV) < 0.1, true);

@@ -32,8 +32,8 @@
 import { useCallback, useRef, useState } from "react";
 import { useDesktopSimStore } from "@/lib/desktop-sim/store";
 import {
-  CABLES,
-  PARTS,
+  cablesOf,
+  partsOf,
   blockedBy,
   cableReady,
   isInstalled,
@@ -43,14 +43,9 @@ import {
   type RailReading,
 } from "@/lib/desktop-sim/parts";
 import {
-  BOARD,
   CANVAS,
-  CASE_INNER,
-  CASE_OUTER,
-  PSU_BAY,
   SNAP_RADIUS,
-  STANDOFFS,
-  ZONES,
+  zonesOf,
   mm,
   artTransform,
   rectOf,
@@ -110,6 +105,7 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
   const powerOn = useDesktopSimStore((s) => s.powerOn);
   const registeredAs = useDesktopSimStore((s) => s.registeredAs);
   const setRegistered = useDesktopSimStore((s) => s.setRegistered);
+  const chassis = useDesktopSimStore((s) => s.chassis)();
   const commission = useInfraStore((s) => s.commissionBenchMachine);
   const joinToDomain = useInfraStore((s) => s.joinBenchMachineToDomain);
 
@@ -159,17 +155,27 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
   }
   if (phase === "running") return <RunningScreen hostname={registeredAs} />;
 
-  const dragged = drag ? PARTS.find((p) => p.id === drag.partId) ?? null : null;
-  const dragTarget = drag ? snapTarget(drag.partId, { x: drag.x, y: drag.y }) : null;
+  const parts = partsOf(chassis);
+  const cables = cablesOf(chassis);
+  const zones = zonesOf(chassis);
+  const dragged = drag ? parts.find((p) => p.id === drag.partId) ?? null : null;
+  const dragTarget = drag ? snapTarget(chassis, drag.partId, { x: drag.x, y: drag.y }) : null;
   // The CPU die, which the paste tool targets. Falls back to the board so the
   // optional chain below never has to guard a missing zone.
-  const pasteZone = zoneFor("paste")?.box ?? BOARD;
+  const pasteZone = zoneFor(chassis, "paste")?.box ?? chassis.board;
+  /*
+   * Where power physically lives on this machine: the basement on a tower, the
+   * rear bays on a server, the battery well on a notebook. Read from the
+   * chassis rather than named, so the cable run has an origin on all three.
+   */
+  const powerPart = parts.find((p) => p.role === "power");
+  const psuBay = (powerPart ? zoneFor(chassis, powerPart.id)?.box : undefined) ?? chassis.inner;
 
   function onPointerDown(e: React.PointerEvent, partId: PartId) {
     if (screwMode) return;
     if (isInstalled(build, partId) || blockedBy(build, partId)) return;
     const p = toCanvas(e);
-    const tb = trayBox(partId);
+    const tb = trayBox(chassis, partId);
     e.currentTarget.setPointerCapture(e.pointerId);
     setDrag({ partId, x: p.x, y: p.y, dx: p.x - tb.x, dy: p.y - tb.y });
   }
@@ -207,7 +213,7 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
     e.currentTarget.releasePointerCapture(e.pointerId);
     // The model decides. Outside the radius this is null and the part simply
     // stops being dragged, which returns it to its tray box.
-    const target = snapTarget(drag.partId, { x: drag.x, y: drag.y });
+    const target = snapTarget(chassis, drag.partId, { x: drag.x, y: drag.y });
     if (target) place(drag.partId);
     setDrag(null);
   }
@@ -365,14 +371,14 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
 
           {/* ── LAYER 1 — case shell ───────────────────────────────────── */}
           <g filter="url(#ds-lift)">
-            <rect {...rectOf(CASE_OUTER)} rx="10" fill="url(#ds-caseWall)" />
-            <rect {...rectOf(CASE_INNER)} rx="4" fill="#23292f" />
+            <rect {...rectOf(chassis.outer)} rx="10" fill="url(#ds-caseWall)" />
+            <rect {...rectOf(chassis.inner)} rx="4" fill="#23292f" />
             {/* Rear grommets, right edge of the tray */}
             {[0.22, 0.48, 0.74].map((f, i) => (
               <rect
                 key={i}
-                x={CASE_INNER.x + CASE_INNER.w - mm(14)}
-                y={CASE_INNER.y + CASE_INNER.h * f}
+                x={chassis.inner.x + chassis.inner.w - mm(14)}
+                y={chassis.inner.y + chassis.inner.h * f}
                 width={mm(9)}
                 height={mm(26)}
                 rx={mm(4.5)}
@@ -381,27 +387,27 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
                 strokeWidth="3"
               />
             ))}
-            {/* PSU basement divider */}
-            <rect
-              x={CASE_INNER.x}
-              y={PSU_BAY.y - mm(8)}
-              width={CASE_INNER.w}
+            {/* PSU basement divider — a tower has a shelf; the others do not. */}
+            {chassis.id === "desktop" && <rect
+              x={chassis.inner.x}
+              y={psuBay.y - mm(8)}
+              width={chassis.inner.w}
               height={mm(4)}
               fill="#39424b"
-            />
+            />}
           </g>
 
           {/* ── LAYER 2 — motherboard, if fitted ───────────────────────── */}
           {isInstalled(build, "mobo") && (
             <g filter="url(#ds-lift)">
-              <PartArt id="mobo" box={BOARD} />
+              <PartArt id="mobo" box={chassis.board} />
             </g>
           )}
 
           {/* ── LAYER 3 — sockets and standoffs ────────────────────────── */}
           <g>
             {/* Empty zones read as recessed cavities so a slot looks like a hole */}
-            {ZONES.filter((z) => z.id !== "board-tray" && z.id !== "paste").map((z) => {
+            {zones.filter((z) => z.id !== "board-tray" && z.id !== "paste").map((z) => {
               const filled = isInstalled(build, z.accepts);
               if (filled) return null;
               return (
@@ -414,7 +420,7 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
                 />
               );
             })}
-            {STANDOFFS.map((s) => {
+            {chassis.standoffs.map((s) => {
               const done = screws.includes(s.id);
               return (
                 <g
@@ -445,8 +451,8 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
 
           {/* ── LAYER 4 — seated parts ─────────────────────────────────── */}
           <g>
-            {PARTS.filter((p) => p.id !== "mobo" && isInstalled(build, p.id)).map((p) => {
-              const b = seatBox(p.id);
+            {parts.filter((p) => p.role !== "board" && isInstalled(build, p.id)).map((p) => {
+              const b = seatBox(chassis, p.id);
               if (!b) return null;
               return (
                 <g key={p.id} filter="url(#ds-lift)" className="ds-seat">
@@ -482,15 +488,15 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
 
           {/* ── LAYER 5 — cables, rear-grommet routed ──────────────────── */}
           <g>
-            {CABLES.map((c) => {
+            {cables.map((c) => {
               if (!cableReady(build, c.id)) return null;
               const done = build.connected.includes(c.id);
               // Grommet column, just inside the right wall of the tray.
-              const gx = CASE_INNER.x + CASE_INNER.w - mm(9);
-              const from = { x: PSU_BAY.x + PSU_BAY.w * 0.86, y: PSU_BAY.y + mm(10) };
+              const gx = chassis.inner.x + chassis.inner.w - mm(9);
+              const from = { x: psuBay.x + psuBay.w * 0.86, y: psuBay.y + mm(10) };
               const to = {
-                x: BOARD.x + BOARD.w * (c.id === "pcie8" ? 0.34 : 0.97),
-                y: BOARD.y + BOARD.h * (c.id === "cpu8" ? 0.06 : c.id === "pcie8" ? 0.78 : 0.34),
+                x: chassis.board.x + chassis.board.w * (c.id === "pcie8" ? 0.34 : 0.97),
+                y: chassis.board.y + chassis.board.h * (c.id === "cpu8" ? 0.06 : c.id === "pcie8" ? 0.78 : 0.34),
               };
               const entry = { x: gx, y: from.y - mm(12) };
               const exit = { x: gx, y: to.y };
@@ -575,7 +581,7 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
 
           {/* ── LAYER 6 — tray parts, and the snap silhouette ──────────── */}
           <g>
-            {ZONES.map((z) => {
+            {zones.map((z) => {
               if (!drag || dragTarget?.id !== z.id) return null;
               return (
                 <rect
@@ -591,8 +597,8 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
               );
             })}
 
-            {PARTS.filter((p) => !isInstalled(build, p.id) && drag?.partId !== p.id).map((p) => {
-              const b = trayBox(p.id);
+            {parts.filter((p) => !isInstalled(build, p.id) && drag?.partId !== p.id).map((p) => {
+              const b = trayBox(chassis, p.id);
               const blocked = blockedBy(build, p.id);
               return (
                 <g
@@ -630,8 +636,8 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
                 box={{
                   x: drag.x - drag.dx,
                   y: drag.y - drag.dy,
-                  w: trayBox(drag.partId).w,
-                  h: trayBox(drag.partId).h,
+                  w: trayBox(chassis, drag.partId).w,
+                  h: trayBox(chassis, drag.partId).h,
                 }}
               />
             </g>
