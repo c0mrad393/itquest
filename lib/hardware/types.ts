@@ -9,6 +9,7 @@
  */
 
 import type { AssetCategory, HardwareRequirement } from "@/lib/core";
+import type { PartId } from "@/lib/desktop-sim/chassis";
 
 /**
  * `fan` is the cooling module (QA2).
@@ -81,6 +82,45 @@ export interface ImagingSpec {
  * what the finished machine turns out to BE. Forcing a build through the swap
  * shape would mean inventing a defective part on a host that does not exist.
  */
+/**
+ * The part that has FAILED, per machine, for each kind of component a ticket
+ * can name.
+ *
+ * This is where the ticket vocabulary ("a disk has failed on FS-01") meets the
+ * bench's ("bayA is faulty on a server"). One table, because the alternative
+ * is the same mapping inferred slightly differently in three places.
+ *
+ * Where a component is not a separate part on a machine, it maps to the thing
+ * a technician would actually replace: a notebook's graphics is soldered, so
+ * the board is the swap; a desktop's on-board NIC is not a part you can pull.
+ */
+const FAILED_PART: Record<DeviceArchetype, Partial<Record<ComponentKind, PartId>>> = {
+  desktop: { ram: "ram1", hdd: "ssd", ssd: "ssd", psu: "psu", gpu: "gpu", fan: "cooler", nic: "mobo" },
+  laptop: { ram: "sodimm1", hdd: "nvme", ssd: "nvme", psu: "battery", gpu: "lapboard", fan: "blower", nic: "wlan" },
+  server: { ram: "rdimm1", hdd: "bayA", ssd: "bayA", psu: "psuA", gpu: "riser", fan: "hsA", nic: "riser" },
+};
+
+/**
+ * What the bench should put in front of the operator.
+ *
+ * Every hardware job resolves to one of these, so the Lab has a single way to
+ * open work: which machine, and what is wrong with it. A build arrives with
+ * nothing faulty and an empty chassis; a repair arrives assembled with the
+ * failed part named.
+ */
+export interface BenchSpec {
+  chassis: DeviceArchetype;
+  /** Empty for a build. The parts to replace for a repair. */
+  faulty: PartId[];
+  /** True when the machine is made here rather than mended. */
+  isBuild: boolean;
+}
+
+export function benchSpecFor(archetype: DeviceArchetype, defective: ComponentKind | null): BenchSpec {
+  const part = defective ? FAILED_PART[archetype][defective] : undefined;
+  return { chassis: archetype, faulty: part ? [part] : [], isBuild: false };
+}
+
 export interface BenchBuildSpec {
   /** What the finished machine must carry before it is handed over. */
   minRamGb: number;
@@ -103,6 +143,12 @@ export interface HardwareJob {
   imaging?: ImagingSpec;
   /** Present only for bench builds. Mutually exclusive with `assembly`. */
   build?: BenchBuildSpec;
+  /**
+   * How the bench opens this job. Every job has one — it is the single door
+   * into the simulator, and the reason there is no longer a second workshop
+   * with its own idea of what a machine is.
+   */
+  bench: BenchSpec;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -182,7 +228,24 @@ type Ctx = {
   dynamicContext: { targetNodeId?: string; targetHostname?: string; targetUserName?: string };
 };
 
+/**
+ * Every job gets a `bench` spec, derived once here rather than at each of the
+ * dozen return sites below. A hand-authored job that forgot to describe how
+ * the bench opens it would be a job the Lab cannot start.
+ */
 export function jobForTicket(t: Ctx): HardwareJob | null {
+  const raw = rawJob(t);
+  if (!raw) return null;
+  if (raw.bench) return raw as HardwareJob;
+  return {
+    ...raw,
+    bench: benchSpecFor(raw.assembly?.archetype ?? "desktop", raw.assembly?.defective ?? null),
+  };
+}
+
+type RawJob = Omit<HardwareJob, "bench"> & { bench?: BenchSpec };
+
+function rawJob(t: Ctx): RawJob | null {
   const targetNodeId = t.dynamicContext.targetNodeId;
   const targetHostname = t.dynamicContext.targetHostname ?? "UNKNOWN";
 
@@ -204,6 +267,7 @@ export function jobForTicket(t: Ctx): HardwareJob | null {
         joinDomain: true,
         forWhom: t.dynamicContext.targetUserName ?? targetHostname,
       },
+      bench: { chassis: "desktop", faulty: [], isBuild: true },
     };
   }
 
@@ -301,7 +365,7 @@ export function jobForTicket(t: Ctx): HardwareJob | null {
  * Returns null only when there is genuinely nothing physical to do, which is
  * what keeps non-hardware tickets out of the Lab.
  */
-function derivedJob(t: Ctx, base: { ticketId: string; targetNodeId: string; targetHostname: string; title: string }): HardwareJob | null {
+function derivedJob(t: Ctx, base: { ticketId: string; targetNodeId: string; targetHostname: string; title: string }): RawJob | null {
   const tags = t.tags ?? [];
   const has = (x: string) => tags.includes(x);
 

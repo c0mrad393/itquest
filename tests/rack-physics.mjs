@@ -2233,6 +2233,75 @@ group("Client endpoints skip the rack chain");
     }
   }
 
+  group("Bench — every hardware ticket opens the simulator");
+
+  /*
+   * The Workshop is gone. It was a second, parallel idea of what a machine is
+   * — its own teardown, its own BIOS, its own imaging — and two engines meant
+   * two sets of rules that did not stay in step. Every job now opens the one
+   * bench, so every job has to describe how.
+   */
+  {
+    const hosts = [
+      ["WS-101", "desktop"], ["LT-204", "laptop"], ["LAP-9", "laptop"],
+      ["FS-01", "server"], ["SQL-02", "server"], ["WEB-03", "server"],
+    ];
+    for (const [host, want] of hosts) {
+      const job = jobForTicket({
+        id: "TCK-1", templateId: "gen-x", tags: ["hardware", "ram"],
+        dynamicContext: { targetNodeId: host.toLowerCase(), targetHostname: host },
+      });
+      eq(`${host} opens a ${want}`, job.bench.chassis, want);
+    }
+
+    // A named failure lands on a part that machine actually has.
+    const cases = [
+      [["hardware", "ram"], "FS-01", "rdimm1"],
+      [["hardware", "disk"], "FS-01", "bayA"],
+      [["hardware", "psu"], "FS-01", "psuA"],
+      [["hardware", "ram"], "LT-204", "sodimm1"],
+      [["hardware", "ssd"], "LT-204", "nvme"],
+      [["hardware", "cooling"], "LT-204", "blower"],
+      [["hardware", "ram"], "WS-101", "ram1"],
+      [["hardware", "psu"], "WS-101", "psu"],
+    ];
+    for (const [tags, host, part] of cases) {
+      const job = jobForTicket({
+        id: "TCK-2", templateId: "gen-y", tags,
+        dynamicContext: { targetNodeId: host.toLowerCase(), targetHostname: host },
+      });
+      eq(`${host} + ${tags[1]} fails ${part}`, job.bench.faulty, [part]);
+      // ...and that part is genuinely on that machine, not merely a plausible id.
+      eq(`...and ${part} is a part a ${job.bench.chassis} has`,
+         CHASSIS[job.bench.chassis].parts.includes(part), true);
+    }
+
+    // A repair with NOTHING broken is still a repair: a BIOS change or a
+    // re-image happens on a machine that already exists and is whole. It must
+    // open assembled, or the operator is asked to build a box that is already
+    // on the desk.
+    {
+      const biosOnly = jobForTicket({
+        id: "TCK-4", templateId: "gen-z", tags: ["hardware", "bios"],
+        dynamicContext: { targetNodeId: "ws-9", targetHostname: "WS-9" },
+      });
+      eq("a firmware-only job is not a build", biosOnly.bench.isBuild, false);
+      eq("...and has nothing faulty", biosOnly.bench.faulty, []);
+      // The bench decides empty-vs-assembled on isBuild, so a populated start
+      // is what this yields.
+      const opened = populatedBuild(CHASSIS[biosOnly.bench.chassis], biosOnly.bench.faulty);
+      eq("...so it opens assembled", report(opened).complete, true);
+    }
+
+    // A build declares itself a build; a repair does not.
+    const build = jobForTicket({
+      id: "TCK-3", templateId: "hw-t1-new-starter-build",
+      dynamicContext: { targetUserName: "Nia Petrov", targetHostname: "new-starter workstation" },
+    });
+    eq("a build opens an empty machine", build.bench.faulty, []);
+    eq("...and says so", build.bench.isBuild, true);
+  }
+
   group("Bench — every machine can actually be finished");
 
   /*

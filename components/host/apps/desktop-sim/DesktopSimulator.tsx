@@ -29,7 +29,7 @@
  * a slot animates back to the tray rather than teleporting into one.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useDesktopSimStore } from "@/lib/desktop-sim/store";
 import {
   cablesOf,
@@ -55,6 +55,7 @@ import {
   zoneFor,
   type Box,
 } from "@/lib/desktop-sim/geometry";
+import type { ChassisId } from "@/lib/desktop-sim/chassis";
 import { PAL, PART_VECTOR, SEAT_VECTOR, VectorScrews } from "./VectorParts";
 import {
   BiosSetupScreen,
@@ -88,10 +89,33 @@ interface DragState {
  */
 export interface BenchAssignment {
   ticketCode: string;
-  forWhom: string;
-  minRamGb: number;
-  minDiskGb: number;
-  joinDomain: boolean;
+  /** Which machine to put on the bench. */
+  chassis: ChassisId;
+  /** Empty for a build; the failed parts for a repair. */
+  faulty: PartId[];
+  /**
+   * Is the machine MADE here, or mended?
+   *
+   * This decides empty-versus-assembled, and it has to be its own flag rather
+   * than `faulty.length > 0`. A BIOS or re-imaging job is a repair with
+   * nothing broken: the machine exists and is whole, and the work is to boot
+   * it and change something. Inferring from the fault list opened those jobs
+   * on an empty chassis and asked the operator to build a machine that is
+   * already sitting on the desk.
+   */
+  isBuild: boolean;
+  /** One line: what this job is. */
+  headline: string;
+  /** One line: what sign-off needs. */
+  requirement: string;
+  /**
+   * Called once when the machine is whole again.
+   *
+   * A repair has to reach the ESTATE to be graded — the reconciler watches
+   * infra and does not know this bench exists — so the Lab hands the bench
+   * the recording step rather than the bench reaching into infra itself.
+   */
+  onComplete?: () => void;
 }
 
 export default function DesktopSimulator({ assignment }: { assignment?: BenchAssignment } = {}) {
@@ -107,6 +131,7 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
   const setRegistered = useDesktopSimStore((s) => s.setRegistered);
   const chassis = useDesktopSimStore((s) => s.chassis)();
   const startBuild = useDesktopSimStore((s) => s.startBuild);
+  const startRepair = useDesktopSimStore((s) => s.startRepair);
   const commission = useInfraStore((s) => s.commissionBenchMachine);
   const joinToDomain = useInfraStore((s) => s.joinBenchMachineToDomain);
 
@@ -125,6 +150,38 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
   const [combed, setCombed] = useState<CableId[]>([]);
   /** Last multimeter probe. Derived on read, held only to render the panel. */
   const [reading, setReading] = useState<RailReading | null>(null);
+
+  /*
+   * Report completion upward, ONCE.
+   *
+   * Guarded on a ref rather than on the phase, because the machine can be
+   * finished and then have a part pulled out again; without the guard the Lab
+   * would be told the job was done every time the build re-reached complete.
+   */
+  /*
+   * Load the assignment's MACHINE.
+   *
+   * Keyed on the ticket code so switching tickets re-opens the bench and
+   * re-selecting the same one does not wipe work in progress. Without this the
+   * bench showed whatever was last on it — a server ticket opening a desktop.
+   */
+  const loadedFor = useRef<string | null>(null);
+  const reported = useRef(false);
+  useEffect(() => {
+    if (!assignment || loadedFor.current === assignment.ticketCode) return;
+    loadedFor.current = assignment.ticketCode;
+    reported.current = false;
+    if (assignment.isBuild) startBuild(assignment.chassis);
+    else startRepair(assignment.chassis, assignment.faulty);
+  }, [assignment, startRepair, startBuild]);
+
+  const complete = useDesktopSimStore((s) => s.status)().complete;
+  useEffect(() => {
+    if (!assignment?.onComplete) return;
+    if (!complete || reported.current) return;
+    reported.current = true;
+    assignment.onComplete();
+  }, [complete, assignment]);
 
   /** Client point to canvas point, through the SVG's own transform. */
   const toCanvas = useCallback((e: { clientX: number; clientY: number }) => {
@@ -232,11 +289,8 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
           <span className="font-mono font-semibold" style={{ color: BENCH.accent }}>
             {assignment.ticketCode}
           </span>
-          <span style={{ color: BENCH.text }}>Build for {assignment.forWhom}</span>
-          <span style={{ color: BENCH.textDim }}>
-            Sign-off needs {assignment.minRamGb}GB memory, a {assignment.minDiskGb}GB disk
-            {assignment.joinDomain ? ", and the machine joined to the domain" : ""}.
-          </span>
+          <span style={{ color: BENCH.text }}>{assignment.headline}</span>
+          <span style={{ color: BENCH.textDim }}>{assignment.requirement}</span>
         </div>
       )}
 
@@ -264,7 +318,14 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
                       : tool === "multimeter"
                         ? "Probe a cable to read its rail."
                         : guidance
-                          ? `${guidance.label} — drag it into the case.`
+                          ? guidance.kind === "remove"
+                            // A removal is not a placement, and telling someone
+                            // to "drag it into the case" while asking them to
+                            // take something OUT of it is worse than silence.
+                            ? `${guidance.label}.`
+                            : guidance.kind === "cable"
+                              ? `${guidance.label}.`
+                              : `${guidance.label} — drag it into the case.`
                           : "Build complete. Power on to POST."}
               </div>
             </div>
