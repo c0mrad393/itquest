@@ -119,6 +119,34 @@ export interface Chassis {
   /** Everything this machine is made of, in the order it is built. */
   parts: PartId[];
   cables: CableId[];
+  /**
+   * Where each cable physically runs, as fractions of the INTERIOR.
+   *
+   * Declared per machine because a loom is not a shape you can guess from a
+   * chassis. Every cable used to take its endpoints from a chain of
+   * `c.id === "pcie8"` tests written for the tower, so both of the laptop's
+   * connectors — and both of the server's — landed on the same default point,
+   * drawn exactly on top of each other. Only the topmost could be clicked, so
+   * the other could never be plugged in and the build could never complete.
+   *
+   * Fractions rather than canvas units so a run cannot drift off a chassis
+   * that gets resized.
+   *
+   * Partial because a machine only declares its OWN cables; the type cannot
+   * say "exactly the ids in `cables`" without more machinery than it is
+   * worth, so a spec asserts that every cable a machine has, has a run — and
+   * that no two of them share an endpoint.
+   */
+  cableRuns: Partial<Record<CableId, { from: [number, number]; to: [number, number] }>>;
+  /**
+   * Does this machine route power behind the board tray?
+   *
+   * A tower does, through grommets in the motherboard tray, and that hidden
+   * middle run is most of what makes its cabling look tidy. A notebook and a
+   * 2U have nowhere to hide a cable, so theirs are drawn as the short direct
+   * runs they are.
+   */
+  rearRouted: boolean;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -204,6 +232,12 @@ export const DESKTOP: Chassis = {
   trayScale: 0.62,
   parts: ["mobo", "psu", "cpu", "paste", "cooler", "ram1", "ram2", "ssd", "gpu"],
   cables: ["atx24", "cpu8", "pcie8"],
+  cableRuns: {
+    atx24: { from: [0.45, 0.80], to: [0.822, 0.266] },
+    cpu8: { from: [0.45, 0.80], to: [0.822, 0.063] },
+    pcie8: { from: [0.45, 0.80], to: [0.310, 0.585] },
+  },
+  rearRouted: true,
 };
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -296,6 +330,15 @@ export const LAPTOP: Chassis = {
   trayScale: 0.62,
   parts: ["lapboard", "battery", "sodimm1", "sodimm2", "wlan", "nvme", "heatpipe", "blower"],
   cables: ["battconn", "fanconn"],
+  /*
+   * Two short flying leads, nowhere near each other: the battery plugs into a
+   * header on the board's front edge, the fan into one beside the exhaust.
+   */
+  cableRuns: {
+    battconn: { from: [0.74, 0.50], to: [0.62, 0.37] },
+    fanconn: { from: [0.87, 0.26], to: [0.77, 0.19] },
+  },
+  rearRouted: false,
 };
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -429,6 +472,16 @@ export const SERVER: Chassis = {
     "riser", "bayA", "bayB", "psuA", "psuB", "baffle",
   ],
   cables: ["backplane", "psubus"],
+  /*
+   * The backplane loom runs from the drive cage at the front to the header on
+   * the board's front edge; the busbar runs from the supplies to the board's
+   * power inlet. Different ends of the chassis, so both are reachable.
+   */
+  cableRuns: {
+    backplane: { from: [0.26, 0.25], to: [0.39, 0.81] },
+    psubus: { from: [0.26, 0.66], to: [0.35, 0.25] },
+  },
+  rearRouted: false,
 };
 
 export const CHASSIS: Record<ChassisId, Chassis> = {

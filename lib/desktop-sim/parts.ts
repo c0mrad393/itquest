@@ -71,6 +71,16 @@ export interface PartDef {
    * drive caddy, and nothing else on any of these three machines.
    */
   hotSwap?: boolean;
+  /**
+   * Roles this part BRINGS WITH IT because they are soldered to it.
+   *
+   * A notebook's processor is not a component you fit — it is part of the
+   * board. Without saying so, the machine has no cpu-role part at all, and
+   * every derivation that asks "is there a processor" answers no forever: a
+   * fully assembled laptop reported no CPU, refused to POST, and told the
+   * operator to install one that cannot be installed.
+   */
+  integrates?: PartRole[];
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -95,7 +105,8 @@ export const PART_DEFS: Record<PartId, PartDef> = {
   gpu: { id: "gpu", label: "Graphics card", spec: "Dual-fan 8GB", role: "expansion", needs: ["mobo"], powers: ["pcie8"] },
 
   // ── Laptop ────────────────────────────────────────────────────────────────
-  lapboard: { id: "lapboard", label: "Mainboard", spec: "14-core mobile", role: "board", needs: [] },
+  // The processor is soldered to this board, so the board carries the role.
+  lapboard: { id: "lapboard", label: "Mainboard", spec: "14-core mobile", role: "board", needs: [], integrates: ["cpu"] },
   /*
    * The battery goes in LAST and comes out FIRST. It sits over the M.2 bays,
    * so those are declared as its dependency — which means the disassembly
@@ -353,10 +364,20 @@ export function report(b: BuildState): BuildReport {
 
 // ── Role helpers ────────────────────────────────────────────────────────────
 
-/** Installed, sound parts of a given role. A failed part contributes nothing. */
+/**
+ * Installed, sound parts of a given role. A failed part contributes nothing.
+ *
+ * A part also counts for any role it INTEGRATES, which is how a soldered
+ * processor is found on a machine that has no separate CPU to fit.
+ */
 export function working(b: BuildState, role: PartRole): PartDef[] {
   const c = chassisOfBuild(b);
-  return partsOf(c).filter((p) => p.role === role && isInstalled(b, p.id) && !isFaulty(b, p.id));
+  return partsOf(c).filter(
+    (p) =>
+      (p.role === role || p.integrates?.includes(role)) &&
+      isInstalled(b, p.id) &&
+      !isFaulty(b, p.id),
+  );
 }
 
 export function hasRole(b: BuildState, role: PartRole): boolean {

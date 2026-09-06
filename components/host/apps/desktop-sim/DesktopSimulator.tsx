@@ -169,6 +169,7 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
    * rear bays on a server, the battery well on a notebook. Read from the
    * chassis rather than named, so the cable run has an origin on all three.
    */
+  const boardPart = parts.find((p) => p.role === "board");
   const powerPart = parts.find((p) => p.role === "power");
   const psuBay = (powerPart ? zoneFor(chassis, powerPart.id)?.box : undefined) ?? chassis.inner;
 
@@ -424,10 +425,18 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
             />}
           </g>
 
-          {/* ── LAYER 2 — motherboard, if fitted ───────────────────────── */}
-          {isInstalled(build, "mobo") && (
+          {/*
+            ── LAYER 2 — the main board, if fitted ─────────────────────────
+
+            Found by ROLE, not by the id "mobo". A laptop's board is
+            `lapboard` and a server's is `srvboard`, so the hard-coded id drew
+            neither — and because layer 4 excludes board-role parts to avoid
+            drawing this one twice, fitting the board on those machines made
+            it vanish from both layers at once.
+          */}
+          {boardPart && isInstalled(build, boardPart.id) && (
             <g filter="url(#ds-lift)">
-              <PartArt id="mobo" box={chassis.board} />
+              <PartArt id={boardPart.id} box={chassis.board} />
             </g>
           )}
 
@@ -519,12 +528,23 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
               if (!cableReady(build, c.id)) return null;
               const done = build.connected.includes(c.id);
               // Grommet column, just inside the right wall of the tray.
+              /*
+                Endpoints are the MACHINE's, declared in `cableRuns`. They used
+                to come from a chain of `c.id === "pcie8"` tests written for
+                the tower, so every cable on the other two machines fell to the
+                same default point and the two of them drew on top of each
+                other — leaving one permanently unclickable and the build
+                permanently one cable short of complete.
+              */
+              const run = chassis.cableRuns[c.id];
+              if (!run) return null;
+              const at = (f: [number, number]) => ({
+                x: chassis.inner.x + chassis.inner.w * f[0],
+                y: chassis.inner.y + chassis.inner.h * f[1],
+              });
+              const from = at(run.from);
+              const to = at(run.to);
               const gx = chassis.inner.x + chassis.inner.w - mm(9);
-              const from = { x: psuBay.x + psuBay.w * 0.86, y: psuBay.y + mm(10) };
-              const to = {
-                x: chassis.board.x + chassis.board.w * (c.id === "pcie8" ? 0.34 : 0.97),
-                y: chassis.board.y + chassis.board.h * (c.id === "cpu8" ? 0.06 : c.id === "pcie8" ? 0.78 : 0.34),
-              };
               const entry = { x: gx, y: from.y - mm(12) };
               const exit = { x: gx, y: to.y };
 
@@ -535,9 +555,13 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
                * hidden — that is what makes the routing read as tidy rather
                * than as a wire thrown across the board.
                */
-              const stubIn = `M${from.x} ${from.y} C ${entry.x} ${from.y}, ${entry.x} ${entry.y}, ${entry.x} ${entry.y}`;
-              const behind = `M${entry.x} ${entry.y} L${exit.x} ${exit.y}`;
-              const stubOut = `M${exit.x} ${exit.y} C ${exit.x - mm(14)} ${exit.y}, ${to.x + mm(14)} ${to.y}, ${to.x} ${to.y}`;
+              const stubIn = chassis.rearRouted
+                ? `M${from.x} ${from.y} C ${entry.x} ${from.y}, ${entry.x} ${entry.y}, ${entry.x} ${entry.y}`
+                : `M${from.x} ${from.y} C ${(from.x + to.x) / 2} ${from.y}, ${(from.x + to.x) / 2} ${to.y}, ${to.x} ${to.y}`;
+              const behind = chassis.rearRouted ? `M${entry.x} ${entry.y} L${exit.x} ${exit.y}` : "";
+              const stubOut = chassis.rearRouted
+                ? `M${exit.x} ${exit.y} C ${exit.x - mm(14)} ${exit.y}, ${to.x + mm(14)} ${to.y}, ${to.x} ${to.y}`
+                : "";
 
               const sleeve = (d: string) => (
                 <>
@@ -569,9 +593,11 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
               return (
                 <g key={c.id} onClick={() => onCable(c.id)} className="cursor-pointer" opacity={done ? 1 : 0.28}>
                   {/* Hidden run, dimmed — it is behind the tray. */}
-                  <path d={behind} stroke="#0c1013" strokeWidth="9" fill="none" opacity="0.5" strokeDasharray="7 7" />
+                  {behind && (
+                    <path d={behind} stroke="#0c1013" strokeWidth="9" fill="none" opacity="0.5" strokeDasharray="7 7" />
+                  )}
                   {sleeve(isCombed ? combIn : stubIn)}
-                  {sleeve(isCombed ? combOut : stubOut)}
+                  {stubOut && sleeve(isCombed ? combOut : stubOut)}
                   {isCombed && (
                     /* The comb itself, clipped over the dressed leg. */
                     <g>

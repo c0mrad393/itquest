@@ -27,6 +27,7 @@
 
 import { useEffect, useState } from "react";
 import { useDesktopSimStore } from "@/lib/desktop-sim/store";
+import { partsOf } from "@/lib/desktop-sim/parts";
 import { AppIcon } from "@/components/ui/app-icons";
 
 /** POST halted. The screen a technician actually meets, beep code and all. */
@@ -82,17 +83,21 @@ export function BiosSetupScreen() {
   const powerOff = useDesktopSimStore((s) => s.powerOff);
   const [now] = useState(() => new Date());
 
-  // The two DIMM slots the desktop has, read off the build rather than a slot
-  // table — there is no slot table any more, and there does not need to be.
-  const dimms = [
-    { id: "ram1" as const, label: "DIMM A1" },
-    { id: "ram2" as const, label: "DIMM A2" },
-  ];
+  /*
+   * Memory slots come from the MACHINE, not from a pair of desktop ids.
+   * Firmware that lists "DIMM A1 / DIMM A2" on a notebook with SO-DIMMs — or
+   * on a server with four banks — is reporting a machine that is not the one
+   * in front of you.
+   */
+  const machine = useDesktopSimStore((s) => s.chassis)();
+  const dimms = partsOf(machine)
+    .filter((p) => p.role === "memory")
+    .map((p) => ({ id: p.id, label: p.label, spec: p.spec }));
 
   return (
     <div className="theme-dark flex h-full flex-col bg-[#00126b] font-mono text-[12px] text-slate-100">
       <header className="border-b border-slate-400/40 px-4 py-2 text-center text-[13px] font-semibold tracking-wide">
-        Macrohard UEFI Setup Utility — ATX desktop
+        Macrohard UEFI Setup Utility — {machine.label}
       </header>
 
       <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto term-scroll p-4 md:grid-cols-2">
@@ -116,7 +121,7 @@ export function BiosSetupScreen() {
             <Line
               key={d.id}
               k={d.label}
-              v={build.installed.includes(d.id) ? "8GB DDR4-3200" : "empty"}
+              v={build.installed.includes(d.id) ? d.spec : "empty"}
             />
           ))}
         </section>

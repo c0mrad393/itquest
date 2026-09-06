@@ -2233,6 +2233,59 @@ group("Client endpoints skip the rack chain");
     }
   }
 
+  group("Bench — every machine can actually be finished");
+
+  /*
+   * Both of these were reported from the bench: fitting the board on a laptop
+   * or a server made it disappear, and one cable on each could never be
+   * plugged in, so the build could never reach complete. Both had the same
+   * cause — desktop assumptions surviving in code that now serves three
+   * machines — and both are properties, so both get asserted.
+   */
+  for (const c of [DESKTOP, LAPTOP, SERVER]) {
+    // The view draws the main board by ROLE. Exactly one part must answer to
+    // that, or it draws nothing (which is what made the board vanish) or the
+    // wrong thing.
+    const boards = partsOf(c).filter((p) => p.role === "board");
+    eq(`${c.id}: exactly one part is the board`, boards.length, 1);
+
+    // Every cable has a run, or it cannot be drawn at all.
+    for (const id of c.cables) {
+      eq(`${c.id}: cable ${id} has a declared run`, Boolean(c.cableRuns[id]), true);
+    }
+    // ...and no two runs share an endpoint, or one sits on top of the other
+    // and only the topmost can ever be clicked.
+    const runs = c.cables.map((id) => ({ id, r: c.cableRuns[id] })).filter((x) => x.r);
+    for (let i = 0; i < runs.length; i++) {
+      for (let j = i + 1; j < runs.length; j++) {
+        const a = runs[i].r, b = runs[j].r;
+        const apart = Math.hypot(a.to[0] - b.to[0], a.to[1] - b.to[1]);
+        eq(`${c.id}: ${runs[i].id} and ${runs[j].id} land in different places`, apart > 0.04, true);
+      }
+    }
+    // Endpoints stay inside the machine.
+    for (const { id, r } of runs) {
+      for (const [lbl, pt] of [["from", r.from], ["to", r.to]]) {
+        eq(`${c.id}: ${id} ${lbl} is inside the chassis`,
+           pt[0] >= 0 && pt[0] <= 1 && pt[1] >= 0 && pt[1] <= 1, true);
+      }
+    }
+
+    // And the machine can be driven from empty to complete. This is the
+    // property both bugs actually broke, so it is asserted end to end rather
+    // than inferred from the pieces.
+    let b = emptyBuild(c.id);
+    for (let guard = 0; guard < 60; guard++) {
+      const step = nextStep(b);
+      if (!step) break;
+      b = step.kind === "cable" ? connect(b, step.id) : install(b, step.id);
+    }
+    eq(`${c.id}: guidance alone can finish the build`, report(b).complete, true);
+    eq(`${c.id}: ...with every part seated`, b.installed.length, c.parts.length);
+    eq(`${c.id}: ...and every cable connected`, b.connected.length, c.cables.length);
+    eq(`${c.id}: ...and it POSTs`, postHalt(b), null);
+  }
+
   group("Bench — the three machines are genuinely different machines");
 
   {
