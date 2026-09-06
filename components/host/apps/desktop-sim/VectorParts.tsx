@@ -21,50 +21,12 @@
  */
 
 import { DESKTOP } from "@/lib/desktop-sim/chassis";
+import { LAPTOP_VECTOR } from "./VectorLaptop";
+import { SERVER_SEAT_VECTOR, SERVER_VECTOR } from "./VectorServer";
+import { PAL, Ring, type VectorProps } from "./VectorShared";
 
-export interface VectorProps {
-  installed?: boolean;
-  highlighted?: boolean;
-}
-
-/** Sampled from the reference sheet. Two tones per material, flat. */
-export const PAL = {
-  surface: "#ffffff",
-  surfaceEdge: "#e8ecf0",
-
-  boardBlue: "#2e8b46",
-  boardBlueDark: "#256e38",
-  boardBlueLight: "#3aa055",
-  socketNavy: "#1e5c2e",
-  /* Board-specific accents, sampled from the reference. */
-  trace: "#1f5f31",
-  vrmGold: "#c9a23f",
-  vrmGoldDark: "#a8832c",
-  slotYellow: "#e8d44d",
-  slotBlue: "#2f7fd0",
-  slotWhite: "#e4e7ea",
-  connCream: "#efe8d8",
-  sata: "#d0273b",
-  ioMagenta: "#b5306e",
-  ioTeal: "#3fb8c4",
-  ioOrange: "#e08a3c",
-  ioBlue: "#4a6fd0",
-
-  pcbGreen: "#27ae60",
-  pcbGreenDark: "#1e8e4d",
-
-  gold: "#f2c94c",
-  goldDark: "#d4a92f",
-  orange: "#f2994a",
-  red: "#eb5757",
-  redDark: "#c94040",
-
-  ink: "#333333",
-  inkSoft: "#4f4f4f",
-  steel: "#bdbdbd",
-  steelDark: "#828282",
-  paper: "#f2f2f2",
-} as const;
+export { PAL, Ring };
+export type { VectorProps };
 
 /** Chip packages: flat black rounded rects with a lighter top face. */
 function Chip({ x, y, w, h }: { x: number; y: number; w: number; h: number }) {
@@ -73,13 +35,6 @@ function Chip({ x, y, w, h }: { x: number; y: number; w: number; h: number }) {
       <rect x={x} y={y} width={w} height={h} rx="1" fill={PAL.ink} />
       <rect x={x} y={y} width={w} height={h * 0.28} rx="1" fill={PAL.inkSoft} />
     </g>
-  );
-}
-
-/** The selection ring. Flat sheets have no glow, so this is a bold outline. */
-function Ring({ x, y, w, h, r = 3 }: { x: number; y: number; w: number; h: number; r?: number }) {
-  return (
-    <rect x={x} y={y} width={w} height={h} rx={r} fill="none" stroke={PAL.orange} strokeWidth="3" />
   );
 }
 
@@ -531,7 +486,17 @@ export function VectorRamSeated({ highlighted }: VectorProps) {
   );
 }
 
+/*
+ * Every machine's art, in one lookup.
+ *
+ * The laptop and server sheets live in their own files: they share this
+ * palette and the 100 x artHeight convention, but nothing else, and putting
+ * three machines' worth of components in one file is how a sheet stops being
+ * editable.
+ */
 export const PART_VECTOR: Record<string, (p: VectorProps) => React.ReactElement> = {
+  ...LAPTOP_VECTOR,
+  ...SERVER_VECTOR,
   mobo: VectorMotherboard,
   cpu: VectorCpu,
   paste: VectorPaste,
@@ -548,6 +513,7 @@ export const PART_VECTOR: Record<string, (p: VectorProps) => React.ReactElement>
  * from the loose part. Anything absent here simply keeps its bench artwork.
  */
 export const SEAT_VECTOR: Record<string, (p: VectorProps) => React.ReactElement> = {
+  ...SERVER_SEAT_VECTOR,
   ram1: VectorRamSeated,
   ram2: VectorRamSeated,
 };

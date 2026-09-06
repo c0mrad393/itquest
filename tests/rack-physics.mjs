@@ -120,6 +120,13 @@ import {
   specOf,
   telemetry,
   railReading,
+  populatedBuild,
+  emptyBuild,
+  isInstalled,
+  remove,
+  removeBlockedBy,
+  isFaulty,
+  partsOf,
 } from "../.test-build/desktop-sim/parts.js";
 import { buildBenchNode } from "../.test-build/hardware/commission.js";
 import {
@@ -2161,6 +2168,124 @@ group("Client endpoints skip the rack chain");
   {
     const s = seatBox(DESKTOP, "ram1");
     eq("a seated DIMM is far longer than it is wide", s.h / s.w > 5, true);
+  }
+
+  group("Bench — every machine holds together, not just the desktop");
+
+  /*
+   * These run over ALL THREE chassis. The desktop's layout bugs — a tray part
+   * drawn inside the case, a slot off the board, a seated module out through
+   * the wall — were each found by eye, one at a time. Asserting the property
+   * over the whole set is what stops the laptop and the server from having to
+   * rediscover them.
+   */
+  for (const c of [DESKTOP, LAPTOP, SERVER]) {
+    const zones = zonesOf(c);
+    const canvas = { x: 0, y: 0, w: CANVAS.w, h: CANVAS.h };
+
+    eq(`${c.id}: the case is on the canvas`, contains(canvas, c.outer), true);
+    eq(`${c.id}: the interior is inside the shell`, contains(c.outer, c.inner), true);
+    eq(`${c.id}: the board is inside the interior`, contains(c.inner, c.board), true);
+
+    // Every part can be picked up and has somewhere to go.
+    for (const id of c.parts) {
+      eq(`${c.id}: ${id} has a place on the tray`, Boolean(c.tray[id]), true);
+      eq(`${c.id}: ${id} has a zone to go in`, Boolean(zoneFor(c, id)), true);
+    }
+    // ...and every zone belongs to a part this machine actually has.
+    for (const z of zones) {
+      eq(`${c.id}: zone ${z.id} accepts a part this machine has`, c.parts.includes(z.accepts), true);
+    }
+
+    // Tray parts sit on the canvas, outside the chassis, and clear of each
+    // other. A tray box inside the case draws over the very slot it is meant
+    // to be dragged into — which is exactly what the GPU and PSU used to do.
+    const trays = c.parts.map((id) => ({ id, box: trayBox(c, id) }));
+    for (const t of trays) {
+      eq(`${c.id}: ${t.id} rests on the canvas`, contains(canvas, t.box), true);
+      eq(`${c.id}: ${t.id} rests outside the chassis`, boxOverlaps(t.box, c.outer), false);
+    }
+    for (let i = 0; i < trays.length; i++) {
+      for (let j = i + 1; j < trays.length; j++) {
+        eq(`${c.id}: ${trays[i].id} and ${trays[j].id} do not overlap on the tray`,
+           boxOverlaps(trays[i].box, trays[j].box), false);
+      }
+    }
+
+    // Board slots stay on the board, and seated parts stay in the machine.
+    for (const sl of c.slots) {
+      eq(`${c.id}: slot ${sl.id} is on the board`, contains(c.board, boardSlotBox(c, sl)), true);
+    }
+    for (const id of c.parts) {
+      const seat = seatBox(c, id);
+      if (!seat) continue;
+      // The desktop GPU is the one deliberate overhang: a 270mm card on a
+      // 244mm board really does hang off it, so it is checked against the
+      // chassis rather than the board.
+      eq(`${c.id}: a seated ${id} stays inside the case`, contains(c.inner, seat, 1), true);
+    }
+
+    // Fasteners are under the thing they hold down.
+    for (const so of c.standoffs) {
+      eq(`${c.id}: standoff ${so.id} is inside the chassis`,
+         so.x >= c.inner.x && so.x <= c.inner.x + c.inner.w &&
+         so.y >= c.inner.y && so.y <= c.inner.y + c.inner.h, true);
+    }
+  }
+
+  group("Bench — the three machines are genuinely different machines");
+
+  {
+    // A laptop's battery goes in last and comes out first, because it lies
+    // over the M.2 bays. That ordering is a safety rule, and it is encoded
+    // once — in `needs` — rather than written down twice.
+    const lap = populatedBuild(LAPTOP, []);
+    eq("a laptop battery cannot come out while the M.2 cards are under it",
+       removeBlockedBy(lap, "nvme") !== null, true);
+    eq("...and the battery itself is free to come out first",
+       removeBlockedBy(lap, "battery"), null);
+
+    // A server drive and a server PSU depend on nothing. That is what a
+    // hot-swap bay and a redundant supply MEAN.
+    const srv = emptyBuild("server");
+    eq("a server drive needs nothing fitted first", blockedBy(srv, "bayA"), null);
+    eq("...and neither does either supply", blockedBy(srv, "psuA"), null);
+    eq("but a heatsink still needs its CPU", blockedBy(srv, "hsA") !== null, true);
+
+    // Memory belongs to a socket. Bank B with no CPU 1 is memory that is
+    // simply not there — a fault a single-socket board cannot have.
+    const oneCpu = install(install(emptyBuild("server"), "srvboard"), "cpuA");
+    eq("bank A opens once its own CPU is in", blockedBy(oneCpu, "rdimm1"), null);
+    eq("bank B stays shut without CPU 1", blockedBy(oneCpu, "rdimm3") !== null, true);
+
+    // Only the desktop asks for paste. A machine whose cooler ships with a pad
+    // must not be able to fail a check it cannot pass.
+    eq("the desktop wants thermal interface", partsOf(DESKTOP).some((p) => p.role === "thermal-interface"), true);
+    eq("the laptop does not", partsOf(LAPTOP).some((p) => p.role === "thermal-interface"), false);
+    eq("the server does not", partsOf(SERVER).some((p) => p.role === "thermal-interface"), false);
+  }
+
+  group("Bench — a repair is a build that starts populated");
+
+  {
+    // A failed part is fitted, so it is not something you can fit again.
+    const broken = populatedBuild(DESKTOP, ["ram2"]);
+    eq("a repair starts assembled", broken.installed.length, DESKTOP.parts.length);
+    eq("...with the failure named", broken.faulty, ["ram2"]);
+    eq("...and is NOT complete", report(broken).complete, false);
+    eq("...for a reason that names the part", /RAM \(slot A2\) has failed/.test(report(broken).faults[0]), true);
+    eq("the failed part cannot simply be refitted", blockedBy(broken, "ram2"), "Failed — remove it first");
+
+    // Take it out, put a sound one in, and the machine is whole.
+    const pulled = remove(broken, "ram2");
+    eq("removing it clears the fault", pulled.faulty.length, 0);
+    eq("...and leaves the slot empty", isInstalled(pulled, "ram2"), false);
+    const fixed = install(pulled, "ram2");
+    eq("a part fitted from stock is sound", isFaulty(fixed, "ram2"), false);
+    eq("...and the machine is complete again", report(fixed).complete, true);
+
+    // The next step names the job rather than the next part in the list.
+    eq("guidance leads with the failure", nextStep(broken).kind, "remove");
   }
 
   group("Bench → estate — a build is graded on what is in the machine");

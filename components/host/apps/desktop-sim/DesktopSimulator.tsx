@@ -106,6 +106,7 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
   const registeredAs = useDesktopSimStore((s) => s.registeredAs);
   const setRegistered = useDesktopSimStore((s) => s.setRegistered);
   const chassis = useDesktopSimStore((s) => s.chassis)();
+  const startBuild = useDesktopSimStore((s) => s.startBuild);
   const commission = useInfraStore((s) => s.commissionBenchMachine);
   const joinToDomain = useInfraStore((s) => s.joinBenchMachineToDomain);
 
@@ -246,7 +247,7 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
           >
             <div className="min-w-0">
               <div className="text-[12px] font-semibold" style={{ color: BENCH.text }}>
-                Build bench — ATX desktop
+                Build bench — {chassis.label}
               </div>
               <div className="truncate text-[10px]" style={{ color: BENCH.textDim }}>
                 {tool === "screwdriver"
@@ -266,6 +267,32 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
                           : "Build complete. Power on to POST."}
               </div>
             </div>
+
+            {/*
+              Machine selector — free practice only.
+              A ticket names the machine, so offering to change it mid-job
+              would let someone answer "replace the failed DIMM in the server"
+              by putting a laptop on the bench.
+            */}
+            {!assignment && (
+              <div className="ml-3 flex shrink-0 items-center gap-1">
+                {(["desktop", "laptop", "server"] as const).map((id) => (
+                  <button
+                    key={id}
+                    onClick={() => startBuild(id)}
+                    aria-pressed={chassis.id === id}
+                    className="rounded border px-2 py-1 text-[10px] font-medium capitalize transition-colors"
+                    style={{
+                      borderColor: chassis.id === id ? BENCH.accent : BENCH.line,
+                      background: chassis.id === id ? `${BENCH.accent}22` : "transparent",
+                      color: chassis.id === id ? BENCH.text : BENCH.textDim,
+                    }}
+                  >
+                    {id}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Multimeter readout — only while the probe is in hand. */}
             {tool === "multimeter" && (

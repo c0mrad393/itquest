@@ -226,9 +226,11 @@ export function seatBox(c: Chassis, partId: PartId): Box | null {
 export function trayBox(c: Chassis, partId: PartId): Box {
   const t = c.tray[partId] ?? { x: 1200, y: 200 };
   const size = PART_MM[partId] ?? { w: 60, h: 40 };
-  // Tray copies are shown at 62%: the bench is a workspace, and a 540-unit GPU
-  // laid out at full size would crowd out everything beside it.
-  const s = 0.62;
+  // Tray copies are shrunk: the bench is a workspace, and a 540-unit GPU laid
+  // out at full size would crowd out everything beside it. The factor is the
+  // chassis's, because how much room the column has depends on how big the
+  // machine beside it is and how many parts it has.
+  const s = c.trayScale;
   return { x: t.x, y: t.y, w: mm(size.w) * s, h: mm(size.h) * s };
 }
 

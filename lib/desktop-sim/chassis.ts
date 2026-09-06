@@ -106,6 +106,16 @@ export interface Chassis {
   standoffs: { id: string; x: number; y: number }[];
   /** Where loose parts rest before they are fitted, in canvas space. */
   tray: Partial<Record<PartId, { x: number; y: number }>>;
+  /**
+   * How large tray copies are drawn, as a fraction of true size.
+   *
+   * Per machine, because the tray has a fixed column beside the chassis and
+   * the machines do not have a fixed number of parts. A 2U has fifteen and a
+   * big board; a tower has nine. Drawing both at the tower's 62% is what put
+   * four server DIMMs on top of each other and pushed the air baffle off the
+   * canvas.
+   */
+  trayScale: number;
   /** Everything this machine is made of, in the order it is built. */
   parts: PartId[];
   cables: CableId[];
@@ -191,6 +201,7 @@ export const DESKTOP: Chassis = {
     gpu: { x: 1148, y: 676 },
     psu: { x: 1148, y: 838 },
   },
+  trayScale: 0.62,
   parts: ["mobo", "psu", "cpu", "paste", "cooler", "ram1", "ram2", "ssd", "gpu"],
   cables: ["atx24", "cpu8", "pcie8"],
 };
@@ -282,6 +293,7 @@ export const LAPTOP: Chassis = {
     heatpipe: { x: 1160, y: 610 },
     blower: { x: 1160, y: 680 },
   },
+  trayScale: 0.62,
   parts: ["lapboard", "battery", "sodimm1", "sodimm2", "wlan", "nvme", "heatpipe", "blower"],
   cables: ["battconn", "fanconn"],
 };
@@ -389,22 +401,27 @@ export const SERVER: Chassis = {
     { id: "ss-7", x: 165, y: 293 },
     { id: "ss-8", x: 318, y: 293 },
   ].map((s) => ({ id: s.id, x: SRV_BOARD.x + mm(s.x), y: SRV_BOARD.y + mm(s.y) })),
+  /*
+   * Packed against the chassis's own right edge (x 1094) and checked entry by
+   * entry: nothing overlaps the case, the canvas edge or another part.
+   */
+  trayScale: 0.42,
   tray: {
-    srvboard: { x: 1180, y: 60 },
-    cpuA: { x: 1180, y: 420 },
-    cpuB: { x: 1250, y: 420 },
-    hsA: { x: 1180, y: 490 },
-    hsB: { x: 1330, y: 490 },
-    rdimm1: { x: 1180, y: 630 },
-    rdimm2: { x: 1290, y: 630 },
-    rdimm3: { x: 1400, y: 630 },
-    rdimm4: { x: 1510, y: 630 },
-    riser: { x: 1180, y: 700 },
-    bayA: { x: 1180, y: 760 },
-    bayB: { x: 1330, y: 760 },
-    psuA: { x: 1180, y: 860 },
-    psuB: { x: 1330, y: 860 },
-    baffle: { x: 1180, y: 940 },
+    srvboard: { x: 1110, y: 16 },
+    baffle: { x: 1110, y: 284 },
+    cpuA: { x: 1370, y: 284 },
+    cpuB: { x: 1370, y: 333 },
+    hsA: { x: 1110, y: 422 },
+    hsB: { x: 1187, y: 422 },
+    bayA: { x: 1264, y: 422 },
+    bayB: { x: 1375, y: 422 },
+    rdimm1: { x: 1110, y: 499 },
+    rdimm2: { x: 1232, y: 499 },
+    riser: { x: 1360, y: 499 },
+    rdimm3: { x: 1110, y: 535 },
+    rdimm4: { x: 1232, y: 535 },
+    psuA: { x: 1110, y: 571 },
+    psuB: { x: 1221, y: 571 },
   },
   parts: [
     "srvboard", "cpuA", "cpuB", "hsA", "hsB",
