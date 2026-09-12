@@ -158,6 +158,8 @@ import {
   seatsUsed,
 } from "../.test-build/admin/mock-data.js";
 import { TIERS, allows, firstTierWith, lockReason } from "../.test-build/platform/tiers.js";
+import { progressOf, stuck, summarise } from "../.test-build/cohort/ledger.js";
+import { LEDGER, seatIds } from "../.test-build/cohort/mock-data.js";
 import {
   canTakeOn,
   freshShift,
@@ -2251,6 +2253,74 @@ group("Client endpoints skip the rack chain");
          so.x >= c.inner.x && so.x <= c.inner.x + c.inner.w &&
          so.y >= c.inner.y && so.y <= c.inner.y + c.inner.h, true);
     }
+  }
+
+  group("Cohort — the console reads a ledger, not forty live estates");
+
+  {
+    const seats = seatIds();
+
+    // The trail is small. That is the whole architectural claim: a run writes
+    // a few hundred bytes, so a cohort fits in kilobytes where forty live
+    // VMStates would not fit at all.
+    eq("the term is a few hundred events, not a datacentre", LEDGER.length < 400, true);
+    eq("...and every event names a seat on the roster",
+       LEDGER.every((e) => seats.includes(e.seat)), true);
+    eq("...in time order", LEDGER.every((e, i, a) => i === 0 || a[i - 1].at <= e.at), true);
+
+    // Everything is DERIVED. Nothing stores a progress number to fall out of
+    // step with the events that produced it.
+    const sum = summarise(LEDGER, seats);
+    eq("the cohort count is the roster", sum.seats, seats.length);
+    eq("resolved adds up across seats",
+       seats.reduce((n, s) => n + progressOf(LEDGER, s).resolved, 0), sum.resolved);
+    eq("started adds up too",
+       seats.reduce((n, s) => n + progressOf(LEDGER, s).started, 0), sum.started);
+
+    // Two seats were provisioned and never signed in. That absence is the
+    // finding — a console that silently skipped them would hide it.
+    eq("seats that never signed in leave no trail", sum.active, seats.length - 2);
+    eq("...and a never-active seat reports nothing rather than crashing",
+       progressOf(LEDGER, "s-11").lastActiveAt, null);
+    eq("...with no open run", progressOf(LEDGER, "s-11").openRun, null);
+
+    // An unknown seat must answer emptily rather than throw: rosters change.
+    eq("an unknown seat is empty, not an error", progressOf(LEDGER, "nobody").started, 0);
+
+    /*
+     * THE QUESTION THE CONSOLE EXISTS TO ANSWER.
+     * Not "how many tickets are open" but "which exercise is my class unable
+     * to do". The fixture is shaped so PoE is that exercise, and the
+     * derivation has to find it without being told.
+     */
+    const hardest = sum.hardest[0];
+    eq("the hardest scenario surfaces on its own", hardest.scenario, "csc-t2-poe");
+    eq("...because most attempts do not finish", hardest.completionRate < 0.5, true);
+    eq("...and it draws the most hints",
+       sum.hardest.every((d) => d.hintsTaken <= hardest.hintsTaken), true);
+    // Ordering is worst-first, which is the order an instructor reads.
+    eq("difficulty is ordered worst first",
+       sum.hardest.every((d, i, a) => i === 0 || (a[i - 1].completionRate ?? 1) <= (d.completionRate ?? 1)), true);
+
+    // Stuck means OPEN AND QUIET. Not "slow" and not "took hints" — a student
+    // working carefully through a hard scenario is both, and flagging them
+    // would train an instructor to ignore the list.
+    const st = stuck(LEDGER, seats, 900);
+    eq("the stalled runs are found", st.length > 0, true);
+    eq("...every one of them is still open",
+       st.every((x) => progressOf(LEDGER, x.seat).openRun !== null), true);
+    eq("...and none of them has finished that scenario",
+       st.every((x) => !LEDGER.some((e) => e.seat === x.seat && e.scenario === x.scenario && e.kind === "ticket.resolved")), true);
+    eq("...longest stall first", st.every((x, i, a) => i === 0 || a[i - 1].stalledSec >= x.stalledSec), true);
+    // A tighter threshold can only ever find fewer.
+    eq("a longer stall threshold narrows the list",
+       stuck(LEDGER, seats, 100000).length <= st.length, true);
+
+    // Median, not mean: one abandoned marathon must not make a steady student
+    // look slow.
+    const steady = progressOf(LEDGER, "s-05");
+    eq("a busy seat reports a median time", typeof steady.medianResolveSec, "number");
+    eq("...and resolves more than it abandons", steady.resolved > steady.abandoned, true);
   }
 
   group("Platform — the tiers are an arc, not a feature list");
