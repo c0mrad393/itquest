@@ -33,6 +33,7 @@
 import { useMemo } from "react";
 import { useInfraStore } from "@/lib/infra/store";
 import { useHostStore } from "@/lib/host/store";
+import { useEntitlements } from "@/lib/platform/entitlements";
 import { useTicketStore } from "@/lib/host/tickets-store";
 import { useNotificationStore } from "@/lib/host/notifications-store";
 import { useTrafficOverrides } from "@/lib/host/devtools";
@@ -66,6 +67,7 @@ export default function Dashboard() {
   const infra = useInfraStore((s) => s.infra);
   const overrides = useTrafficOverrides();
   const user = useHostStore((s) => s.host.user);
+  const { atLevelCap } = useEntitlements();
   const openApp = useHostStore((s) => s.openApp);
   const tickets = useTicketStore((s) => s.tickets);
   const select = useTicketStore((s) => s.select);
@@ -141,6 +143,41 @@ export default function Dashboard() {
   return (
     <div className="h-full overflow-y-auto bg-sunken/80 backdrop-blur-xl">
       <div className="mx-auto max-w-6xl space-y-4 p-5">
+        {/*
+          ── The end of the chapter ──────────────────────────────────────
+
+          Shown only at the plan's ceiling, and written as the next part of
+          the story rather than as a limit. The company genuinely is about to
+          grow — four new departments and a file server that has to carry them
+          — so the honest sentence is an invitation, not a refusal. A wall that
+          says "upgrade to continue" tells a player they were stopped; this
+          tells them where they got to.
+        */}
+        {atLevelCap(user.level) && (
+          <section className="rounded-lg border border-info/30 bg-info/[0.06] p-4">
+            <div className="flex flex-wrap items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-[13px] font-semibold text-gray-100">
+                  You have taken {infra.clientOrg} as far as the first rack goes.
+                </h2>
+                <p className="mt-1 text-[12px] leading-relaxed text-gray-400">
+                  Level {user.level} is where a service desk stops being the whole job. The business
+                  is opening four new departments and needs a file server that can carry them —
+                  organisational units, group-based shares, storage that does not run out. That is
+                  the next chapter, and it runs past where this plan ends.
+                </p>
+                <p className="mt-2 text-[11.5px] text-gray-500">
+                  Your experience keeps counting in the meantime. Nothing you do now is lost when
+                  you carry on.
+                </p>
+              </div>
+              <span className="shrink-0 rounded-md border border-info/40 px-2 py-1 text-[11px] font-semibold text-info">
+                Pro
+              </span>
+            </div>
+          </section>
+        )}
+
         {/* ── Greeting ────────────────────────────────────────────────── */}
         <header className="flex flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1">

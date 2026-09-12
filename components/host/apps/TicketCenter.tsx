@@ -106,7 +106,14 @@ export default function TicketCenter() {
   const { tickets, selectedId, filters, density, select, setFilter, setDensity } = useTicketStore();
   const visible = useMemo(() => applyFilters(tickets, filters), [tickets, filters]);
   const selected = tickets.find((t) => t.id === selectedId) ?? null;
-  const pro = density === "advanced";
+  /*
+   * Display DENSITY, not the subscription plan.
+   *
+   * This was called `pro`, which now collides head-on with the paid tier —
+   * `pro && <Emotion/>` reads as a paywall and is nothing of the sort. It is
+   * the operator's own choice of how much detail to show.
+   */
+  const advanced = density === "advanced";
 
   // Mail-only escalations aren't on the board yet, so they don't count here.
   const openCount = tickets.filter(
@@ -139,7 +146,7 @@ export default function TicketCenter() {
         view of the queue, so a beginner loses nothing by not having it — and
         gains a screen with one less row of controls to interpret.
       */}
-      {pro && (
+      {advanced && (
         <FilterBar>
           <div className="scroll-thin flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
             {CATEGORIES.map((c) => (
@@ -206,7 +213,7 @@ export default function TicketCenter() {
               key={t.id}
               ticket={t}
               active={t.id === selectedId}
-              pro={pro}
+              advanced={advanced}
               onClick={() => select(t.id)}
             />
           ))}
@@ -217,7 +224,7 @@ export default function TicketCenter() {
             // Keyed on the ticket id so switching requests replays the entrance
             // rather than swapping text in place — the pane visibly becomes a
             // different document, which is the whole job of the transition.
-            <TicketDetail key={selected.id} ticket={selected} pro={pro} />
+            <TicketDetail key={selected.id} ticket={selected} advanced={advanced} />
           ) : (
             <EmptyDetail />
           )}
@@ -230,12 +237,12 @@ export default function TicketCenter() {
 function TicketRow({
   ticket,
   active,
-  pro,
+  advanced,
   onClick,
 }: {
   ticket: Ticket;
   active: boolean;
-  pro: boolean;
+  advanced: boolean;
   onClick: () => void;
 }) {
   const track = TRACK_META[ticket.track];
@@ -270,7 +277,7 @@ function TicketRow({
       <div className="flex items-center gap-2">
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${sev.dot}`} title={sev.label} />
         <span className="font-mono text-[10px] text-gray-500">{ticket.code}</span>
-        {pro && (
+        {advanced && (
           <span
             className={`rounded px-1 py-0.5 text-[9px] font-bold ${DIFFICULTY_BADGE[ticket.difficulty].color}`}
             title={ticket.difficulty}
@@ -278,7 +285,7 @@ function TicketRow({
             {DIFFICULTY_BADGE[ticket.difficulty].label}
           </span>
         )}
-        {pro && emotion && (
+        {advanced && emotion && (
           <span
             className={`rounded px-1 py-0.5 text-[10px] ${EMOTION_META[emotion].color}`}
             title={EMOTION_META[emotion].label}
@@ -312,27 +319,32 @@ function TicketRow({
       </div>
 
       <div className="flex items-center gap-2 text-[10px] text-gray-500">
-        {pro && (
+        {advanced && (
           <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 ${track.color}`}>
             <AppIcon id={track.iconId} size={11} /> {ticket.category}
           </span>
         )}
         <span className="truncate">{ticket.requester.name}</span>
         <span className="ml-auto shrink-0">{relativeTime(ticket.createdAt)}</span>
-        {pro && live && <span className="shrink-0 text-gray-600">· {status.label}</span>}
+        {advanced && live && <span className="shrink-0 text-gray-600">· {status.label}</span>}
       </div>
     </button>
   );
 }
 
-function TicketDetail({ ticket, pro }: { ticket: Ticket; pro: boolean }) {
+function TicketDetail({ ticket, advanced }: { ticket: Ticket; advanced: boolean }) {
   const { accept, escalate, setStatus } = useTicketStore();
   const openApp = useHostStore((s) => s.openApp);
   const openAppFocused = useHostStore((s) => s.openAppFocused);
   // Null for anything with no bench work, which is what picks the CTA below.
   const hwJob = isHardwareTicket(ticket.templateId, ticket.tags) ? jobForTicket(ticket) : null;
   const operator = useHostStore((s) => s.host.user.displayName);
-  const { shift } = useEntitlements();
+  const { shift, can } = useEntitlements();
+  const allTickets = useTicketStore((s) => s.tickets);
+  const history = {
+    can: can("ticket-history"),
+    resolvedCount: allTickets.filter((t) => t.status === "resolved" || t.status === "closed").length,
+  };
   const dialogueEvent = useDialogueStore((s) => s.event);
 
   const track = TRACK_META[ticket.track];
@@ -345,6 +357,50 @@ function TicketDetail({ ticket, pro }: { ticket: Ticket; pro: boolean }) {
   function onAccept() {
     accept(ticket.id, operator);
     dialogueEvent(ticket.id, "accepted");
+  }
+
+  /*
+   * REVIEWING CLOSED WORK IS THE THING YOU BUY.
+   *
+   * Not an artificial gate: going back over a ticket you solved — what the
+   * symptom was, what you tried, what actually fixed it — is how any of this
+   * turns into skill. It is genuinely the most valuable thing here to someone
+   * a week in, which is exactly why it belongs to the paid plan.
+   *
+   * The ticket is NOT hidden. Someone who closed twenty-three of these should
+   * see that they did, and be told what reviewing them would give — a list
+   * that quietly omits your own work teaches you nothing and sells nothing.
+   */
+  if (closed && !history.can) {
+    return (
+      <div className="detail-in flex flex-col gap-4 p-4">
+        <div>
+          <div className="font-mono text-xs text-gray-500">{ticket.code}</div>
+          <h2 className="mt-1 text-sm font-semibold text-gray-100">{ticket.title}</h2>
+          <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-500">
+            <span className={`rounded px-1.5 py-0.5 ${status.color}`}>{status.label}</span>
+            <span>You closed this one.</span>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-info/30 bg-info/[0.06] p-4">
+          <div className="text-[12.5px] font-semibold text-gray-100">
+            Reviewing closed tickets is part of Pro
+          </div>
+          <p className="mt-1.5 text-[11.5px] leading-relaxed text-gray-400">
+            Going back over what you fixed — the symptom, what you ruled out, what actually worked —
+            is how the next one gets faster. Pro keeps every ticket you have closed, with the
+            transcript and the estate as it stood.
+          </p>
+          {history.resolvedCount > 0 && (
+            <p className="mt-2 text-[11.5px] text-gray-300">
+              You have <span className="font-semibold text-gray-100">{history.resolvedCount}</span>{" "}
+              closed ticket{history.resolvedCount === 1 ? "" : "s"} waiting to be reviewed.
+            </p>
+          )}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -363,7 +419,7 @@ function TicketDetail({ ticket, pro }: { ticket: Ticket; pro: boolean }) {
           {/* Severity stays in both densities — it is the ranking signal.
               Track and priority are routing metadata and go with Advanced. */}
           <span className={`rounded border px-1.5 py-0.5 text-[10px] ${sev.color}`}>{sev.label}</span>
-          {pro && (
+          {advanced && (
             <>
               <span
                 className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] ${track.color}`}
@@ -425,7 +481,7 @@ function TicketDetail({ ticket, pro }: { ticket: Ticket; pro: boolean }) {
         the DOM stable and animates the height, so switching density does not
         make the pane jump.
       */}
-      <Reveal open={pro}>
+      <Reveal open={advanced}>
         <div className="flex flex-col gap-4">
           <Field label="Affected nodes">
             <div className="flex flex-wrap gap-1.5">
@@ -529,7 +585,7 @@ function TicketDetail({ ticket, pro }: { ticket: Ticket; pro: boolean }) {
         )}
       </div>
 
-      <Reveal open={pro}>
+      <Reveal open={advanced}>
         <div className="text-[10px] text-gray-600">
           XP reward: {ticket.xpReward} · Scenario: <span className="font-mono">{ticket.scenarioId}</span>
         </div>
