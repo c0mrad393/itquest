@@ -26,6 +26,7 @@ import { useState } from "react";
 import { AdminPage, Card, MockBanner } from "@/components/admin/AdminShell";
 import {
   ACTIVE_SCENARIOS,
+  openTicketsFor,
   relativeTime,
   type ActiveScenario,
   type ScenarioState,
@@ -128,7 +129,7 @@ export default function SimulatorControls() {
                           <span className="font-mono text-[10px] tabular-nums text-gray-400">{s.progressPct}%</span>
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 font-mono tabular-nums text-gray-400">{s.openTickets}</td>
+                      <td className="px-3 py-2.5 font-mono tabular-nums text-gray-400">{openTicketsFor(s.id)}</td>
                       <td className="px-4 py-2.5">
                         <div className="flex justify-end gap-1.5">
                           <button

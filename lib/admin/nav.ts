@@ -16,7 +16,12 @@ export interface AdminSection {
   /** Shown under the page title, and as the sidebar tooltip when collapsed. */
   blurb: string;
   iconId: AdminIconId;
-  /** Phase 1 ships the overview and the simulator bench; the rest are stubs. */
+  /**
+   * Does this section have a screen?
+   *
+   * Every section does now. Kept because the sidebar still reads it, and the
+   * next section added will be false before it is true.
+   */
   ready: boolean;
 }
 
@@ -30,11 +35,11 @@ export type AdminIconId =
 
 export const ADMIN_SECTIONS: AdminSection[] = [
   { slug: "", label: "Dashboard", blurb: "Fleet health, activity and load at a glance", iconId: "dashboard", ready: true },
-  { slug: "users", label: "User Management", blurb: "Accounts, roles and access across every org", iconId: "users", ready: false },
+  { slug: "users", label: "User Management", blurb: "Accounts, roles and access across every org", iconId: "users", ready: true },
   { slug: "simulator", label: "Simulator Controls", blurb: "Running scenarios, fault injection and run state", iconId: "simulator", ready: true },
-  { slug: "tickets", label: "Ticketing System", blurb: "Support requests raised by operators in training", iconId: "tickets", ready: false },
-  { slug: "subscriptions", label: "Enterprise Subscriptions", blurb: "B2B accounts, seats and renewals", iconId: "subscriptions", ready: false },
-  { slug: "settings", label: "Global Settings", blurb: "Platform defaults, retention and integrations", iconId: "settings", ready: false },
+  { slug: "tickets", label: "Ticketing System", blurb: "Support requests raised by operators in training", iconId: "tickets", ready: true },
+  { slug: "subscriptions", label: "Enterprise Subscriptions", blurb: "B2B accounts, seats and renewals", iconId: "subscriptions", ready: true },
+  { slug: "settings", label: "Global Settings", blurb: "Platform defaults, retention and integrations", iconId: "settings", ready: true },
 ];
 
 export const adminHref = (slug: string) => (slug ? `/admin/${slug}` : "/admin");

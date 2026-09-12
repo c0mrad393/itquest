@@ -146,6 +146,17 @@ import {
   overlaps as boxOverlaps,
 } from "../.test-build/desktop-sim/geometry.js";
 import { CHASSIS, DESKTOP, LAPTOP, SERVER } from "../.test-build/desktop-sim/chassis.js";
+import {
+  ACTIVE_SCENARIOS,
+  PLATFORM_SETTINGS,
+  SUBSCRIPTIONS,
+  SUPPORT_TICKETS,
+  inDays,
+  isBreached,
+  openTickets,
+  openTicketsFor,
+  seatsUsed,
+} from "../.test-build/admin/mock-data.js";
 
 /*
  * The desktop's own numbers, which most of the spatial specs below are written
@@ -2231,6 +2242,61 @@ group("Client endpoints skip the rack chain");
          so.x >= c.inner.x && so.x <= c.inner.x + c.inner.w &&
          so.y >= c.inner.y && so.y <= c.inner.y + c.inner.h, true);
     }
+  }
+
+  group("Admin — the panel's figures are derived, and its dates point the right way");
+
+  {
+    const DAY = 86_400_000;
+    const t0 = 1_700_000_000_000;
+
+    /*
+     * `inDays` ran its subtraction the PAST direction inside a function whose
+     * whole job is to describe a renewal that has not happened yet. Every
+     * future date came out negative, took the "today" branch, and four
+     * accounts renewing across four months all read the same.
+     */
+    eq("a date a month out reads as future", inDays(t0 + 30 * DAY, t0), "in 30 days");
+    eq("tomorrow is singular", inDays(t0 + DAY, t0), "in 1 day");
+    eq("today is today", inDays(t0, t0), "today");
+    eq("a past date reads as past", inDays(t0 - 12 * DAY, t0), "12 days ago");
+    eq("...and is singular too", inDays(t0 - DAY, t0), "1 day ago");
+
+    // The open-ticket figure and the triage queue are ONE list. They used to be
+    // a number stored on each run and a set of rows, free to disagree.
+    const openRows = SUPPORT_TICKETS.filter((t) => t.state !== "resolved").length;
+    eq("the headline count is the queue", openTickets(), openRows);
+    eq("per-run counts add up to the whole",
+       ACTIVE_SCENARIOS.reduce((n, r) => n + openTicketsFor(r.id), 0) +
+         SUPPORT_TICKETS.filter((t) => t.runId === null && t.state !== "resolved").length,
+       openTickets());
+
+    // Breach is a comparison with the clock, so it must move when the clock does.
+    const overdue = SUPPORT_TICKETS.find((t) => t.state !== "resolved");
+    eq("a ticket is not breached before it is due", isBreached(overdue, overdue.dueAt - 1000), false);
+    eq("...and is breached after", isBreached(overdue, overdue.dueAt + 1000), true);
+    // A closed ticket cannot breach, however long ago it was due.
+    const closed = SUPPORT_TICKETS.find((t) => t.state === "resolved");
+    eq("a resolved ticket never breaches", isBreached(closed, Date.now() + 400 * DAY), false);
+
+    // Every ticket points at a run that exists, or at nothing on purpose.
+    for (const t of SUPPORT_TICKETS) {
+      if (!t.runId) continue;
+      eq(`${t.id} points at a real run`, ACTIVE_SCENARIOS.some((r) => r.id === t.runId), true);
+    }
+
+    // Seats cannot be used that were never bought.
+    for (const sub of SUBSCRIPTIONS) {
+      eq(`${sub.org} does not oversubscribe its own seats`, sub.seatsUsed <= sub.seats, true);
+    }
+    eq("the seat totals agree with the accounts",
+       SUBSCRIPTIONS.reduce((n, x) => n + x.seatsUsed, 0), seatsUsed());
+
+    // The masked credential is masked, and is not a plausible live key.
+    eq("the API credential is masked", /\*{6,}/.test(PLATFORM_SETTINGS.apiKeyMasked), true);
+    eq("...and is marked as a demo value", PLATFORM_SETTINGS.apiKeyMasked.startsWith("itq_demo_"), true);
+    // And a rotation is something that already happened.
+    eq("the key was rotated in the past", PLATFORM_SETTINGS.apiKeyRotatedAt < Date.now(), true);
   }
 
   group("Bench — every hardware ticket opens the simulator");

@@ -21,6 +21,7 @@
  * than it was on the landing page.
  */
 
+import * as React from "react";
 import { useEffect } from "react";
 import AdminSidebar from "./AdminSidebar";
 import AdminHeader from "./AdminHeader";
@@ -131,5 +132,142 @@ export function Card({
       )}
       <div className={bodyClassName}>{children}</div>
     </section>
+  );
+}
+
+// ── Shared table furniture ──────────────────────────────────────────────────
+
+export type Tone = "ok" | "warn" | "bad" | "info" | "neutral";
+
+const TONE_CLASS: Record<Tone, string> = {
+  ok: "bg-accent/15 text-accent-strong",
+  warn: "bg-warn/15 text-warn-strong",
+  bad: "bg-danger/15 text-danger-strong",
+  info: "bg-info/15 text-info",
+  neutral: "bg-gray-500/15 text-gray-400",
+};
+
+/** A status chip. One shape for every state word in the panel. */
+export function Pill({ tone = "neutral", children }: { tone?: Tone; children: React.ReactNode }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded px-1.5 py-0.5 text-[10.5px] font-semibold ${TONE_CLASS[tone]}`}>
+      {children}
+    </span>
+  );
+}
+
+/** A search box and a row of filter groups above a table. */
+export function Toolbar({
+  query,
+  onQuery,
+  placeholder = "Search…",
+  children,
+}: {
+  query: string;
+  onQuery: (v: string) => void;
+  placeholder?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-edge bg-surface-2 px-3 py-2">
+      <input
+        value={query}
+        onChange={(e) => onQuery(e.target.value)}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        className="h-7 min-w-[12rem] flex-1 rounded border border-edge bg-surface px-2 text-[12px] text-gray-200 outline-none placeholder:text-gray-600 focus:border-info/50"
+      />
+      {children}
+    </div>
+  );
+}
+
+/** One exclusive filter group — "all" plus the values it can take. */
+export function FilterGroup<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T | "all";
+  options: readonly T[];
+  onChange: (v: T | "all") => void;
+}) {
+  const all: (T | "all")[] = ["all", ...options];
+  return (
+    <div className="flex items-center gap-1" role="group" aria-label={label}>
+      {all.map((o) => (
+        <button
+          key={o}
+          onClick={() => onChange(o)}
+          aria-pressed={value === o}
+          className={`rounded px-1.5 py-0.5 text-[11px] capitalize transition ${
+            value === o ? "bg-info/15 text-info" : "text-gray-500 hover:bg-panelalt hover:text-gray-300"
+          }`}
+        >
+          {o === "all" ? label : o.replace(/-/g, " ")}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The honest action log.
+ *
+ * Phase 1 has no backend, so a control that visually "worked" would be lying.
+ * Every action appends a line saying what was requested and that the call was
+ * not sent — and the same panel is where real responses will land, so the
+ * plumbing does not have to be invented later.
+ *
+ * Shared rather than re-implemented per page: four screens writing their own
+ * slightly different "not sent" wording is four chances to accidentally write
+ * one that sounds like it succeeded.
+ */
+export function useActionLog(limit = 12) {
+  const [lines, setLines] = React.useState<string[]>([]);
+  const record = React.useCallback(
+    (line: string) =>
+      setLines((l) => [`${new Date().toLocaleTimeString()}  ${line}`, ...l].slice(0, limit)),
+    [limit],
+  );
+  /** For anything that would change data. Always states that it did not. */
+  const recordCall = React.useCallback(
+    (line: string) => record(`${line} · not sent (no backend in Phase 1)`),
+    [record],
+  );
+  return { lines, record, recordCall };
+}
+
+export function ActionLog({ lines }: { lines: string[] }) {
+  return (
+    <Card title="Action log" subtitle="What this panel would have sent" bodyClassName="p-0">
+      {lines.length === 0 ? (
+        <p className="px-4 py-6 text-center text-[11.5px] text-gray-600">
+          Nothing yet. Actions you take appear here with what they would have called.
+        </p>
+      ) : (
+        <ul className="max-h-64 overflow-y-auto term-scroll divide-y divide-edge/60">
+          {lines.map((l, i) => (
+            <li key={i} className="px-3 py-1.5 font-mono text-[10.5px] leading-relaxed text-gray-400">
+              {l}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+/** A two-line figure for the small stat strips above a table. */
+export function Stat({ label, value, tone = "neutral" }: { label: string; value: React.ReactNode; tone?: Tone }) {
+  const colour =
+    tone === "bad" ? "text-danger-strong" : tone === "warn" ? "text-warn-strong" : tone === "ok" ? "text-accent-strong" : "text-gray-100";
+  return (
+    <div className="rounded-lg border border-edge bg-surface px-3 py-2.5">
+      <div className={`text-[17px] font-semibold tabular-nums ${colour}`}>{value}</div>
+      <div className="mt-0.5 text-[10.5px] uppercase tracking-wider text-gray-500">{label}</div>
+    </div>
   );
 }
