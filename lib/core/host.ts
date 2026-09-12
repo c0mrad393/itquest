@@ -35,7 +35,7 @@ export type HostAppId =
   | "leaderboard" // Global ranking
   | "settings" // Host settings
   | "appearance" // Skin, theme, wallpaper and desktop shortcuts
-  | "enterprise" // Locked B2B tier placeholder (no functionality yet)
+  | "enterprise" // Your account — plan, limits and what is left of today
   | "profile"; // Account & profile management (identity layer)
 
 export type HostAppCategory = "work" | "system";
@@ -417,11 +417,11 @@ export const HOST_APP_REGISTRY: HostAppRegistry = {
   },
   enterprise: {
     id: "enterprise",
-    title: "Enterprise Gateway",
+    title: "Your account",
     iconId: "building",
     category: "system",
     group: "system",
-    description: "Team, cohort and organisation features. Subscription tier — not yet available.",
+    description: "Your plan, the limits it carries, and what is left of today's shift.",
     defaultSize: { w: 760, h: 620 },
     minSize: { w: 420, h: 360 },
     singleton: true,
