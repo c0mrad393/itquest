@@ -46,6 +46,7 @@ export default function Navbar({ saved, onLaunch }: NavbarProps) {
       <nav className="ml-auto hidden items-center gap-6 text-[13px] text-slate-400 md:flex">
         <a href="#platform" className="transition-colors hover:text-white">Platform</a>
         <a href="#audience" className="transition-colors hover:text-white">For educators</a>
+        <Link href="/pricing" className="transition-colors hover:text-white">Pricing</Link>
         <a href="#contact" className="transition-colors hover:text-white">Contact</a>
       </nav>
 

@@ -158,6 +158,14 @@ import {
   seatsUsed,
 } from "../.test-build/admin/mock-data.js";
 import { TIERS, allows, firstTierWith, lockReason } from "../.test-build/platform/tiers.js";
+import {
+  PRICING,
+  format,
+  formatTotal,
+  perMonthFromYearly,
+  seatsTotal,
+  yearlySaving,
+} from "../.test-build/platform/pricing.js";
 import { progressOf, stuck, summarise } from "../.test-build/cohort/ledger.js";
 import { LEDGER, seatIds } from "../.test-build/cohort/mock-data.js";
 import {
@@ -2357,6 +2365,50 @@ group("Client endpoints skip the rack chain");
     eq("cohort reporting upsells to Enterprise", firstTierWith("cohort-reporting").id, "enterprise");
     eq("a reason is given when locked", typeof lockReason("free", "ticket-history"), "string");
     eq("...and none when allowed", lockReason("pro", "ticket-history"), null);
+  }
+
+  group("Platform — the price page and the plan cannot disagree");
+
+  {
+    // Money is minor units. A float that touches a price eventually bills
+    // somebody $8.999999999.
+    for (const id of ["free", "pro", "enterprise"]) {
+      const plan = PRICING[id];
+      for (const p of [plan.monthly, plan.yearly]) {
+        if (!p) continue;
+        eq(`${id} ${p.period} is a whole number of cents`, Number.isInteger(p.amount), true);
+        eq(`...and is not negative`, p.amount >= 0, true);
+      }
+    }
+
+    eq("free is actually free", PRICING.free.monthly.amount, 0);
+    eq("...and says so rather than printing $0", format(PRICING.free.monthly), "Free");
+
+    // A year must beat twelve months, or the annual plan is a worse deal
+    // dressed as a better one.
+    eq("a year costs less than twelve months",
+       PRICING.pro.yearly.amount < PRICING.pro.monthly.amount * 12, true);
+    eq("...and the saving is worth stating", yearlySaving(PRICING.pro) >= 20, true);
+    eq("the per-month figure is derived, not typed",
+       perMonthFromYearly(PRICING.pro.yearly), "$6.58/mo");
+
+    // Enterprise is sold by the seat, per year, and not self-serve.
+    eq("enterprise is priced per seat", PRICING.enterprise.yearly.unit, "seat");
+    eq("...with a floor", PRICING.enterprise.minimumSeats, 25);
+    eq("...and is a conversation, not a buy button", PRICING.enterprise.contactOnly, true);
+    eq("there is no monthly enterprise price", PRICING.enterprise.monthly, null);
+
+    // The floor is a floor: a smaller cohort still bills the minimum.
+    eq("ten seats bill as the minimum", seatsTotal(10), seatsTotal(25));
+    eq("forty seats bill as forty", seatsTotal(40), 40 * PRICING.enterprise.yearly.amount);
+    eq("...and reads as money", formatTotal(seatsTotal(40)), "$1,600");
+
+    // Every tier the product offers has a price entry. A plan the pricing page
+    // cannot describe is a plan nobody can buy.
+    for (const id of Object.keys(TIERS)) {
+      eq(`${id} has pricing`, Boolean(PRICING[id]), true);
+      eq(`...for the same tier`, PRICING[id].tier, id);
+    }
   }
 
   group("Platform — the shift limits what you start, not what you finish");
