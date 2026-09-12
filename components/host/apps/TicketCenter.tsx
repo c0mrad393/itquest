@@ -49,6 +49,7 @@ import { useMemo } from "react";
 import type { Ticket, TicketCategory, TicketSeverity } from "@/lib/core";
 import { applyFilters, useTicketStore, type TicketDensity } from "@/lib/host/tickets-store";
 import { useHostStore } from "@/lib/host/store";
+import { useEntitlements } from "@/lib/platform/entitlements";
 import { useDialogueStore } from "@/lib/dialogue/store";
 import { EMOTION_META } from "@/lib/dialogue/types";
 import { useNow } from "@/lib/sla/store";
@@ -331,6 +332,7 @@ function TicketDetail({ ticket, pro }: { ticket: Ticket; pro: boolean }) {
   // Null for anything with no bench work, which is what picks the CTA below.
   const hwJob = isHardwareTicket(ticket.templateId, ticket.tags) ? jobForTicket(ticket) : null;
   const operator = useHostStore((s) => s.host.user.displayName);
+  const { shift } = useEntitlements();
   const dialogueEvent = useDialogueStore((s) => s.event);
 
   const track = TRACK_META[ticket.track];
@@ -464,14 +466,30 @@ function TicketDetail({ ticket, pro }: { ticket: Ticket; pro: boolean }) {
         data-tutorial-target="ticket-actions"
         className="mt-2 flex flex-wrap items-center gap-2 border-t border-edge pt-3"
       >
-        {ticket.status === "new" && (
-          <button
-            onClick={onAccept}
-            className="rounded-md bg-brand-fill px-3 py-1.5 text-xs font-semibold text-brand-on transition hover:bg-brand-hover active:scale-[0.98]"
-          >
-            Accept ticket
-          </button>
-        )}
+        {ticket.status === "new" &&
+          /*
+            The shift, told in the desk's own voice.
+            "Your shift is over" is a chapter break; "you have hit your free
+            limit" is a paywall wearing a product's clothes. The work already
+            on the desk is untouched either way — the allowance limits what you
+            take on, never what you finish.
+          */
+          (shift.open ? (
+            <button
+              onClick={onAccept}
+              className="rounded-md bg-brand-fill px-3 py-1.5 text-xs font-semibold text-brand-on transition hover:bg-brand-hover active:scale-[0.98]"
+            >
+              Accept ticket
+            </button>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-warn/30 bg-warn/[0.07] px-3 py-2">
+              <span className="text-xs font-semibold text-warn-strong">Your shift is over.</span>
+              <span className="text-[11px] text-gray-400">
+                The next one starts in {shift.resetsIn}. Anything already on your desk can still be
+                finished.
+              </span>
+            </div>
+          ))}
         {(ticket.status === "accepted" || ticket.status === "in_progress") && (
           <button
             onClick={() => setStatus(ticket.id, "in_progress")}

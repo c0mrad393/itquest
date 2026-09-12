@@ -15,6 +15,7 @@ import { generateTicketQueue, generateTierBatch, applyQueueFaults, buildTicket, 
 import { mulberry32 } from "@/lib/org/rng";
 import { templateMinLevel } from "@/lib/progression/unlocks";
 import { useHostStore } from "@/lib/host/store";
+import { useEntitlementStore } from "@/lib/platform/entitlements";
 
 /**
  * The operator's level, read lazily.
@@ -154,14 +155,30 @@ export const useTicketStore = create<TicketStore>((set, get) => ({
   setStatus: (id, status) =>
     set((s) => ({ tickets: s.tickets.map((t) => (t.id === id ? { ...t, status } : t)) })),
 
-  accept: (id, assignee) =>
+  /*
+   * Taking a ticket on spends one of the shift's allowance.
+   *
+   * The check lives HERE and not only in the button, for the same reason the
+   * bench refuses an illegal placement inside its model: a view that forgets
+   * to ask gets "nothing happened" rather than a limit quietly ignored.
+   *
+   * It limits what you START. A ticket already accepted can always be worked
+   * and closed, whatever the clock says — cutting somebody off halfway through
+   * a diagnosis would punish the one behaviour this product exists to teach.
+   */
+  accept: (id, assignee) => {
+    const t = get().tickets.find((x) => x.id === id);
+    // Re-accepting something already on the desk must not cost a second one.
+    const fresh = t && t.status !== "accepted";
+    if (fresh && !useEntitlementStore.getState().spendShift()) return;
     set((s) => ({
       tickets: s.tickets.map((t) =>
         t.id === id
           ? { ...t, status: "accepted", assignee, clock: { ...t.clock, startedAt: t.clock.startedAt ?? Date.now() } }
           : t,
       ),
-    })),
+    }));
+  },
 
   escalate: (id) =>
     set((s) => ({

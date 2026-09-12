@@ -29,6 +29,7 @@ import {
 import { createHostWorkstation } from "./seed";
 import type { HostWorkstationState } from "@/lib/core";
 import { levelForXp } from "@/lib/scenario/scoring";
+import { useEntitlementStore } from "@/lib/platform/entitlements";
 import { playCue, setAudioEnabled } from "@/lib/audio/engine";
 
 const DESKTOP_MARGIN = 16;
@@ -348,7 +349,17 @@ export const useHostStore = create<HostStore>((set, get) => ({
     const before = get().host.user.level;
     set((s) => {
       const xp = s.host.user.xp + amount;
-      const level = levelForXp(xp);
+      /*
+       * XP still accrues past the plan's ceiling; the RANK stops.
+       *
+       * Banking the experience rather than discarding it matters: someone who
+       * plays three more days on the free tier and then upgrades should arrive
+       * where their work actually put them, not back at the cap. Throwing it
+       * away would make the ceiling a punishment instead of a pause.
+       */
+      const cap = useEntitlementStore.getState().levelCap();
+      const earned = levelForXp(xp);
+      const level = cap === null ? earned : Math.min(earned, cap);
       return { host: { ...s.host, user: { ...s.host.user, xp, level } } };
     });
     // Progression lives in the save slot, written by PersistenceManager. There

@@ -14,6 +14,7 @@ import {
   type HostAppId,
 } from "@/lib/core";
 import { useHostStore } from "@/lib/host/store";
+import { useEntitlements } from "@/lib/platform/entitlements";
 import { useContextMenuStore, type ContextMenuEntry } from "@/lib/host/context-menu";
 import { IconExpand, IconMinus, IconX } from "@/components/ui/icons";
 import { useTicketStore } from "@/lib/host/tickets-store";
@@ -49,6 +50,7 @@ export default function Taskbar({
   const openApp = useHostStore((s) => s.openApp);
   const taskbarActivate = useHostStore((s) => s.taskbarActivate);
   const host = useHostStore((s) => s.host);
+  const { shift } = useEntitlements();
   const themePref = useThemeStore((s) => s.preference);
   const resolvedTheme = useThemeStore((s) => s.resolved);
   const cycleTheme = useThemeStore((s) => s.cycle);
@@ -184,6 +186,40 @@ export default function Taskbar({
 
       {/* Right: system tray + Action Center + clock */}
       <div className="flex flex-1 items-center justify-end gap-1">
+        {/*
+          The shift meter.
+          Shown only while there IS a limit, and shown from the start rather
+          than at the end: a cap a player meets without warning reads as a
+          fault in the product. Seeing "3 of 5 left" all afternoon makes the
+          end of the shift a thing they watched coming.
+        */}
+        {shift.allowance !== null && (
+          <div
+            title={
+              shift.open
+                ? `${shift.remaining} of ${shift.allowance} tickets left in this shift`
+                : `Shift over — the next one starts in ${shift.resetsIn}`
+            }
+            className={`mr-1 hidden items-center gap-1.5 rounded-md px-2 py-1 sm:flex ${
+              shift.open ? "text-gray-400" : "text-warn-strong"
+            }`}
+          >
+            <span aria-hidden="true" className="flex items-center gap-0.5">
+              {Array.from({ length: shift.allowance }, (_, i) => (
+                <span
+                  key={i}
+                  className={`h-3 w-1 rounded-sm ${
+                    i < (shift.remaining ?? 0) ? "bg-accent" : "bg-gray-500/35"
+                  }`}
+                />
+              ))}
+            </span>
+            <span className="font-mono text-[10px] tabular-nums">
+              {shift.open ? `${shift.remaining}/${shift.allowance}` : shift.resetsIn}
+            </span>
+          </div>
+        )}
+
         <div className="flex items-center gap-2.5 rounded-md px-2 py-1 text-gray-300 hover:bg-gray-500/15">
           <NetIcon on={host.tray.networkConnected} />
           <VolIcon />

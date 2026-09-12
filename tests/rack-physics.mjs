@@ -157,6 +157,15 @@ import {
   openTicketsFor,
   seatsUsed,
 } from "../.test-build/admin/mock-data.js";
+import { TIERS, allows, firstTierWith, lockReason } from "../.test-build/platform/tiers.js";
+import {
+  canTakeOn,
+  freshShift,
+  nextShiftAt,
+  remaining,
+  rollover,
+  takeOn,
+} from "../.test-build/platform/shift.js";
 
 /*
  * The desktop's own numbers, which most of the spatial specs below are written
@@ -2242,6 +2251,80 @@ group("Client endpoints skip the rack chain");
          so.x >= c.inner.x && so.x <= c.inner.x + c.inner.w &&
          so.y >= c.inner.y && so.y <= c.inner.y + c.inner.h, true);
     }
+  }
+
+  group("Platform — the tiers are an arc, not a feature list");
+
+  {
+    // Free must be a COMPLETE first job. If a capability the core loop needs
+    // were paid, the free queue would carry tickets it cannot answer — which
+    // teaches a new player the product is broken, not that they should pay.
+    eq("free reaches level 4", TIERS.free.levelCap, 4);
+    eq("free stays in the first growth phase", TIERS.free.phaseCap, 1);
+    eq("free has a shift allowance", TIERS.free.shiftAllowance, 5);
+    eq("pro is uncapped", TIERS.pro.levelCap, null);
+    eq("pro has no shift limit", TIERS.pro.shiftAllowance, null);
+
+    // The ranking is free on purpose: a leaderboard only paying players can
+    // see is a leaderboard of paying players, which is worth less to everyone.
+    eq("the leaderboard is free", allows("free", "leaderboard"), true);
+    // Reviewing closed work is the thing you buy.
+    eq("history is not", allows("free", "ticket-history"), false);
+    eq("...and pro has it", allows("pro", "ticket-history"), true);
+
+    // Enterprise is a superset of pro. A plan that costs more and does less in
+    // any respect is a plan someone will eventually be caught out by.
+    for (const f of TIERS.pro.features) {
+      eq(`enterprise keeps pro's ${f}`, allows("enterprise", f), true);
+    }
+    // ...and pro is a superset of free.
+    for (const f of TIERS.free.features) {
+      eq(`pro keeps free's ${f}`, allows("pro", f), true);
+    }
+
+    // An upsell names the plan that actually carries the thing.
+    eq("history upsells to Pro", firstTierWith("ticket-history").id, "pro");
+    eq("cohort reporting upsells to Enterprise", firstTierWith("cohort-reporting").id, "enterprise");
+    eq("a reason is given when locked", typeof lockReason("free", "ticket-history"), "string");
+    eq("...and none when allowed", lockReason("pro", "ticket-history"), null);
+  }
+
+  group("Platform — the shift limits what you start, not what you finish");
+
+  {
+    const DAY_MS = 86_400_000;
+    // Mid-morning, so adding hours inside the test never crosses midnight by
+    // accident and the day boundary is tested deliberately instead.
+    const t = new Date(2026, 4, 14, 10, 0, 0).getTime();
+
+    let s = freshShift(t);
+    eq("a fresh shift has used nothing", s.used, 0);
+    eq("five are available", remaining(s, 5, t), 5);
+
+    for (let i = 0; i < 5; i++) s = takeOn(s, 5, t);
+    eq("five taken on spends the shift", s.used, 5);
+    eq("nothing is left", remaining(s, 5, t), 0);
+    eq("and no more can be taken on", canTakeOn(s, 5, t), false);
+    // Spending past the end must not run the counter away.
+    eq("over-spending is refused, not counted", takeOn(s, 5, t).used, 5);
+
+    // The next day is a new shift — and it is the PLAYER's day.
+    const tomorrow = t + DAY_MS;
+    eq("a new day rolls the count over", rollover(s, tomorrow).used, 0);
+    eq("...and re-opens the desk", canTakeOn(s, 5, tomorrow), true);
+    eq("the same day does not", rollover(s, t + 3_600_000).used, 5);
+
+    // An unlimited plan is unlimited, and says so rather than returning a
+    // number a screen might render.
+    eq("pro has no remaining count", remaining(s, null, t), null);
+    eq("...and can always take one on", canTakeOn(s, null, t), true);
+
+    // The reset is local midnight, not UTC: "in the morning" has to mean the
+    // player's morning.
+    const reset = nextShiftAt(t);
+    eq("the next shift is at midnight", new Date(reset).getHours(), 0);
+    eq("...tonight, not tomorrow night", reset - t < DAY_MS, true);
+    eq("...and it is in the future", reset > t, true);
   }
 
   group("Admin — the panel's figures are derived, and its dates point the right way");

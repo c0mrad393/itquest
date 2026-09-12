@@ -23,6 +23,7 @@ import HostDesktop from "./HostDesktop";
 import BootSequence, { hasBootedThisSession } from "./BootSequence";
 import LoginScreen from "./LoginScreen";
 import { useAuthStore, signInBypassed } from "@/lib/host/auth";
+import { useEntitlementStore } from "@/lib/platform/entitlements";
 
 export default function DeskOSShell() {
   /*
@@ -37,14 +38,18 @@ export default function DeskOSShell() {
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn);
   const authReady = useAuthStore((s) => s.ready);
   const hydrateAuth = useAuthStore((s) => s.hydrate);
+  // The plan and the shift counter live in the browser, which does not exist
+  // during SSR — same reason auth hydrates here rather than in render.
+  const hydrateEntitlements = useEntitlementStore((s) => s.hydrate);
 
   useEffect(() => {
     hydrateAuth();
+    hydrateEntitlements();
     // The bypass skips the boot as well as the form. Someone who has turned it
     // on is debugging, and three seconds of kernel log every reload is the
     // thing they turned it on to avoid.
     setBooting(!signInBypassed() && !hasBootedThisSession());
-  }, [hydrateAuth]);
+  }, [hydrateAuth, hydrateEntitlements]);
 
   if (booting === null || !authReady) return <div className="h-screen w-screen bg-sunken" />;
   if (booting) return <BootSequence onDone={() => setBooting(false)} />;
