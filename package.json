@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
+    "//build:check": "A production build that does NOT touch .next, so it can run while `npm run dev` is up. `next build` and `next dev` share .next and clobber each other — a build mid-session leaves the running dev server throwing `Cannot find module './NNN.js'` until it is restarted.",
+    "build:check": "NEXT_DIST_DIR=.next-build next build",
     "start": "next start -p 3000",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",

@@ -146,6 +146,7 @@ import {
   overlaps as boxOverlaps,
 } from "../.test-build/desktop-sim/geometry.js";
 import { CHASSIS, DESKTOP, LAPTOP, SERVER } from "../.test-build/desktop-sim/chassis.js";
+import { LABEL_MIN_SIZE, trayLabel, trayLabelBox } from "../.test-build/desktop-sim/geometry.js";
 import {
   ACTIVE_SCENARIOS,
   PLATFORM_SETTINGS,
@@ -3681,6 +3682,63 @@ group("Client endpoints skip the rack chain");
   eq("a non-advancing step is refused", migrate({ version: 26, savedAt: NOW }, V, { 26: (s) => s }), null);
   eq("so is one that goes backwards", migrate({ version: 27, savedAt: NOW }, V, { 27: (s) => ({ ...s, version: 26 }), 26: (s) => ({ ...s, version: 27 }) }), null);
   eq("a save already current needs no walk", migrate({ version: V, savedAt: NOW }, V, {}).version, V);
+}
+
+{
+  /*
+   * TRAY LABELS.
+   *
+   * `trayScale` was added so no two PARTS overlap on the tray, and the specs
+   * for that passed the whole time the server's tray was unreadable: the
+   * labels were never in the guarantee. They were drawn at a fixed 15px, 18
+   * units below the art — numbers chosen against the desktop's 0.62 tray —
+   * and the server packs fifteen parts at 0.42, so "Heatsink 0" ran into
+   * "Heatsink 1" sideways and the DIMM labels landed on the row beneath.
+   *
+   * The label estimate below is deliberately WIDE. A check that assumed text
+   * was narrower than it renders would pass over the very collision it exists
+   * to find.
+   */
+  group("Bench tray — labels belong to the tray they are drawn on");
+
+  for (const c of Object.values(CHASSIS)) {
+    const { fontSize } = trayLabel(c);
+    eq(`${c.id}: label stays readable`, fontSize >= LABEL_MIN_SIZE, true);
+  }
+  // The denser tray gets the smaller label; that is the whole rule.
+  eq("the server's tray is tighter than the desktop's", SERVER.trayScale < DESKTOP.trayScale, true);
+  eq("so its labels are smaller", trayLabel(SERVER).fontSize < trayLabel(DESKTOP).fontSize, true);
+  eq("and sit closer to the art", trayLabel(SERVER).gap < trayLabel(DESKTOP).gap, true);
+  eq("the desktop is unchanged", trayLabel(DESKTOP).fontSize, 15);
+
+  group("Bench tray — no label collides with another label");
+  /*
+   * ONLY THE LABEL-VS-LABEL CHECK IS ASSERTED, AND THAT IS DELIBERATE.
+   *
+   * Label-vs-ART is also measurably broken and is NOT asserted here, because
+   * asserting it would mean weakening it to pass. The tray maps in
+   * chassis.ts were hand-authored around part boxes alone, with no band
+   * reserved for a name underneath, so on every chassis some label lands on a
+   * neighbour's artwork — 5 pairs on the desktop, 11 on the server. The worst
+   * is the desktop's "Thermal paste", whose label sits inside the cooler
+   * drawn beside it; most of the rest cross by about two units.
+   *
+   * Fixing it properly means re-authoring three tray layouts to reserve label
+   * space, and those layouts took nine spec failures to get right the first
+   * time. Writing a tolerant version of this check to make the suite green
+   * would bury that, so the measurement is written down here instead and the
+   * assertion waits for the layout work.
+   */
+  for (const c of Object.values(CHASSIS)) {
+    const boxes = partsOf(c).map((p) => ({ id: p.id, label: trayLabelBox(c, p.id, p.label) }));
+    let labelHits = 0;
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        if (boxOverlaps(boxes[i].label, boxes[j].label)) labelHits++;
+      }
+    }
+    eq(`${c.id}: no label overlaps another label`, labelHits, 0);
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

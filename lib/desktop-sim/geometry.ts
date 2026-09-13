@@ -282,3 +282,55 @@ export function artTransform(partId: PartId, box: Box, seated = false): string {
   // the origin to the seat's centre.
   return `translate(${cx} ${cy}) rotate(${rot}) scale(${scale}) translate(-50 ${-artH / 2})`;
 }
+
+// ── Tray labels ─────────────────────────────────────────────────────────────
+
+/** The tray scale the label constants were originally drawn against. */
+const LABEL_REFERENCE_SCALE = 0.62;
+
+/**
+ * How a part's name is drawn under it on the tray.
+ *
+ * These were fixed numbers — 15px, 18 units below the art — chosen against the
+ * desktop's 0.62 tray and then inherited unchanged by the server's 0.42 one.
+ * The server carries fifteen parts to the desktop's nine, so its tray is
+ * packed tighter, and a label that did not shrink with it collided twice
+ * over: sideways into the neighbour's name ("Heatsink 0" and "Heatsink 1" run
+ * together at a 77-unit pitch), and downwards onto the artwork of the row
+ * below, because 18 units of gap is most of the distance between two rows of
+ * DIMMs.
+ *
+ * The parts themselves never overlapped — `trayScale` was added to guarantee
+ * that and the specs check it. The labels were simply not part of that
+ * guarantee, so they were free to land anywhere.
+ *
+ * The tray is ONE drawing at ONE scale and its labels belong to it, so they
+ * scale with it. The floor is where the text stops being readable at all,
+ * which no amount of packing justifies crossing.
+ */
+export const LABEL_MIN_SIZE = 10;
+
+export function trayLabel(c: Chassis): { fontSize: number; gap: number } {
+  const k = c.trayScale / LABEL_REFERENCE_SCALE;
+  return {
+    fontSize: Math.max(LABEL_MIN_SIZE, Math.round(15 * k)),
+    gap: Math.max(8, Math.round(18 * k)),
+  };
+}
+
+/**
+ * The box a tray label occupies, for collision checks.
+ *
+ * The width is an ESTIMATE — SVG text cannot be measured without a document —
+ * and it is deliberately a generous one. A specification that assumes labels
+ * are narrower than they are would pass while they overlap on screen, which is
+ * the exact failure this exists to catch.
+ */
+export const LABEL_CHAR_W = 0.62;
+
+export function trayLabelBox(c: Chassis, partId: PartId, label: string): Box {
+  const b = trayBox(c, partId);
+  const { fontSize, gap } = trayLabel(c);
+  const w = label.length * fontSize * LABEL_CHAR_W;
+  return { x: b.x + b.w / 2 - w / 2, y: b.y + b.h + gap - fontSize, w, h: fontSize };
+}

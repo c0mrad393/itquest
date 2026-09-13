@@ -52,6 +52,7 @@ import {
   seatBox,
   snapTarget,
   trayBox,
+  trayLabel,
   zoneFor,
   type Box,
 } from "@/lib/desktop-sim/geometry";
@@ -214,6 +215,7 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
   if (phase === "running") return <RunningScreen hostname={registeredAs} />;
 
   const parts = partsOf(chassis);
+  const labelStyle = trayLabel(chassis);
   const cables = cablesOf(chassis);
   const zones = zonesOf(chassis);
   const dragged = drag ? parts.find((p) => p.id === drag.partId) ?? null : null;
@@ -723,11 +725,13 @@ export default function DesktopSimulator({ assignment }: { assignment?: BenchAss
                   filter="url(#ds-lift)"
                 >
                   <PartArt id={p.id} box={b} />
+                  {/* Sized and placed by the chassis, not by a constant that
+                      only ever suited the desktop — see `trayLabel`. */}
                   <text
                     x={b.x + b.w / 2}
-                    y={b.y + b.h + 18}
+                    y={b.y + b.h + labelStyle.gap}
                     textAnchor="middle"
-                    fontSize="15"
+                    fontSize={labelStyle.fontSize}
                     fill={blocked ? "#9aa4b0" : PAL.ink}
                     className="select-none"
                   >

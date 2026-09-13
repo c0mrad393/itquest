@@ -129,6 +129,34 @@ export default function TicketCenter() {
           onChange={(v) => setFilter("query", v)}
           placeholder="Search code, title, requester…"
         />
+        {/*
+          YOUR FINISHED WORK IS NOT AN ADVANCED CONCEPT.
+
+          This sat in the filter rail, which only exists in Advanced density,
+          under the single word "Resolved". So the only route to work you had
+          already completed was to change the density of the whole screen and
+          then recognise a checkbox — and since a closed ticket is also the
+          only thing that shows the Pro panel, the upsell it carries was
+          effectively unreachable too.
+
+          It says what it does now, and it is where someone would look for it.
+        */}
+        <label
+          className={`flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-[10.5px] transition ${
+            filters.showClosed
+              ? "border-info/40 bg-info/10 text-info"
+              : "border-edge text-gray-400 hover:text-gray-200"
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={filters.showClosed}
+            onChange={(e) => setFilter("showClosed", e.target.checked)}
+            className="accent-info"
+          />
+          Show my closed work
+        </label>
+
         {/* The density control lives in the header rather than in a menu: it
             changes what the whole screen looks like, so hiding it would make
             the change feel like the app deciding rather than the operator. */}
@@ -163,15 +191,6 @@ export default function TicketCenter() {
               label: s === "all" ? "Any" : SEVERITY_META[s].label,
             }))}
           />
-          <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[10px] text-gray-400">
-            <input
-              type="checkbox"
-              checked={filters.showClosed}
-              onChange={(e) => setFilter("showClosed", e.target.checked)}
-              className="accent-info"
-            />
-            Resolved
-          </label>
         </FilterBar>
       )}
 
