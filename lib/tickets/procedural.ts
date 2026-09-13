@@ -105,6 +105,28 @@ function anyWorkstation(infra: InfrastructureState, rng: Rng): TargetNode | null
   return ws.length ? pick(rng, ws) : null;
 }
 
+/**
+ * A Windows workstation that actually has the named service.
+ *
+ * FILTER FIRST, THEN PICK. Writing this as `anyWorkstation(...)` followed by a
+ * guard looks equivalent and is not: a phase-1 estate puts two workstations on
+ * the gateway and one of them is a Mac, so picking at random and then
+ * rejecting the wrong answer makes the whole family unhostable half the time —
+ * silently, because an unhostable template is simply skipped by the factory.
+ * That is how two families I had just written ended up generating nothing at
+ * all in a starter world.
+ */
+function windowsWorkstation(
+  infra: InfrastructureState,
+  rng: Rng,
+  service: string,
+): TargetNode | null {
+  const candidates = gatewayNodes(infra).filter(
+    (n) => n.role === "workstation" && n.os === "windows" && !!n.services?.[service],
+  );
+  return candidates.length ? pick(rng, candidates) : null;
+}
+
 function adUsers(infra: InfrastructureState) {
   const dc = nodesOf(infra).find((n) => n.role === "domain-controller");
   return dc && "activeDirectory" in dc ? dc.activeDirectory : null;
@@ -1927,6 +1949,213 @@ const FAMILIES: Family[] = [
           },
         },
       ),
+  },
+
+  /* ── First-shift breadth ────────────────────────────────────────────────
+   *
+   * A brand-new operator could only ever be handed five kinds of work, and
+   * nine of the twenty-four level-1 templates were the same account lockout.
+   * Nothing here needs a new mechanic: the estate already models Windows
+   * services, per-node DNS and the update agent, with panels to drive all
+   * three — no ticket had ever sent anybody to them.
+   *
+   * Every tag below is deliberately outside TAG_APP, so none of these gate on
+   * an app the free tier cannot reach.
+   */
+  {
+    id: "gen-print-spooler",
+    category: "System & Web Services",
+    track: "helpdesk",
+    tags: ["print", "service", "endpoint"],
+    tiers: ["Tier_1_Easy", "Tier_2_Medium"],
+    variants: 3,
+    build: ({ rng, tier, id }) => {
+      const dept = pick(rng, DEPARTMENTS);
+      const voice = pick(rng, VOICES);
+      const hard = tier !== "Tier_1_Easy";
+      return base({ category: "System & Web Services", track: "helpdesk", tags: ["print", "service", "endpoint"] }, tier, id, {
+        personaId: voice.persona,
+        summary: `Printing has stopped on a ${dept} machine — the spooler is not running.`,
+        hints: [
+          "Remote Gateway → RDP to the machine",
+          "Open Services and find Print Spooler",
+          hard
+            ? "Starting it is not enough here — check its startup type, or it will be gone again after a reboot"
+            : "Start the service, then have them print a test page",
+        ],
+        makeContext: (infra, r) => {
+          const ws = windowsWorkstation(infra, r, "Spooler");
+          if (!ws) return null;
+          return { targetNodeId: ws.nodeId, targetHostname: ws.hostname, department: dept };
+        },
+        title: (ctx) => `Nothing prints from ${ctx.targetHostname}`,
+        description: (ctx) =>
+          `User request:\nNobody in **${ctx.department}** can print from **${ctx.targetHostname}**. Jobs ` +
+          `sit in the queue and never come out.\n\nWhat we found:\n` +
+          `• The printer answers on the network — other machines print to it fine\n` +
+          `• The Print Spooler service on this machine is not running\n` +
+          (hard
+            ? `• Somebody set it to not start at all, so a reboot will not fix it\n`
+            : ``) +
+          `\nObjective:\n• Get printing working from this machine` +
+          (hard ? ` — and make sure it survives a restart` : ``),
+        requester: (ctx, org) => ({
+          name: `${ctx.department} Team`,
+          role: voice.role,
+          email: `${String(ctx.department).toLowerCase()}@${mailDomain(org)}`,
+          department: String(ctx.department),
+        }),
+        injectFault: (draft, ctx) => {
+          const n = draft.nodes[String(ctx.targetNodeId)];
+          if (!n || n.os !== "windows") return;
+          const svc = n.services.Spooler;
+          if (!svc) return;
+          svc.status = "Stopped";
+          svc.pid = null;
+          if (hard) svc.startupType = "Disabled";
+        },
+        /*
+         * The harder variant grades the STARTUP TYPE as well, because the
+         * complaint is "it keeps coming back". Accepting a running service
+         * that is still disabled would mark the ticket solved and let the
+         * fault return on the next reboot.
+         */
+        win: (infra, ctx) => {
+          const n = infra.nodes[String(ctx.targetNodeId)];
+          if (!n || n.os !== "windows") return false;
+          const svc = n.services.Spooler;
+          if (!svc || svc.status !== "Running") return false;
+          return hard ? svc.startupType !== "Disabled" : true;
+        },
+        healthyNode: (_i, ctx) => String(ctx.targetNodeId),
+      });
+    },
+  },
+  {
+    id: "gen-dns-client",
+    category: "Network & Routing",
+    track: "netops",
+    tags: ["dns", "network", "endpoint"],
+    tiers: ["Tier_1_Easy", "Tier_2_Medium"],
+    variants: 3,
+    build: ({ rng, tier, id }) => {
+      const dept = pick(rng, DEPARTMENTS);
+      const voice = pick(rng, VOICES);
+      // A plausible wrong answer: a public resolver that cannot see the
+      // internal zone, which is exactly why the symptom is "internal things
+      // are broken but the internet is fine".
+      const stray = pick(rng, ["9.9.9.9", "1.1.1.1", "8.8.4.4"]);
+      return base({ category: "Network & Routing", track: "netops", tags: ["dns", "network", "endpoint"] }, tier, id, {
+        personaId: voice.persona,
+        summary: `One machine cannot resolve internal names — its DNS points outside.`,
+        hints: [
+          "Remote Gateway → RDP to the machine",
+          "Check its DNS servers — a public resolver cannot see the internal zone",
+          "Point it back at the domain controller",
+        ],
+        makeContext: (infra, r) => {
+          const ws = anyWorkstation(infra, r);
+          const dc = nodesOf(infra).find((n) => n.role === "domain-controller");
+          if (!ws || !dc) return null;
+          return {
+            targetNodeId: ws.nodeId,
+            targetHostname: ws.hostname,
+            department: dept,
+            expectedDns: dc.connection.ip,
+            observedDns: stray,
+          };
+        },
+        title: (ctx) => `${ctx.targetHostname} cannot reach anything on the domain`,
+        description: (ctx) =>
+          `User request:\nA **${ctx.department}** user says the intranet and their drives have ` +
+          `"disappeared" from **${ctx.targetHostname}**, but the internet works.\n\n` +
+          `What we found:\n` +
+          `• The machine is on the network and pings by IP\n` +
+          `• Its DNS is set to **${ctx.observedDns}**, which has never heard of the internal zone\n` +
+          `• The domain controller at **${ctx.expectedDns}** is the one that answers for it\n\n` +
+          `Objective:\n• Get the machine resolving internal names again`,
+        requester: (ctx, org) => ({
+          name: `${ctx.department} Team`,
+          role: voice.role,
+          email: `${String(ctx.department).toLowerCase()}@${mailDomain(org)}`,
+          department: String(ctx.department),
+        }),
+        injectFault: (draft, ctx) => {
+          const n = draft.nodes[String(ctx.targetNodeId)];
+          if (n) n.network.dnsServers = [String(ctx.observedDns)];
+        },
+        win: (infra, ctx) => {
+          const n = infra.nodes[String(ctx.targetNodeId)];
+          if (!n) return false;
+          const dns = n.network.dnsServers;
+          // The internal resolver has to be there, and the stray one gone —
+          // leaving both would work by luck and fail the moment order changed.
+          return dns.includes(String(ctx.expectedDns)) && !dns.includes(String(ctx.observedDns));
+        },
+        healthyNode: (_i, ctx) => String(ctx.targetNodeId),
+      });
+    },
+  },
+  {
+    id: "gen-update-blocked",
+    category: "System & Web Services",
+    track: "sysadmin",
+    tags: ["updates", "patching", "service", "endpoint"],
+    tiers: ["Tier_1_Easy", "Tier_2_Medium"],
+    variants: 3,
+    build: ({ rng, tier, id }) => {
+      const dept = pick(rng, DEPARTMENTS);
+      return base({ category: "System & Web Services", track: "sysadmin", tags: ["updates", "patching", "service", "endpoint"] }, tier, id, {
+        personaId: "persona-marcus-calm",
+        summary: `A machine has stopped taking updates — the update service is disabled.`,
+        hints: [
+          "Remote Gateway → RDP to the machine",
+          "Open Services and look at the update service, not the update panel",
+          "A disabled service cannot be started by the panel that depends on it",
+        ],
+        makeContext: (infra, r) => {
+          const ws = windowsWorkstation(infra, r, "wuauserv");
+          if (!ws) return null;
+          return { targetNodeId: ws.nodeId, targetHostname: ws.hostname, department: dept };
+        },
+        title: (ctx) => `${ctx.targetHostname} has not patched in months`,
+        description: (ctx) =>
+          `User request:\nThe compliance report flags **${ctx.targetHostname}** (${ctx.department}) as ` +
+          `months behind on patches. The user says the update screen "just spins".\n\n` +
+          `What we found:\n` +
+          `• The machine is online and otherwise healthy\n` +
+          `• Its update service is set to Disabled, so the update screen has nothing to talk to\n` +
+          `• Nothing is wrong with the update source itself\n\n` +
+          `Objective:\n• Put the update service back in service so the machine can patch again`,
+        requester: (_ctx, org) => ({
+          name: "Compliance",
+          role: "Risk & Compliance",
+          email: `compliance@${mailDomain(org)}`,
+          department: "Legal",
+        }),
+        injectFault: (draft, ctx) => {
+          const n = draft.nodes[String(ctx.targetNodeId)];
+          if (!n || n.os !== "windows") return;
+          const svc = n.services.wuauserv;
+          if (!svc) return;
+          svc.status = "Stopped";
+          svc.pid = null;
+          svc.startupType = "Disabled";
+        },
+        /*
+         * Both halves, deliberately. Starting the service once satisfies the
+         * complaint for today; leaving it Disabled means the next reboot puts
+         * the machine straight back on the compliance report.
+         */
+        win: (infra, ctx) => {
+          const n = infra.nodes[String(ctx.targetNodeId)];
+          if (!n || n.os !== "windows") return false;
+          const svc = n.services.wuauserv;
+          return !!svc && svc.status === "Running" && svc.startupType !== "Disabled";
+        },
+        healthyNode: (_i, ctx) => String(ctx.targetNodeId),
+      });
+    },
   },
 ];
 

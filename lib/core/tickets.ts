@@ -80,6 +80,17 @@ export interface TicketDynamicContext {
   sharePath?: string;
   /** Access level the requester must end up with. */
   accessLevel?: "read" | "change" | "full";
+  // ── Endpoint configuration ──
+  /**
+   * The resolver a client SHOULD be using — normally the domain controller.
+   *
+   * Carried on the context rather than looked up in the win-condition because
+   * the ticket's PROSE names the address the operator is told to restore, and
+   * the grade has to be checking the same one the description promised.
+   */
+  expectedDns?: string;
+  /** The resolver it had wrongly been pointed at. */
+  observedDns?: string;
 }
 
 export type TicketStatus =

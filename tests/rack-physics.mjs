@@ -185,6 +185,9 @@ import {
 import { TRACK_META as SKILL_TRACK_META, jobTitle, rankPrefix, SPECIALISATION_THRESHOLD } from "../.test-build/progression/tracks.js";
 import { collisions, renderIdentity, swatchOf } from "../.test-build/ui/swatch.js";
 import { armReduce, IDLE } from "../.test-build/ui/arm.js";
+import { generateWorld } from "../.test-build/org/generator.js";
+import { ticketLibrary } from "../.test-build/tickets/factory.js";
+import { mulberry32 } from "../.test-build/org/rng.js";
 import { SEVERITY_META, STATUS_META, TRACK_META } from "../.test-build/host/ticket-ui.js";
 import { EMOTION_META } from "../.test-build/dialogue/types.js";
 import { levelForXp, xpForLevel } from "../.test-build/scenario/scoring.js";
@@ -3990,6 +3993,91 @@ group("Client endpoints skip the rack chain");
   eq("disarming nothing is not an error", armReduce(IDLE, { type: "disarm" }).state.key, null);
   eq("and it never fires", armReduce(armedA.state, { type: "disarm" }).fire, false);
   eq("an expire against an idle machine is inert", armReduce(IDLE, { type: "expire", key: "A" }).state.key, null);
+}
+
+{
+  /*
+   * THE FREE TIER'S TICKETS.
+   *
+   * A free operator is capped at level 4, which caps them at growth phase 1.
+   * That is the ONLY estate they will ever see, and every judgement below is
+   * made against it rather than against a full datacentre nobody on this plan
+   * can reach.
+   */
+  group("Free tier — the first shift has real breadth");
+
+  const WORLDS = [1, 7, 99, 4242, 31337, 555].map((seed) => generateWorld(seed, 1));
+  const LIB = Object.values(ticketLibrary(WORLDS[0]));
+  const freeOf = (lvl) =>
+    LIB.filter((t) => unlockedTiers(lvl).includes(t.difficulty) && templateMinLevel(t.tags) <= lvl);
+  const binds = (t) => WORLDS.some((w) => t.makeContext(w, mulberry32(3)) !== null);
+  const familyOf = (t) => t.id.replace(/-(easy|medium|hard|expert)-\d+$/, "");
+
+  const lvl1 = freeOf(1);
+  const families1 = new Set(lvl1.map(familyOf));
+  /*
+   * The number that matters is FAMILIES, not templates: a family is a distinct
+   * thing to do, and four variants of one lockout is still one job. Level 1
+   * shipped five families against a five-ticket shift, so a new operator could
+   * meet the entire game on day one — and nine of its twenty-four templates
+   * were the same account lockout.
+   */
+  eq("a new operator meets at least eight kinds of work", families1.size >= 8, true);
+  eq("...across more than one shift's worth of tickets", lvl1.length >= 30, true);
+
+  // Concentration, not just count. One archetype owning a third of the pool is
+  // how a queue starts feeling like a single repeated chore.
+  const lockouts = lvl1.filter((t) => /lockout|pw-reset/.test(t.id)).length;
+  eq("no single theme owns a third of the first shift", lockouts / lvl1.length < 0.33, true);
+
+  // Every track should be able to speak to a beginner. netops had nothing at
+  // all, so the whole discipline was invisible until level 2.
+  const tracks1 = new Set(lvl1.map((t) => t.track));
+  for (const track of ["helpdesk", "sysadmin", "secops", "netops"]) {
+    eq(`${track} has work at level 1`, tracks1.has(track), true);
+  }
+
+  group("Free tier — every level-1 ticket can actually be raised");
+  /*
+   * `makeContext` returning null means "this world cannot host this", and the
+   * factory silently skips it. A template that never binds is not a bug the
+   * player sees — it is content that simply never exists, which is worse,
+   * because nothing complains.
+   */
+  const unhostable1 = lvl1.filter((t) => !binds(t));
+  eq("no level-1 template is dead content", unhostable1.map((t) => t.id).join(", "), "");
+
+  group("Free tier — a ticket's own fault leaves it unsolved");
+  /*
+   * The property that catches a broken scenario: inject the fault, then grade
+   * it. If `win` is already true the ticket resolves the instant it is raised,
+   * and the operator is handed a completed job they never did.
+   */
+  let preSolved = [];
+  for (const t of freeOf(4)) {
+    const ctx = t.makeContext(WORLDS[0], mulberry32(1234));
+    if (!ctx || !t.injectFault || !t.win) continue;
+    const draft = structuredClone(WORLDS[0]);
+    t.injectFault(draft, ctx);
+    if (t.win(draft, ctx) === true) preSolved.push(t.id);
+  }
+  eq("no free-tier ticket is solved by its own fault", preSolved.join(", "), "");
+
+  group("Free tier — Tier 2 content that a phase-1 estate cannot host");
+  /*
+   * A RATCHET, not a clean bill of health. Nine Tier-2 templates need an
+   * estate a free operator never gets — a rack to hot-swap a disk in, a
+   * database tier, a DHCP pool big enough to exhaust. They are offered inside
+   * the free range and can never appear there.
+   *
+   * Fixing them means either giving phase 1 those things or moving the
+   * templates up a tier, and that is a content decision rather than a bug to
+   * patch here. This holds the line meanwhile: the list may shrink, and must
+   * not grow.
+   */
+  const deadT2 = freeOf(4).filter((t) => t.difficulty === "Tier_2_Medium" && !binds(t));
+  eq("the known phase-1 gap has not grown", deadT2.length <= 9, true);
+  eq("and it is all Tier 2 — nothing at level 1 is affected", deadT2.every((t) => t.difficulty === "Tier_2_Medium"), true);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
