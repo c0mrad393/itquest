@@ -19,6 +19,10 @@
  * matters more here than on the marketing page: this is a tool someone reads
  * for an hour at a time, and forcing a theme on them would be a worse call
  * than it was on the landing page.
+ *
+ * The header carries the control that makes that preference expressible here
+ * rather than only inside the simulator, and this shell subscribes to the OS
+ * so "system" keeps meaning system after the page has loaded.
  */
 
 import * as React from "react";
@@ -26,10 +30,19 @@ import { useEffect } from "react";
 import AdminSidebar from "./AdminSidebar";
 import AdminHeader from "./AdminHeader";
 import { useAdminUi } from "@/lib/admin/ui";
+import { useThemeStore } from "@/lib/host/theme";
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const hydrate = useAdminUi((s) => s.hydrate);
   useEffect(() => hydrate(), [hydrate]);
+  /*
+   * The boot script stamps the right class before paint, so this panel was
+   * never WRONG at load. But `init` is what subscribes to the OS, and it was
+   * only ever called by HostDesktop — so an administrator whose machine went
+   * dark at sunset sat in a light panel until they reloaded.
+   */
+  const initTheme = useThemeStore((s) => s.init);
+  useEffect(() => initTheme(), [initTheme]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-sunken text-gray-200">

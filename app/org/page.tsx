@@ -19,7 +19,7 @@
  * SVG icons and typographic glyphs only — no emoji.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   INSTITUTION,
   LEDGER,
@@ -36,6 +36,8 @@ import {
   type LedgerEvent,
 } from "@/lib/cohort/ledger";
 import { relativeTime } from "@/lib/admin/mock-data";
+import ThemeToggle from "@/components/ui/ThemeToggle";
+import { useThemeStore } from "@/lib/host/theme";
 
 const KIND_LABEL: Record<string, string> = {
   "run.started": "started",
@@ -79,6 +81,9 @@ function Stat({ label, value, tone }: { label: string; value: React.ReactNode; t
 }
 
 export default function OrgConsole() {
+  // Keeps "system" meaning system after load — see AdminShell.
+  const initTheme = useThemeStore((s) => s.init);
+  useEffect(() => initTheme(), [initTheme]);
   const seats = useMemo(() => seatIds(), []);
   const [selected, setSelected] = useState<string>(SEATS[0].id);
 
@@ -101,19 +106,52 @@ export default function OrgConsole() {
       <header className="mb-5 flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="text-[20px] font-semibold tracking-tight text-gray-100">{INSTITUTION.name}</h1>
+          {/*
+            THREE SEAT NUMBERS, SAID THE SAME WAY EVERY TIME.
+
+            LICENSED is what the institution pays for (24). ASSIGNED is how
+            many of those have been given to a student (12). ACTIVE is how
+            many of THOSE have ever done anything (10). All three are real and
+            an instructor needs all three — but this line called the assigned
+            figure "in use" while the stat two rows below called a different
+            number "active", so the same screen appeared to contradict itself
+            about its own roll.
+          */}
           <p className="mt-0.5 text-[12px] text-gray-500">
-            {INSTITUTION.term} · {SEATS.length} of {INSTITUTION.seatsTotal} seats in use
+            {INSTITUTION.term} · {SEATS.length} of {INSTITUTION.seatsTotal} seats assigned
           </p>
         </div>
         <span className="rounded-md border border-edge px-2 py-1 text-[11px] capitalize text-gray-400">
           {INSTITUTION.plan}
         </span>
+        {/* Same reasoning as the admin panel: read for an hour at a time, by
+            someone who may never open the simulator that used to be the only
+            place this preference could be set. */}
+        <ThemeToggle />
       </header>
 
       {/*
         The instructor's own reassurance that this is a reading of their
         cohort's work, not a live window into anyone's machine.
       */}
+      {/*
+        SAID BEFORE ANYTHING ELSE, because everything below it is invented.
+        Northbridge Technical College does not exist, and neither do the
+        twelve people named in the roster. Without this line the page reads as
+        a live console — which is exactly what it is built to look like, and
+        exactly why somebody shown it could reasonably conclude they were
+        looking at their own cohort's real work.
+      */}
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-warn/30 bg-warn/[0.07] px-3 py-2 text-[11.5px] leading-relaxed text-gray-300">
+        <span className="rounded border border-warn/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warn-strong">
+          Sample cohort
+        </span>
+        <span className="text-gray-400">
+          Every name, seat and run on this page is made up, so the console can be read before a real
+          class exists.
+        </span>
+      </div>
+
       <div className="mb-4 rounded-md border border-info/25 bg-info/[0.06] px-3 py-2 text-[11.5px] leading-relaxed text-gray-400">
         <span className="font-semibold text-gray-200">Read from run history.</span> Simulations run on
         each student&apos;s own machine; this console reads the trail they leave — {LEDGER.length} events
@@ -121,7 +159,7 @@ export default function OrgConsole() {
       </div>
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <Stat label="Seats active" value={`${summary.active}/${summary.seats}`} />
+        <Stat label="Active of assigned" value={`${summary.active}/${summary.seats}`} />
         <Stat label="Resolved" value={summary.resolved} />
         <Stat label="Gave up" value={summary.abandoned} tone={summary.abandoned ? "warn" : undefined} />
         <Stat label="Hints taken" value={summary.hintsTaken} />

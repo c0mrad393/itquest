@@ -24,8 +24,7 @@ import { useNotificationStore, unreadCount } from "@/lib/host/notifications-stor
 import { ActionCenter } from "./Notifications";
 import { AppIcon, APP_ICON_SIZE } from "@/components/ui/app-icons";
 import { useFullscreen } from "@/lib/host/fullscreen";
-import { useThemeStore } from "@/lib/host/theme";
-import { IconContrast, IconMoon, IconSun } from "@/components/ui/icons";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 import Clock from "./Clock";
 import { useState } from "react";
 import { useOperatorLevel } from "@/lib/progression/use-standing";
@@ -52,9 +51,6 @@ export default function Taskbar({
   const taskbarActivate = useHostStore((s) => s.taskbarActivate);
   const host = useHostStore((s) => s.host);
   const { shift } = useEntitlements();
-  const themePref = useThemeStore((s) => s.preference);
-  const resolvedTheme = useThemeStore((s) => s.resolved);
-  const cycleTheme = useThemeStore((s) => s.cycle);
 
   const openTickets = useTicketStore((s) =>
     s.tickets.filter((t) => !t.mailOnly && t.status !== "resolved" && t.status !== "closed").length,
@@ -226,27 +222,7 @@ export default function Taskbar({
           <VolIcon />
         </div>
 
-        {/* Theme — three states, because "system" is a real preference and
-            not a missing one. The glyph shows what is ACTIVE, the label under
-            the tooltip says which mode is selected. */}
-        <button
-          onClick={cycleTheme}
-          aria-label={`Theme: ${themePref}. Click to change.`}
-          title={
-            themePref === "system"
-              ? `Theme: follow system (currently ${resolvedTheme})`
-              : `Theme: ${themePref}`
-          }
-          className="flex h-9 w-9 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-500/15 hover:text-gray-100"
-        >
-          {themePref === "system" ? (
-            <IconContrast size={15} />
-          ) : themePref === "light" ? (
-            <IconSun size={15} />
-          ) : (
-            <IconMoon size={15} />
-          )}
-        </button>
+        <ThemeToggle />
 
         {/* DevTools — visible on purpose. v0.7.0 removed the Sandbox and God
             Mode logins that used to gate it, and a shortcut nobody can find is

@@ -21,6 +21,7 @@ import { crumbsForPath, sectionForPath } from "@/lib/admin/nav";
 import { useAdminUi } from "@/lib/admin/ui";
 import { ACTIVITY_FEED, relativeTime } from "@/lib/admin/mock-data";
 import { IconSearch, IconChevronDown, IconAlert } from "@/components/ui/icons";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 
 export default function AdminHeader() {
   const pathname = usePathname();
@@ -107,6 +108,16 @@ export default function AdminHeader() {
       </div>
 
       <div className="ml-auto flex shrink-0 items-center gap-1 md:ml-0">
+        {/*
+          The shell's note says this panel follows the reader's light/dark
+          preference rather than forcing one, which is the right call for
+          something read for an hour at a time. It was only half true: the
+          preference could be set from the simulator's taskbar and nowhere
+          else, so an administrator who never opens the desktop had no
+          preference to follow and no way to make one.
+        */}
+        <ThemeToggle />
+
         {/* Notifications */}
         <div className="relative">
           <button
