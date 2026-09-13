@@ -473,9 +473,28 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
       "Dispatch a field team to rack 4B for the physical replacement",
     ],
     playable: true,
+    /*
+     * ANY SERVER IN A RACK, not only a database tier.
+     *
+     * A failing disk in an array is not a database's privilege, and asking for
+     * `role === "database"` meant a starter estate — which racks a domain
+     * controller, a web server and a file server, all with storage — could not
+     * raise this at all. The scenario is about hot-swapping a drive in a rack,
+     * and a phase-1 rack has three machines it could happen to.
+     */
     makeContext: (infra) => {
-      const db = Object.values(infra.nodes).find((n) => n.role === "database");
-      return db ? { targetNodeId: db.nodeId, targetHostname: db.hostname, serviceName: "/dev/sdb" } : null;
+      const racked = new Set(
+        infra.datacenter.racks.flatMap((r) => r.devices.map((d) => d.nodeId).filter(Boolean)),
+      );
+      const candidates = Object.values(infra.nodes).filter(
+        (n) => racked.has(n.nodeId) && (n.role === "database" || n.role === "file-server" || n.role === "web-server"),
+      );
+      // A database is the most alarming place for this, so it wins when the
+      // estate has one; otherwise whatever is racked will do.
+      const target = candidates.find((n) => n.role === "database") ?? candidates[0];
+      return target
+        ? { targetNodeId: target.nodeId, targetHostname: target.hostname, serviceName: "/dev/sdb" }
+        : null;
     },
     title: (ctx) => `Disk array I/O failure on ${ctx.targetHostname} (/dev/sdb)`,
     description: (ctx) =>
@@ -1148,7 +1167,20 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
       const dc = findPrimaryDC(infra);
       const ad = dc?.activeDirectory;
       if (!dc || !ad) return null;
-      if (!ad.ous.some((o) => o.name === "Marketing")) return null;
+      /*
+       * WHICHEVER DEPARTMENT THIS ESTATE ACTUALLY HAS.
+       *
+       * This asked for a Marketing OU by name. A starter org has Finance, IT
+       * and Operations and grows the rest later, so at growth phase 1 — the
+       * only estate a free operator ever sees — the template bound to nothing
+       * and onboarding, which is about the most ordinary first-line job there
+       * is, silently did not exist for them.
+       */
+      const dept = pick(
+        rng,
+        ad.ous.filter((o) => ad.groups.some((g) => g.name === `${o.name}_RW`)).map((o) => o.name),
+      );
+      if (!dept) return null;
       const first = pick(rng, ["Nadia", "Priya", "Owen", "Marta", "Felix", "Iris"]);
       const last = pick(rng, ["Whitfield", "Okafor", "Lindqvist", "Moreau", "Vance", "Bergstrom"]);
       let sam = `${first[0].toLowerCase()}.${last.toLowerCase()}`;
@@ -1158,14 +1190,14 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
         targetHostname: dc.hostname,
         newUserSam: sam,
         newUserName: `${first} ${last}`,
-        department: "Marketing",
-        targetTitle: "Marketing Associate",
-        targetGroup: "Marketing_RW",
+        department: dept,
+        targetTitle: `${dept} Associate`,
+        targetGroup: `${dept}_RW`,
       };
     },
-    title: (ctx) => `Onboard new Marketing hire — ${ctx.newUserName} starts Monday`,
+    title: (ctx) => `Onboard new ${ctx.department} hire — ${ctx.newUserName} starts Monday`,
     description: (ctx) =>
-      `User request:\nHR: "**${ctx.newUserName}** starts in Marketing on Monday and needs an account before day one."\n\nCreate this account:\n• Full name: **${ctx.newUserName}**\n• Logon name: **${ctx.newUserSam}**\n• OU: **Marketing**\n• Job title: **${ctx.targetTitle}**\n• Set an initial password and tick "must change at next logon"\n• Add to **${ctx.targetGroup}** so they can reach the Marketing share`,
+      `User request:\nHR: "**${ctx.newUserName}** starts in ${ctx.department} on Monday and needs an account before day one."\n\nCreate this account:\n• Full name: **${ctx.newUserName}**\n• Logon name: **${ctx.newUserSam}**\n• OU: **${ctx.department}**\n• Job title: **${ctx.targetTitle}**\n• Set an initial password and tick "must change at next logon"\n• Add to **${ctx.targetGroup}** so they can reach the ${ctx.department} share`,
     requester: (_ctx, org) => ({ name: "Marcus Feld", role: "People Ops Partner", email: `marcus.feld@${mailDomain(org)}`, department: "HR" }),
     win: (infra, ctx) => {
       const u = findPrimaryDC(infra)?.activeDirectory?.users.find(
@@ -1174,7 +1206,7 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
       if (!u) return false;
       return (
         u.enabled &&
-        u.department === "Marketing" &&
+        u.department === String(ctx.department) &&
         u.title.trim().toLowerCase() === String(ctx.targetTitle).toLowerCase() &&
         u.memberOf.includes(String(ctx.targetGroup)) &&
         !!u.password
@@ -1206,33 +1238,57 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
       const dc = findPrimaryDC(infra);
       const ad = dc?.activeDirectory;
       if (!dc || !ad) return null;
-      const sales = ad.users.filter((u) => u.enabled && !u.locked && u.department === "Sales");
-      if (sales.length === 0) return null;
-      const u = sales[int(rng, 0, sales.length - 1)];
+      /*
+       * A REAL PAIR OF DEPARTMENTS FROM THIS ESTATE, not Sales to IT by name.
+       *
+       * A starter org has Finance, IT and Operations; Sales arrives with
+       * growth. Asking for a Sales user meant the whole transfer scenario —
+       * the one that teaches removing old access as well as granting new —
+       * could not be raised for anyone on the free tier.
+       *
+       * Both halves are filtered before anything is picked: the source needs
+       * somebody to move, and both need the `_RW` group the objective names.
+       */
+      const withGroup = ad.ous
+        .map((o) => o.name)
+        .filter((name) => ad.groups.some((g) => g.name === `${name}_RW`));
+      const movable = withGroup.filter((name) =>
+        ad.users.some((u) => u.enabled && !u.locked && u.department === name),
+      );
+      const from = pick(rng, movable);
+      const to = pick(rng, withGroup.filter((name) => name !== from));
+      if (!from || !to) return null;
+      const candidates = ad.users.filter((u) => u.enabled && !u.locked && u.department === from);
+      const u = candidates[int(rng, 0, candidates.length - 1)];
       return {
         targetNodeId: dc.nodeId,
         targetHostname: dc.hostname,
         targetUserId: u.samAccountName,
         targetUserName: u.displayName,
-        fromDepartment: "Sales",
-        department: "IT",
-        targetTitle: "Support Technician",
-        targetGroup: "IT_RW",
+        fromDepartment: from,
+        department: to,
+        targetTitle: `${to} Specialist`,
+        targetGroup: `${to}_RW`,
       };
     },
-    title: (ctx) => `Department transfer — ${ctx.targetUserName} moves from Sales to IT`,
+    title: (ctx) => `Department transfer — ${ctx.targetUserName} moves from ${ctx.fromDepartment} to ${ctx.department}`,
     description: (ctx) =>
-      `User request:\nHR: "**${ctx.targetUserName}** moves from ${ctx.fromDepartment} to IT today — please move their access."\n\nAccount: **${ctx.targetUserId}**\n\nObjective:\n• Set department to **IT** and job title to **${ctx.targetTitle}**\n• **Remove** the old groups: Sales and Sales_RW (no lingering pipeline access)\n• **Add** the new groups: IT and **${ctx.targetGroup}**`,
+      `User request:\nHR: "**${ctx.targetUserName}** moves from ${ctx.fromDepartment} to ${ctx.department} today — please move their access."\n\nAccount: **${ctx.targetUserId}**\n\nObjective:\n• Set department to **${ctx.department}** and job title to **${ctx.targetTitle}**\n• **Remove** the old groups: ${ctx.fromDepartment} and ${ctx.fromDepartment}_RW (no lingering access to work they have left)\n• **Add** the new groups: ${ctx.department} and **${ctx.targetGroup}**`,
     requester: (_ctx, org) => ({ name: "Marcus Feld", role: "People Ops Partner", email: `marcus.feld@${mailDomain(org)}`, department: "HR" }),
     win: (infra, ctx) => {
       const u = findPrimaryDC(infra)?.activeDirectory?.users.find((x) => x.samAccountName === ctx.targetUserId);
       if (!u) return false;
       const has = (g: string) => u.memberOf.includes(g);
+      const to = String(ctx.department);
+      const from = String(ctx.fromDepartment);
       return (
-        u.department === "IT" &&
+        u.department === to &&
         u.title.trim().toLowerCase() === String(ctx.targetTitle).toLowerCase() &&
-        has("IT") && has(String(ctx.targetGroup)) &&
-        !has("Sales") && !has("Sales_RW")
+        has(to) && has(String(ctx.targetGroup)) &&
+        // The half people forget: granting the new access is not the job,
+        // MOVING it is. Old membership left behind is the finding in every
+        // access review there has ever been.
+        !has(from) && !has(`${from}_RW`)
       );
     },
   },
@@ -1307,7 +1363,16 @@ export const TICKET_TEMPLATES: Record<string, TicketTemplate> = {
   "sys-t2-dbpool": {
     id: "sys-t2-dbpool",
     category: "System & Web Services",
-    difficulty: "Tier_2_Medium",
+    /*
+     * TIER 3, because it needs an estate the free tier never reaches.
+     *
+     * A connection-pool ticket needs a database tier, and one only exists from
+     * growth phase 3. Offered at Tier 2 it sat inside the free range and could
+     * never be raised there — content promised to people who cannot receive
+     * it. Tier 3 starts at level 5, which is past the free ceiling, so it is
+     * now offered exactly where it can actually happen.
+     */
+    difficulty: "Tier_3_Hard",
     track: "sysadmin",
     severity: "high",
     priority: "P2",

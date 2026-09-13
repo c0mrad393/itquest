@@ -1716,11 +1716,18 @@ const FAMILIES: Family[] = [
       ),
   },
   {
+    /*
+     * TIER 3 ONLY. Its own `growth` tag says what it is: a pool that was sized
+     * for a smaller company and has been outgrown. A phase-1 estate puts two
+     * dozen machines across five /24s and is nowhere near exhausting anything,
+     * so the Tier 2 half sat inside the free range unable to ever be raised.
+     * The scenario is fine — it was being offered in the wrong place.
+     */
     id: "gen-dhcp-exhaustion",
     category: "Network & Routing",
     track: "netops",
     tags: ["network", "dhcp", "capacity", "growth"],
-    tiers: ["Tier_2_Medium", "Tier_3_Hard"],
+    tiers: ["Tier_3_Hard"],
     variants: 2,
     build: ({ rng, tier, id }) => {
       const voice = pick(rng, VOICES);

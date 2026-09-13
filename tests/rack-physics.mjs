@@ -4167,21 +4167,47 @@ group("Client endpoints skip the rack chain");
   eq("but the same client fix does NOT close it", t2.afterClient, false);
   eq("it takes the share service coming back", t2.afterServer, true);
 
-  group("Free tier — Tier 2 content that a phase-1 estate cannot host");
+  group("Free tier — nothing is offered that a phase-1 estate cannot host");
   /*
-   * A RATCHET, not a clean bill of health. Six Tier-2 templates need an
-   * estate a free operator never gets — a rack to hot-swap a disk in, a
-   * database tier, a DHCP pool big enough to exhaust. They are offered inside
-   * the free range and can never appear there.
+   * This was a ratchet on nine, then six. It is zero now, so it is an
+   * assertion.
    *
-   * Fixing them means either giving phase 1 those things or moving the
-   * templates up a tier, and that is a content decision rather than a bug to
-   * patch here. This holds the line meanwhile: the list may shrink, and must
-   * not grow.
+   * Three of the six were hardcoded to assets a starter org does not have —
+   * a Marketing OU, a Sales department, a database tier — which meant
+   * onboarding, department transfer and a rack disk swap, three of the most
+   * ordinary jobs in the building, could not be raised for anyone on the free
+   * plan. They ask the estate what it has now.
+   *
+   * The other three genuinely need a bigger company: a connection pool needs
+   * a database tier, and an exhausted DHCP scope needs a company that has
+   * outgrown its addressing. Those moved to Tier 3, which starts above the
+   * free ceiling — the scenarios were fine, they were being offered in the
+   * wrong place.
    */
-  const deadT2 = freeOf(4).filter((t) => t.difficulty === "Tier_2_Medium" && !binds(t));
-  eq("the known phase-1 gap has not grown", deadT2.length <= 6, true);
-  eq("and it is all Tier 2 — nothing at level 1 is affected", deadT2.every((t) => t.difficulty === "Tier_2_Medium"), true);
+  const deadFree = freeOf(4).filter((t) => !binds(t));
+  eq("every free-tier template can be raised in a starter estate", deadFree.map((t) => t.id).join(", "), "");
+
+  group("Free tier — a transfer moves access, it does not just grant it");
+  /*
+   * The half people forget, and the finding in every access review there has
+   * ever been. Worth pinning: a win-condition that accepted the new groups
+   * without checking the old ones would teach the opposite of the lesson.
+   */
+  const transfer = ticketLibrary(WORLDS[0])["sw-ad-transfer"];
+  const tctx = transfer.makeContext(WORLDS[0], mulberry32(4));
+  const dcOf = (world) => Object.values(world.nodes).find((n) => n.activeDirectory);
+  const moveUser = (world, { drop }) => {
+    const u = dcOf(world).activeDirectory.users.find((x) => x.samAccountName === tctx.targetUserId);
+    u.department = tctx.department;
+    u.title = tctx.targetTitle;
+    if (drop) u.memberOf = u.memberOf.filter((g) => g !== tctx.fromDepartment && g !== `${tctx.fromDepartment}_RW`);
+    u.memberOf.push(tctx.department, tctx.targetGroup);
+    return world;
+  };
+  eq("it starts unsolved", transfer.win(structuredClone(WORLDS[0]), tctx), false);
+  eq("granting the new access alone is not enough", transfer.win(moveUser(structuredClone(WORLDS[0]), { drop: false }), tctx), false);
+  eq("removing the old as well closes it", transfer.win(moveUser(structuredClone(WORLDS[0]), { drop: true }), tctx), true);
+
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
