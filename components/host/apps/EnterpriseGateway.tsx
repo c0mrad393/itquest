@@ -35,7 +35,7 @@
 
 import { AppHeader } from "./AppChrome";
 import { useEntitlements, useEntitlementStore } from "@/lib/platform/entitlements";
-import { TIERS, type Feature, type TierId } from "@/lib/platform/tiers";
+import { TIERS, isLive, type Feature, type TierId } from "@/lib/platform/tiers";
 import { PRICING, format, perMonthFromYearly } from "@/lib/platform/pricing";
 import { useHostStore } from "@/lib/host/store";
 import { IconBolt, IconCheck, IconClock, IconLock, IconTrophy } from "@/components/ui/icons";
@@ -52,13 +52,31 @@ const FEATURE_LABEL: Record<Feature, string> = {
 
 const ALL_FEATURES = Object.keys(FEATURE_LABEL) as Feature[];
 
-function Row({ on, children }: { on: boolean; children: React.ReactNode }) {
+/**
+ * THREE STATES, NOT TWO.
+ *
+ * `on` used to decide everything, which meant a capability this plan carries
+ * but the product has not built yet was drawn with the same tick as one the
+ * operator can go and use. Four of the six were in that position. Telling
+ * somebody they have a thing they cannot find is worse than telling them it
+ * is coming.
+ */
+function Row({
+  on,
+  pending,
+  children,
+}: {
+  on: boolean;
+  pending?: boolean;
+  children: React.ReactNode;
+}) {
+  const lit = on && !pending;
   return (
     <li className="flex items-start gap-2 text-[12px]">
-      <span className={`mt-0.5 shrink-0 ${on ? "text-accent-strong" : "text-gray-600"}`}>
-        {on ? <IconCheck size={13} /> : <IconLock size={12} />}
+      <span className={`mt-0.5 shrink-0 ${lit ? "text-accent-strong" : "text-gray-600"}`}>
+        {lit ? <IconCheck size={13} /> : on ? <IconClock size={12} /> : <IconLock size={12} />}
       </span>
-      <span className={on ? "text-gray-300" : "text-gray-500"}>{children}</span>
+      <span className={lit ? "text-gray-300" : "text-gray-500"}>{children}</span>
     </li>
   );
 }
@@ -181,19 +199,33 @@ export default function AccountApp() {
           </div>
 
           {/* ── What your plan includes ──────────────────────────────── */}
-          <Card title="What your plan includes" sub="Locked items say which plan carries them">
+          <Card
+            title="What your plan includes"
+            sub="Locked items name the plan that carries them; pending ones are not built yet"
+          >
             <ul className="space-y-2">
               {ALL_FEATURES.map((f) => {
                 const on = can(f);
                 const owner = (["free", "pro", "enterprise"] as TierId[]).find((t) =>
                   TIERS[t].features.includes(f),
                 );
+                const pending = !isLive(f);
                 return (
-                  <Row key={f} on={on}>
+                  <Row key={f} on={on} pending={pending}>
                     {FEATURE_LABEL[f]}
                     {!on && owner && (
                       <span className="ml-1.5 rounded bg-gray-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-gray-400">
                         {TIERS[owner].label}
+                      </span>
+                    )}
+                    {/*
+                      Said on the rows this plan already carries. An operator
+                      who has paid for Pro should not have to go looking for
+                      something that is not there yet.
+                    */}
+                    {on && pending && (
+                      <span className="ml-1.5 rounded border border-edge px-1.5 py-0.5 text-[10px] text-gray-500">
+                        with accounts
                       </span>
                     )}
                   </Row>

@@ -50,7 +50,7 @@ import {
   visibleApps,
   type HostAppId,
 } from "@/lib/core";
-import { appUnlockLevel, isAppUnlocked } from "@/lib/progression/unlocks";
+import { appLock, isAppUnlocked, lockExplanation, lockLabel } from "@/lib/progression/unlocks";
 import { slaSnapshot } from "@/lib/host/ticket-ui";
 import { AppIcon } from "@/components/ui/app-icons";
 import { useStanding } from "@/lib/progression/use-standing";
@@ -275,6 +275,7 @@ export default function Dashboard() {
                         iconId={a.iconId}
                         description={a.description}
                         level={standing.level}
+                        cap={standing.cap}
                         onOpen={() => openApp(a.id)}
                       />
                     ))}
@@ -470,29 +471,33 @@ function FocusBanner({
 /**
  * A tile that is honest about being locked.
  *
- * The locked state is DIMMER, not hidden, and names the level it needs. A
+ * The locked state is DIMMER, not hidden, and names what is holding it. A
  * launcher that hides what you have not earned gives the operator no sense of
  * what the job becomes; one that shows a live-looking button and then refuses
  * is worse still. This is visibly unavailable and visually part of the set.
+ *
+ * It needs the plan's ceiling as well as the level, because those two decide
+ * between two different sentences — see `appLock`.
  */
 function AppTile({
-  id, title, iconId, description, level, onOpen,
+  id, title, iconId, description, level, cap, onOpen,
 }: {
   id: HostAppId;
   title: string;
   iconId: Parameters<typeof AppIcon>[0]["id"];
   description: string;
   level: number;
+  cap: number | null;
   onOpen: () => void;
 }) {
-  const unlocked = isAppUnlocked(id, level);
-  const need = appUnlockLevel(id);
+  const lock = appLock(id, level, cap);
 
-  if (!unlocked) {
+  if (lock.kind !== "open") {
+    const plan = lock.kind === "plan";
     return (
       <div
-        title={`${title} unlocks at level ${need}`}
-        aria-label={`${title}, locked until level ${need}`}
+        title={lockExplanation(lock, title)}
+        aria-label={`${title}, locked. ${lockExplanation(lock, title)}`}
         className="flex cursor-not-allowed items-center gap-2.5 rounded-xl border border-dashed border-edge bg-surface/30 px-3 py-2.5 backdrop-blur"
       >
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-3/60 text-gray-600">
@@ -500,7 +505,15 @@ function AppTile({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[12px] font-medium text-gray-500">{title}</span>
-          <span className="block text-[10px] text-gray-600">Unlocks at level {need}</span>
+          {/*
+            A lock past the plan's ceiling reads as a plan, not as a level to
+            grind towards. Same tile, different sentence — and a different
+            colour, because "keep going" and "this is not yours yet" are not
+            the same news.
+          */}
+          <span className={`block text-[10px] ${plan ? "text-info/80" : "text-gray-600"}`}>
+            {lockLabel(lock)}
+          </span>
         </span>
       </div>
     );

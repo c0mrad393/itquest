@@ -28,7 +28,7 @@ import { useState } from "react";
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
 import { CONTACT, type LegalDoc } from "@/components/landing/brand";
-import { TIERS, type Feature, type TierId } from "@/lib/platform/tiers";
+import { FEATURE_STATUS, TIERS, phaseCapOf, type Feature, type TierId } from "@/lib/platform/tiers";
 import {
   PRICING,
   STUDENT_DISCOUNT,
@@ -38,7 +38,7 @@ import {
   seatsTotal,
   yearlySaving,
 } from "@/lib/platform/pricing";
-import { IconCheck, IconChevronRight } from "@/components/ui/icons";
+import { IconCheck, IconChevronRight, IconClock } from "@/components/ui/icons";
 
 /** Said in the customer's words, not the code's. */
 const FEATURE_LABEL: Record<Feature, string> = {
@@ -60,7 +60,7 @@ function limitLines(id: TierId): string[] {
       : `Levels 1–${t.levelCap}, the service desk chapter`,
   );
   out.push(
-    t.phaseCap === null
+    phaseCapOf(id) === null
       ? "All four company growth phases, to a full datacentre floor"
       : "A 35-person startup on its first rack",
   );
@@ -197,14 +197,41 @@ export default function PricingPage() {
                       {l}
                     </li>
                   ))}
-                  {tier.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2 text-[12.5px] text-slate-300">
-                      <span className="mt-0.5 shrink-0 text-[#6ee7b7]">
-                        <IconCheck size={13} />
-                      </span>
-                      {FEATURE_LABEL[f]}
-                    </li>
-                  ))}
+                  {/*
+                    WHAT WORKS TODAY AND WHAT IS A COMMITMENT.
+
+                    This list is built from TIERS so the page cannot invent a
+                    feature — but that only stopped it inventing the PLAN, not
+                    the product. Four of these six have no code path yet, and
+                    printing them in the same ink as the two that work is how
+                    a price list ends up lying while every value in it is
+                    correct. The tick is for things an operator can use now.
+                  */}
+                  {tier.features.map((f) => {
+                    const live = FEATURE_STATUS[f] === "live";
+                    return (
+                      <li
+                        key={f}
+                        className={`flex items-start gap-2 text-[12.5px] ${
+                          live ? "text-slate-300" : "text-slate-500"
+                        }`}
+                      >
+                        <span
+                          className={`mt-0.5 shrink-0 ${live ? "text-[#6ee7b7]" : "text-slate-600"}`}
+                        >
+                          {live ? <IconCheck size={13} /> : <IconClock size={13} />}
+                        </span>
+                        <span>
+                          {FEATURE_LABEL[f]}
+                          {!live && (
+                            <span className="ml-1.5 whitespace-nowrap rounded border border-white/10 px-1 py-px text-[9.5px] uppercase tracking-wide text-slate-500">
+                              with accounts
+                            </span>
+                          )}
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
 
                 <div className="mt-6 pt-2">

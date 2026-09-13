@@ -20,6 +20,8 @@
  * the thing you buy.
  */
 
+import { phaseForLevel, type GrowthPhase } from "@/lib/core/growth";
+
 export type TierId = "free" | "pro" | "enterprise";
 
 /**
@@ -56,8 +58,6 @@ export interface TierSpec {
    * next chapter starts.
    */
   levelCap: number | null;
-  /** Highest company growth phase. `null` is uncapped. */
-  phaseCap: number | null;
   /**
    * Tickets that may be TAKEN ON per shift. `null` is unlimited.
    *
@@ -73,7 +73,6 @@ export const TIERS: Record<TierId, TierSpec> = {
     label: "Free",
     blurb: "A complete first shift on the service desk.",
     levelCap: 4,
-    phaseCap: 1,
     shiftAllowance: 5,
     /*
      * The leaderboard is here on purpose. A ranking that only paying players
@@ -88,7 +87,6 @@ export const TIERS: Record<TierId, TierSpec> = {
     label: "Pro",
     blurb: "The whole career, from intern to principal.",
     levelCap: null,
-    phaseCap: null,
     shiftAllowance: null,
     features: ["ticket-history", "leaderboard", "cloud-save", "certificates"],
   },
@@ -97,7 +95,6 @@ export const TIERS: Record<TierId, TierSpec> = {
     label: "Enterprise",
     blurb: "Pro for every seat, plus the things only a cohort needs.",
     levelCap: null,
-    phaseCap: null,
     shiftAllowance: null,
     features: [
       "ticket-history",
@@ -109,6 +106,71 @@ export const TIERS: Record<TierId, TierSpec> = {
     ],
   },
 };
+
+/**
+ * The company growth phase a plan reaches.
+ *
+ * DERIVED, because it was never an independent fact. `phaseCap: 1` sat beside
+ * `levelCap: 4` as a second constant saying the same thing in another unit —
+ * the phases are themselves a function of level, so the two agreed only for as
+ * long as nobody moved a phase threshold. Moving phase 2 down to level 4 would
+ * have left the pricing page quietly advertising a limit the product no longer
+ * applied, with nothing to catch it.
+ *
+ * Nothing enforces this separately either, and nothing needs to: capping the
+ * level caps the phase, because that is where a phase comes from.
+ */
+export function phaseCapOf(id: TierId): GrowthPhase | null {
+  const cap = TIERS[id].levelCap;
+  return cap === null ? null : phaseForLevel(cap);
+}
+
+/**
+ * The cheapest plan that reaches a given level — what a level-gated lock
+ * should name when the level is past the current plan's ceiling.
+ *
+ * Returns null when no plan reaches it, which today cannot happen: Pro is
+ * uncapped. It is a null rather than a throw because a future plan shape is
+ * not this function's problem to be certain about.
+ */
+export function firstTierReaching(level: number): TierSpec | null {
+  const order: TierId[] = ["free", "pro", "enterprise"];
+  for (const id of order) {
+    const cap = TIERS[id].levelCap;
+    if (cap === null || cap >= level) return TIERS[id];
+  }
+  return null;
+}
+
+/**
+ * IS THIS CAPABILITY WORKING TODAY?
+ *
+ * The price list is built from `TIERS` so it cannot invent a feature the
+ * product does not sell — but nothing stopped it listing one the product does
+ * not yet DO. Four of the six below have no code path at all: they are real
+ * commitments that arrive with the server, and printing them in the same ink
+ * as the two that work today is the kind of small dishonesty a beta cannot
+ * afford.
+ *
+ * `live` means an operator can use it in this build. Everything else waits on
+ * accounts, and says so wherever it is listed.
+ */
+export type FeatureStatus = "live" | "with-accounts";
+
+export const FEATURE_STATUS: Record<Feature, FeatureStatus> = {
+  leaderboard: "live",
+  "ticket-history": "live",
+  // Needs somewhere to put the save that is not this browser.
+  "cloud-save": "with-accounts",
+  // Needs an identity to name on the certificate.
+  certificates: "with-accounts",
+  // The console at /org is built and reads a real ledger — of sample data.
+  // It has no way to receive a cohort's runs until there are accounts.
+  "cohort-reporting": "with-accounts",
+  "custom-scenarios": "with-accounts",
+};
+
+export const isLive = (f: Feature): boolean => FEATURE_STATUS[f] === "live";
 
 export function tierOf(id: TierId): TierSpec {
   return TIERS[id];

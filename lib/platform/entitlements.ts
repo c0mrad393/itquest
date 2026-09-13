@@ -31,6 +31,7 @@ import {
   TIERS,
   allows,
   lockReason,
+  phaseCapOf,
   tierOf,
   type Feature,
   type TierId,
@@ -154,7 +155,7 @@ export interface Entitlements {
   why: (f: Feature) => string | null;
   /** Highest level this plan reaches, or null when uncapped. */
   levelCap: number | null;
-  /** Highest company growth phase, or null when uncapped. */
+  /** Highest company growth phase, or null when uncapped. Derived from the level cap. */
   phaseCap: number | null;
   /** Has the operator reached the plan's ceiling? */
   atLevelCap: (level: number) => boolean;
@@ -213,7 +214,7 @@ export function useEntitlements(): Entitlements {
     can: (f) => allows(tier, f),
     why: (f) => lockReason(tier, f),
     levelCap: spec.levelCap,
-    phaseCap: spec.phaseCap,
+    phaseCap: phaseCapOf(tier),
     atLevelCap: (level) => spec.levelCap !== null && level >= spec.levelCap,
     shift: {
       allowance,

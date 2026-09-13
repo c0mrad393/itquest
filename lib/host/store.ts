@@ -10,7 +10,7 @@
 "use client";
 
 import { create } from "zustand";
-import { appUnlockLevel, isAppUnlocked } from "@/lib/progression/unlocks";
+import { appLock, isAppUnlocked, lockExplanation } from "@/lib/progression/unlocks";
 import { useNotificationStore } from "@/lib/host/notifications-store";
 import { HOST_APP_REGISTRY, type HostAppIconId, type HostAppId } from "@/lib/core";
 import type {
@@ -136,13 +136,19 @@ export const useHostStore = create<HostStore>((set, get) => ({
      * that want to render a locked state ask `isAppUnlocked` first; callers
      * that forget get a toast naming the level instead of a bypass.
      */
-    const { level } = operatorStanding();
-    if (!isAppUnlocked(appId, level)) {
+    const { level, cap } = operatorStanding();
+    const lock = appLock(appId, level, cap);
+    if (lock.kind !== "open") {
       useNotificationStore.getState().push({
         kind: "warning",
         title: `${meta.title} is locked`,
-        body: `Reach level ${appUnlockLevel(appId)} to unlock it. You are level ${level}.`,
-        badge: "Locked",
+        /*
+         * "Reach level 5 to unlock it" is advice an operator on a plan that
+         * stops at 4 can never act on. `lockExplanation` picks the sentence
+         * that is true of THIS account.
+         */
+        body: `${lockExplanation(lock, meta.title)} You are level ${level}.`,
+        badge: lock.kind === "plan" ? "Plan" : "Locked",
       });
       set({ startMenuOpen: false });
       return;

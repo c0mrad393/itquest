@@ -11,6 +11,7 @@
  */
 
 import type { HostAppId, TicketDifficulty } from "@/lib/core";
+import { firstTierReaching, type TierSpec } from "@/lib/platform/tiers";
 
 /**
  * Level at which each app becomes available. Anything absent is available
@@ -120,4 +121,49 @@ export function tiersUnlockedAt(level: number): TicketDifficulty[] {
   return (Object.keys(TIER_UNLOCK_LEVEL) as TicketDifficulty[]).filter(
     (t) => TIER_UNLOCK_LEVEL[t] === level,
   );
+}
+
+// ── Why an app is locked ────────────────────────────────────────────────────
+
+/**
+ * WHICH KIND OF LOCKED, and this distinction is the whole point.
+ *
+ * "Unlocks at level 5" is a promise: keep working and it opens. On the free
+ * plan it was a promise the product could not keep — the ceiling is level 4,
+ * and the Datacenter Floor, the Server Manager and the cloud console all sit
+ * above it. Three apps were being advertised to free operators as something
+ * they could earn, in a grid they would have ground towards forever.
+ *
+ * The ladder and the plan's ceiling were designed apart and never introduced.
+ * They meet here: a lock past the ceiling is a question about a PLAN, not
+ * about effort, and it has to be worded as one.
+ */
+export type AppLock =
+  | { kind: "open" }
+  /** Reachable on this plan — keep going. */
+  | { kind: "level"; need: number }
+  /** Past this plan's ceiling. No amount of play reaches it. */
+  | { kind: "plan"; need: number; tier: TierSpec | null };
+
+export function appLock(appId: HostAppId, level: number, cap: number | null): AppLock {
+  const need = appUnlockLevel(appId);
+  if (level >= need) return { kind: "open" };
+  if (cap !== null && need > cap) return { kind: "plan", need, tier: firstTierReaching(need) };
+  return { kind: "level", need };
+}
+
+/** The short line under a locked tile. */
+export function lockLabel(lock: AppLock): string {
+  if (lock.kind === "open") return "";
+  if (lock.kind === "level") return `Unlocks at level ${lock.need}`;
+  return lock.tier ? `Part of ${lock.tier.label}` : "Beyond this plan";
+}
+
+/** The longer form, for a tooltip or a toast — it says WHY, not just what. */
+export function lockExplanation(lock: AppLock, title: string): string {
+  if (lock.kind === "open") return "";
+  if (lock.kind === "level") return `${title} unlocks at level ${lock.need}.`;
+  return `${title} opens at level ${lock.need}, which is past this plan's ceiling.${
+    lock.tier ? ` ${lock.tier.label} reaches it.` : ""
+  }`;
 }

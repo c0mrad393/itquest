@@ -29,9 +29,9 @@
 
 import { useHostStore } from "@/lib/host/store";
 import { HOST_APP_REGISTRY, type HostAppId } from "@/lib/core";
-import { appUnlockLevel, isAppUnlocked } from "@/lib/progression/unlocks";
+import { appLock, lockExplanation, lockLabel } from "@/lib/progression/unlocks";
 import { IconLock } from "@/components/ui/icons";
-import { useOperatorLevel } from "@/lib/progression/use-standing";
+import { useStanding } from "@/lib/progression/use-standing";
 
 export default function AppLink({
   app,
@@ -45,20 +45,22 @@ export default function AppLink({
   className?: string;
   purpose?: string;
 }) {
-  const level = useOperatorLevel();
+  const { level, cap } = useStanding();
   const openApp = useHostStore((s) => s.openApp);
   const meta = HOST_APP_REGISTRY[app];
-  const unlocked = isAppUnlocked(app, level);
-  const need = appUnlockLevel(app);
+  const lock = appLock(app, level, cap);
 
-  if (!unlocked) {
+  if (lock.kind !== "open") {
+    const why = lockExplanation(lock, meta.title);
     return (
       <span
         className={`${className} pointer-events-none opacity-60`}
-        title={`${meta.title} unlocks at level ${need}${purpose ? ` — ${purpose}` : ""}`}
-        aria-label={`${meta.title} is locked until level ${need}`}
+        title={`${why}${purpose ? ` — ${purpose}` : ""}`}
+        aria-label={`${meta.title} is locked. ${why}`}
       >
-        <IconLock size={11} /> {meta.title} · level {need}
+        {/* Naming the plan rather than a level the plan will never grant. */}
+        <IconLock size={11} /> {meta.title} ·{" "}
+        {lock.kind === "level" ? `level ${lock.need}` : lockLabel(lock)}
       </span>
     );
   }
@@ -77,20 +79,19 @@ export default function AppLink({
  * rather than becoming a dead link the reader has to test to discover.
  */
 export function AppRef({ app, purpose }: { app: HostAppId; purpose?: string }) {
-  const level = useOperatorLevel();
+  const { level, cap } = useStanding();
   const openApp = useHostStore((s) => s.openApp);
   const meta = HOST_APP_REGISTRY[app];
-  const unlocked = isAppUnlocked(app, level);
-  const need = appUnlockLevel(app);
+  const lock = appLock(app, level, cap);
 
-  if (!unlocked) {
+  if (lock.kind !== "open") {
     return (
       <span
         className="inline-flex items-center gap-0.5 text-gray-500"
-        title={`Unlocks at level ${need}${purpose ? ` — ${purpose}` : ""}`}
+        title={`${lockExplanation(lock, meta.title)}${purpose ? ` — ${purpose}` : ""}`}
       >
         <IconLock size={9} />
-        {meta.title} (level {need})
+        {meta.title} ({lock.kind === "level" ? `level ${lock.need}` : lockLabel(lock)})
       </span>
     );
   }

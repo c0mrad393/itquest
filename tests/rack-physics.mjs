@@ -157,7 +157,22 @@ import {
   openTicketsFor,
   seatsUsed,
 } from "../.test-build/admin/mock-data.js";
-import { TIERS, allows, firstTierWith, lockReason } from "../.test-build/platform/tiers.js";
+import {
+  FEATURE_STATUS,
+  TIERS,
+  allows,
+  firstTierReaching,
+  firstTierWith,
+  isLive,
+  lockReason,
+  phaseCapOf,
+} from "../.test-build/platform/tiers.js";
+import {
+  APP_UNLOCK_LEVEL,
+  TIER_UNLOCK_LEVEL,
+  appLock,
+  lockLabel,
+} from "../.test-build/progression/unlocks.js";
 import { standingOf, toNextLevel } from "../.test-build/progression/standing.js";
 import { levelForXp, xpForLevel } from "../.test-build/scenario/scoring.js";
 import {
@@ -2340,7 +2355,7 @@ group("Client endpoints skip the rack chain");
     // were paid, the free queue would carry tickets it cannot answer — which
     // teaches a new player the product is broken, not that they should pay.
     eq("free reaches level 4", TIERS.free.levelCap, 4);
-    eq("free stays in the first growth phase", TIERS.free.phaseCap, 1);
+    eq("free stays in the first growth phase", phaseCapOf("free"), 1);
     eq("free has a shift allowance", TIERS.free.shiftAllowance, 5);
     eq("pro is uncapped", TIERS.pro.levelCap, null);
     eq("pro has no shift limit", TIERS.pro.shiftAllowance, null);
@@ -3525,6 +3540,82 @@ group("Client endpoints skip the rack chain");
   eq("derivation is total", standingOf(overXp, CAP).level, standingOf(overXp, CAP).level);
   eq("zero XP is level 1, not level 0", standingOf(0, CAP).level, 1);
   eq("and a free operator at zero is not being held", standingOf(0, CAP).held, false);
+}
+
+{
+  /*
+   * THE LADDER AND THE CEILING.
+   *
+   * The app unlock levels and the plans' level caps were written months
+   * apart and never introduced to each other. Three apps sit above the free
+   * ceiling, and the grid told free operators they "unlock at level 5" — a
+   * level their plan does not reach. Nothing failed; the product simply
+   * promised something it had decided not to give.
+   */
+  group("Locks — a level you can reach, or a plan you do not have");
+
+  const FREE_CAP = TIERS.free.levelCap;
+
+  const early = appLock("edge", 1, FREE_CAP);   // unlocks at 2, well inside free
+  eq("below its level on a plan that reaches it, the lock is about the level", early.kind, "level");
+  eq("and it names the level", early.need, APP_UNLOCK_LEVEL.edge);
+  eq("worded as something to work towards", lockLabel(early), `Unlocks at level ${APP_UNLOCK_LEVEL.edge}`);
+
+  const beyond = appLock("racklab", FREE_CAP, FREE_CAP);  // unlocks at 5, free stops at 4
+  eq("above the plan's ceiling, the lock is about the PLAN", beyond.kind, "plan");
+  eq("and it names a plan that actually reaches it", beyond.tier.levelCap === null || beyond.tier.levelCap >= beyond.need, true);
+  eq("so it is never worded as a level to grind for", lockLabel(beyond).includes("level"), false);
+  eq("it names the plan instead", lockLabel(beyond), `Part of ${beyond.tier.label}`);
+
+  eq("the same app on an uncapped plan is only ever a level away", appLock("racklab", 1, null).kind, "level");
+  eq("and open once the level is there", appLock("racklab", 9, null).kind, "open");
+  eq("an open app is open on a capped plan too", appLock("edge", 4, FREE_CAP).kind, "open");
+
+  group("Locks — every app above the free ceiling says so");
+  // The property, rather than a list that goes stale the next time someone
+  // moves an unlock level: on the free plan, NOTHING may be advertised as a
+  // level to reach if the plan cannot reach it.
+  for (const [app, need] of Object.entries(APP_UNLOCK_LEVEL)) {
+    if (need > FREE_CAP) {
+      eq(`${app} (level ${need}) reads as a plan, not a level`, appLock(app, FREE_CAP, FREE_CAP).kind, "plan");
+    }
+  }
+  // ...and the ticket tiers are gated by the same ladder.
+  eq("hard tickets start above the free ceiling", TIER_UNLOCK_LEVEL.Tier_3_Hard > FREE_CAP, true);
+  eq("and expert tickets further still", TIER_UNLOCK_LEVEL.Tier_4_Expert > TIER_UNLOCK_LEVEL.Tier_3_Hard, true);
+
+  group("Plans — the growth phase is derived, not restated");
+  eq("the free plan reaches phase 1", phaseCapOf("free"), 1);
+  eq("pro is uncapped", phaseCapOf("pro"), null);
+  eq("enterprise too", phaseCapOf("enterprise"), null);
+  // What the old stored constant could not promise: the two always agree,
+  // because there is only one of them now.
+  eq("a capped plan's phase follows its level cap", phaseCapOf("free"), phaseForLevel(TIERS.free.levelCap));
+
+  group("Plans — firstTierReaching");
+  eq("level 1 is reached by the free plan", firstTierReaching(1).id, "free");
+  eq("the free ceiling itself is still free", firstTierReaching(FREE_CAP).id, "free");
+  eq("one past it is Pro", firstTierReaching(FREE_CAP + 1).id, "pro");
+  eq("and so is anything higher", firstTierReaching(40).id, "pro");
+
+  group("Plans — the price list may not claim what the product cannot do");
+  // Every feature any plan sells must declare whether it works today. A new
+  // feature with no status is the exact hole this closes.
+  const sold = new Set(Object.values(TIERS).flatMap((t) => t.features));
+  for (const f of sold) {
+    eq(`${f} declares whether it is live`, typeof FEATURE_STATUS[f] === "string", true);
+  }
+  eq("reviewing closed tickets works today", isLive("ticket-history"), true);
+  eq("so does the leaderboard", isLive("leaderboard"), true);
+  // These four are commitments, and the UI has to keep saying so until they
+  // are not. Flipping one of these to `live` should mean the code exists.
+  eq("cloud save waits on accounts", isLive("cloud-save"), false);
+  eq("certificates wait on accounts", isLive("certificates"), false);
+  eq("cohort reporting waits on accounts", isLive("cohort-reporting"), false);
+  eq("authoring waits on accounts", isLive("custom-scenarios"), false);
+  // The free plan must not be selling anything that does not exist: it is the
+  // one plan somebody is using RIGHT NOW.
+  eq("everything the free plan offers is live", TIERS.free.features.every(isLive), true);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
