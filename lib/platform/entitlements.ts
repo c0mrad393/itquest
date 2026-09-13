@@ -27,6 +27,7 @@
 
 import { create } from "zustand";
 import { useMinute } from "@/lib/sla/store";
+import { saveScope } from "@/lib/persistence/save";
 import {
   TIERS,
   allows,
@@ -48,13 +49,31 @@ import {
   type ShiftState,
 } from "./shift";
 
-const TIER_KEY = "itquest-tier";
-const SHIFT_KEY = "itquest-shift";
+/*
+ * SCOPED TO THE SAME SLOT AS THE SAVE.
+ *
+ * These were flat keys — one plan and one shift counter for the whole
+ * browser, while the estate they belong to is stored per account. With one
+ * local operator that is invisible; with two accounts it means signing out of
+ * Pro leaves the next person on Pro, and a guest spends the shift the
+ * signed-in operator paid for. Neither would look like a bug in the plan
+ * code, which is what makes it worth closing before there is an account
+ * system rather than after.
+ *
+ * `saveScope()` is the same value the save slot uses, so all three move
+ * together the day `setSaveScope` starts being handed a user id.
+ */
+const tierKey = () => `itquest-tier::${saveScope()}`;
+const shiftKey = () => `itquest-shift::${saveScope()}`;
+
+/** Pre-scoping keys, read once so an existing session keeps its settings. */
+const LEGACY_TIER_KEY = "itquest-tier";
+const LEGACY_SHIFT_KEY = "itquest-shift";
 
 /** localStorage does not exist during SSR, and may throw in private modes. */
-function readLocal<T>(key: string, fallback: T): T {
+function readLocal<T>(key: string, fallback: T, legacyKey?: string): T {
   try {
-    const raw = window.localStorage.getItem(key);
+    const raw = window.localStorage.getItem(key) ?? (legacyKey ? window.localStorage.getItem(legacyKey) : null);
     return raw ? (JSON.parse(raw) as T) : fallback;
   } catch {
     return fallback;
@@ -80,7 +99,7 @@ function writeLocal(key: string, value: unknown): void {
  */
 export function storedLevelCap(): number | null {
   if (typeof window === "undefined") return tierOf("free").levelCap;
-  return tierOf(readLocal<TierId>(TIER_KEY, "free")).levelCap;
+  return tierOf(readLocal<TierId>(tierKey(), "free", LEGACY_TIER_KEY)).levelCap;
 }
 
 interface EntitlementStore {
@@ -106,14 +125,14 @@ export const useEntitlementStore = create<EntitlementStore>((set, get) => ({
 
   hydrate: () =>
     set({
-      tier: readLocal<TierId>(TIER_KEY, "free"),
+      tier: readLocal<TierId>(tierKey(), "free", LEGACY_TIER_KEY),
       // Rolled on read, so a session left open overnight starts a new shift.
-      shift: rollover(readLocal<ShiftState>(SHIFT_KEY, freshShift())),
+      shift: rollover(readLocal<ShiftState>(shiftKey(), freshShift(), LEGACY_SHIFT_KEY)),
       ready: true,
     }),
 
   setTier: (t) => {
-    writeLocal(TIER_KEY, t);
+    writeLocal(tierKey(), t);
     set({ tier: t });
   },
 
@@ -125,13 +144,13 @@ export const useEntitlementStore = create<EntitlementStore>((set, get) => ({
       // Still persist the rollover, or a stale day sits there until something
       // else happens to write.
       if (rolled !== shift) {
-        writeLocal(SHIFT_KEY, rolled);
+        writeLocal(shiftKey(), rolled);
         set({ shift: rolled });
       }
       return false;
     }
     const next = takeOn(rolled, allowance);
-    writeLocal(SHIFT_KEY, next);
+    writeLocal(shiftKey(), next);
     set({ shift: next });
     return true;
   },
@@ -140,7 +159,7 @@ export const useEntitlementStore = create<EntitlementStore>((set, get) => ({
 
   resetShift: () => {
     const fresh = freshShift();
-    writeLocal(SHIFT_KEY, fresh);
+    writeLocal(shiftKey(), fresh);
     set({ shift: fresh });
   },
 }));

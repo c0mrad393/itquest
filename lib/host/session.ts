@@ -23,7 +23,7 @@
  */
 
 import { create } from "zustand";
-import { clearSave, loadSave, setSaveScope } from "@/lib/persistence/save";
+import { clearSave, loadSave, readSlot, setSaveScope } from "@/lib/persistence/save";
 import { storedLevelCap } from "@/lib/platform/entitlements";
 import { standingOf } from "@/lib/progression/standing";
 
@@ -52,6 +52,22 @@ export function hasSavedGame(): boolean {
   if (typeof window === "undefined") return false;
   setSaveScope("local");
   return !!loadSave();
+}
+
+/**
+ * Is there a save this build cannot read?
+ *
+ * Separate from `hasSavedGame` because the landing page has three states, not
+ * two: nothing here, something to continue, and something that WAS here and
+ * is not loadable. The third used to render as the first — the Continue
+ * button simply did not appear, and a returning player was shown a brand new
+ * game with no hint that their estate still existed.
+ */
+export function strandedSave(): { version: number | null; kept: boolean } | null {
+  if (typeof window === "undefined") return null;
+  setSaveScope("local");
+  const slot = readSlot();
+  return slot.kind === "kept" ? { version: slot.version, kept: slot.keptAs !== null } : null;
 }
 
 /** The operator as the save remembers them. */

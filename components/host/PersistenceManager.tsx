@@ -4,7 +4,8 @@
  * PersistenceManager — headless save/restore
  * ------------------------------------------
  * On mount: hydrates all stores from LocalStorage (if a compatible save
- * exists). Then autosaves on any change to the persistent stores.
+ * exists), says so when one exists but cannot be read, then autosaves on any
+ * change to the persistent stores.
  *
  * Mounted FIRST among the host desktop's headless engines so hydration lands
  * before the reconciler/SLA/network engines evaluate anything.
@@ -23,14 +24,40 @@ import { useTicketStore } from "@/lib/host/tickets-store";
 import { useDialogueStore } from "@/lib/dialogue/store";
 import { useMailStore } from "@/lib/mail/store";
 import { useHostStore } from "@/lib/host/store";
-import { applySave, loadSave, saveNow } from "@/lib/persistence/save";
+import { applySave, readSlot, saveNow } from "@/lib/persistence/save";
+import { useNotificationStore } from "@/lib/host/notifications-store";
 
 const SAVE_INTERVAL_MS = 4000;
 
 export default function PersistenceManager() {
   useEffect(() => {
-    const saved = loadSave();
-    if (saved) applySave(saved);
+    const slot = readSlot();
+    if (slot.kind === "ok") applySave(slot.state);
+
+    /*
+     * A SAVE THIS BUILD CANNOT READ IS NOT A SILENT EVENT.
+     *
+     * The autosave below starts within four seconds of this line and writes
+     * over whatever is in the slot. Until now that is exactly what happened to
+     * an estate from an older build: it was read as `null`, nothing was
+     * applied, nothing was said, and it was gone before the operator had
+     * finished reading the dashboard.
+     *
+     * `readSlot` has already copied it aside. This says so — including when
+     * it could NOT, which is the one version of this message that must never
+     * be optimistic.
+     */
+    if (slot.kind === "kept") {
+      const from = slot.version === null ? "an older build" : `build v${slot.version}`;
+      useNotificationStore.getState().push({
+        kind: "warning",
+        title: "Your previous estate could not be loaded",
+        body: slot.keptAs
+          ? `It was saved by ${from} and this build reads a different shape. The old data has been kept aside rather than overwritten, and this session has started fresh.`
+          : `It was saved by ${from} and this build reads a different shape. There was not enough room to keep a copy, so starting a new session will replace it.`,
+        badge: slot.keptAs ? "Kept" : "Not kept",
+      });
+    }
 
     let last = 0;
     let trailing: ReturnType<typeof setTimeout> | undefined;

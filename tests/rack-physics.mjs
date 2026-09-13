@@ -183,6 +183,7 @@ import {
   seatsTotal,
   yearlySaving,
 } from "../.test-build/platform/pricing.js";
+import { decodeSlot, migrate } from "../.test-build/persistence/slot.js";
 import { progressOf, stuck, summarise } from "../.test-build/cohort/ledger.js";
 import { LEDGER, seatIds } from "../.test-build/cohort/mock-data.js";
 import {
@@ -3616,6 +3617,70 @@ group("Client endpoints skip the rack chain");
   // The free plan must not be selling anything that does not exist: it is the
   // one plan somebody is using RIGHT NOW.
   eq("everything the free plan offers is live", TIERS.free.features.every(isLive), true);
+}
+
+{
+  /*
+   * THE SAVE SLOT.
+   *
+   * `parsed.version !== VERSION ? null : parsed` collapsed four outcomes into
+   * one, and the caller — reasonably — read that null as "nothing saved". It
+   * generated a fresh estate and its autosave wrote over the real one about
+   * four seconds later. No message, no backup. Twenty-eight schema versions
+   * went past with that as the behaviour.
+   */
+  group("Save slot — telling the four outcomes apart");
+
+  const NOW = 1_700_000_000_000;
+  const V = 28;
+  const good = JSON.stringify({ version: V, savedAt: NOW, org: "Helix Biolabs" });
+
+  eq("nothing stored is empty", decodeSlot(null, V, {}).kind, "empty");
+  eq("an empty string is empty, not corrupt", decodeSlot("", V, {}).kind, "empty");
+  eq("a current save reads back", decodeSlot(good, V, {}).kind, "ok");
+  eq("and carries its contents", decodeSlot(good, V, {}).state.org, "Helix Biolabs");
+  eq("with nothing to migrate", decodeSlot(good, V, {}).migrated, false);
+
+  const old = JSON.stringify({ version: 26, savedAt: NOW });
+  const stale = decodeSlot(old, V, {});
+  eq("an older save is NOT reported as empty", stale.kind === "empty", false);
+  eq("it is stale", stale.kind, "stale");
+  eq("because it is outdated rather than broken", stale.reason, "outdated");
+  eq("and it says which build wrote it", stale.version, 26);
+  eq("and when", stale.savedAt, NOW);
+
+  const broken = decodeSlot("{not json", V, {});
+  eq("an unparseable blob is stale too", broken.kind, "stale");
+  eq("but for a different reason", broken.reason, "unreadable");
+  eq("with no version to report, and it does not invent one", broken.version, null);
+
+  // `JSON.parse` accepts plenty that is not a save. None of it may be handed
+  // to `applySave` as though it were an estate.
+  for (const junk of ["4", '"hello"', "null", "[]", '{"savedAt":1}']) {
+    eq(`${junk} is not mistaken for a save`, decodeSlot(junk, V, {}).kind, "stale");
+  }
+
+  group("Save slot — migrations walk forward");
+  const steps = {
+    26: (s) => ({ ...s, version: 27, walked: [...(s.walked ?? []), 26] }),
+    27: (s) => ({ ...s, version: 28, walked: [...(s.walked ?? []), 27] }),
+  };
+  const walked = decodeSlot(old, V, steps);
+  eq("a save with a path forward loads", walked.kind, "ok");
+  eq("and is flagged as migrated so the caller can write it back", walked.migrated, true);
+  eq("it arrives at the current version", walked.state.version, V);
+  eq("having taken every hop in order", walked.state.walked.join(","), "26,27");
+
+  // The gap is the point: a chain missing a link must not half-apply.
+  eq("a broken chain does not half-migrate", decodeSlot(old, V, { 26: steps[26] }).kind, "stale");
+  eq("and reports the version it actually found", decodeSlot(old, V, { 26: steps[26] }).version, 26);
+
+  group("Save slot — a migration that does not advance cannot hang the boot");
+  // This runs inside the first paint. A step that forgets to bump `version`
+  // would loop forever with no output at all.
+  eq("a non-advancing step is refused", migrate({ version: 26, savedAt: NOW }, V, { 26: (s) => s }), null);
+  eq("so is one that goes backwards", migrate({ version: 27, savedAt: NOW }, V, { 27: (s) => ({ ...s, version: 26 }), 26: (s) => ({ ...s, version: 27 }) }), null);
+  eq("a save already current needs no walk", migrate({ version: V, savedAt: NOW }, V, {}).version, V);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -37,7 +37,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { hasSavedGame, savedProfile, useSessionStore } from "@/lib/host/session";
+import { hasSavedGame, savedProfile, strandedSave, useSessionStore } from "@/lib/host/session";
 import {
   IconBolt,
   IconCable,
@@ -325,6 +325,7 @@ export default function LandingPage() {
   const router = useRouter();
   const startNewGame = useSessionStore((s) => s.startNewGame);
   const [saved, setSaved] = useState<{ level: number; username: string } | null>(null);
+  const [stranded, setStranded] = useState<{ version: number | null; kept: boolean } | null>(null);
   const [legal, setLegal] = useState<LegalDoc | null>(null);
   const [tab, setTab] = useState(0);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -333,7 +334,11 @@ export default function LandingPage() {
   // After mount: localStorage does not exist during SSR, and reading it in
   // render would make the server and client markup disagree.
   useEffect(() => {
-    if (!hasSavedGame()) return;
+    if (!hasSavedGame()) {
+      // Not the same as "no save". See `strandedSave`.
+      setStranded(strandedSave());
+      return;
+    }
     const p = savedProfile();
     setSaved({ level: p.level, username: p.username });
   }, []);
@@ -453,6 +458,25 @@ export default function LandingPage() {
         {saved && (
           <p className="mt-4 text-[12px] text-slate-500">
             Welcome back, <span className="text-slate-300">{saved.username}</span> — level {saved.level}.
+          </p>
+        )}
+
+        {/*
+          A save that exists and cannot be read is worth a sentence. Saying
+          nothing turns a returning player into a new one without telling
+          them, which is how somebody concludes the site ate their work —
+          correctly, as it happens, until this build kept it aside.
+        */}
+        {stranded && (
+          <p className="mt-4 text-[12px] text-slate-500">
+            You have an estate saved by{" "}
+            <span className="text-slate-300">
+              {stranded.version === null ? "an earlier build" : `build v${stranded.version}`}
+            </span>
+            , which this one cannot read.{" "}
+            {stranded.kept
+              ? "It has been kept aside rather than overwritten. Starting below begins a new one."
+              : "There was no room to keep a copy, so starting below will replace it."}
           </p>
         )}
 
