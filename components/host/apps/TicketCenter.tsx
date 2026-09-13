@@ -64,10 +64,11 @@ import TicketBrief from "./TicketBrief";
 import { AppIcon } from "@/components/ui/app-icons";
 import { AppHeader, Chip, CountPill, FilterBar, SearchField, Segmented } from "./AppChrome";
 import EmptyState from "@/components/ui/EmptyState";
-import { IconInboxZero, IconSearch, IconTicket } from "@/components/ui/icons";
+import { IconChevronLeft, IconInboxZero, IconSearch, IconTicket } from "@/components/ui/icons";
 import { Term } from "@/components/ui/Tooltip";
 import CopyButton from "@/components/ui/CopyButton";
 import { isHardwareTicket, jobForTicket } from "@/lib/hardware/types";
+import { useAppWidth } from "@/components/ui/useAppWidth";
 
 const SEVERITIES: (TicketSeverity | "all")[] = ["all", "low", "medium", "high", "critical"];
 const CATEGORIES: (TicketCategory | "all")[] = [
@@ -115,13 +116,26 @@ export default function TicketCenter() {
    */
   const advanced = density === "advanced";
 
+  /*
+   * ONE PANE OR TWO, decided by THIS window rather than the browser's.
+   *
+   * The split is 42% list against the rest, so at around 560 pixels both
+   * halves are too narrow to use: a 256-pixel queue beside a 300-pixel
+   * document, with "No ticket selected" occupying half the app to say nothing.
+   * Narrow, the queue gets the whole width and a selected ticket replaces it,
+   * with a way back — which is the same shape every mail client collapses to,
+   * for the same reason.
+   */
+  const { ref, narrow } = useAppWidth<HTMLDivElement>();
+  const soloDetail = narrow === true && selected !== null;
+
   // Mail-only escalations aren't on the board yet, so they don't count here.
   const openCount = tickets.filter(
     (t) => !t.mailOnly && t.status !== "resolved" && t.status !== "closed",
   ).length;
 
   return (
-    <div className="flex h-full flex-col bg-panel text-sm text-gray-200">
+    <div ref={ref} className="flex h-full flex-col bg-panel text-sm text-gray-200">
       <AppHeader iconId="ticket" title="Ticket Center" subtitle="Incident queue">
         <CountPill value={openCount} label="open" />
         <SearchField
@@ -202,7 +216,12 @@ export default function TicketCenter() {
             new game. */}
         <div
           data-tutorial-target="ticket-queue"
-          className="w-[42%] min-w-[16rem] max-w-[26rem] overflow-y-auto term-scroll border-r border-edge"
+          hidden={soloDetail}
+          className={
+            narrow === true
+              ? "w-full overflow-y-auto term-scroll"
+              : "w-[42%] min-w-[16rem] max-w-[26rem] overflow-y-auto term-scroll border-r border-edge"
+          }
         >
           {/*
             Two very different empties wearing the same words before v0.9.0.
@@ -238,7 +257,24 @@ export default function TicketCenter() {
           ))}
         </div>
 
-        <div data-tutorial-target="ticket-detail" className="min-w-0 flex-1 overflow-y-auto term-scroll">
+        <div
+          data-tutorial-target="ticket-detail"
+          /*
+           * Hidden rather than unmounted while narrow: the detail keeps its
+           * scroll position and its reveal state, so going back to the queue
+           * and returning does not reset the document the operator was reading.
+           */
+          hidden={narrow === true && !selected}
+          className="min-w-0 flex-1 overflow-y-auto term-scroll"
+        >
+          {soloDetail && (
+            <button
+              onClick={() => select(null)}
+              className="sticky top-0 z-10 flex w-full items-center gap-1.5 border-b border-edge bg-panelalt px-3 py-2 text-left text-[11px] text-gray-300 transition hover:bg-panel"
+            >
+              <IconChevronLeft size={12} /> Back to the queue
+            </button>
+          )}
           {selected ? (
             // Keyed on the ticket id so switching requests replays the entrance
             // rather than swapping text in place — the pane visibly becomes a

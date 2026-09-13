@@ -155,6 +155,7 @@ export const IconWrench = (p: IconProps) => (
 export const IconBoxes = (p: IconProps) => (
   <Svg {...p}><rect x="3" y="3" width="8" height="8" rx="1" /><rect x="13" y="3" width="8" height="8" rx="1" /><rect x="3" y="13" width="8" height="8" rx="1" /><rect x="13" y="13" width="8" height="8" rx="1" /></Svg>
 );
+export const IconChevronLeft = (p: IconProps) => (<Svg {...p}><path d="M15 6l-6 6 6 6" /></Svg>);
 export const IconChevronRight = (p: IconProps) => (<Svg {...p}><path d="M9 6l6 6-6 6" /></Svg>);
 export const IconChevronUp = (p: IconProps) => (<Svg {...p}><path d="M6 15l6-6 6 6" /></Svg>);
 

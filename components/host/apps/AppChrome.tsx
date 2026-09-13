@@ -26,16 +26,32 @@ export function AppHeader({
   /** Right-aligned controls (search, toggles, actions). */
   children?: React.ReactNode;
 }) {
+  /*
+   * NARROW WINDOWS USED TO CRUSH THIS.
+   *
+   * The title block could shrink and the controls could not be told apart from
+   * it, so at around 600 pixels flex took the space out of BOTH: the name
+   * collapsed to "Ticke…", the subtitle to "Incident…", and the count pill was
+   * squeezed until its text wrapped inside a rounded-full chip and rendered as
+   * a circle sitting on top of the truncated title.
+   *
+   * Three changes, all intrinsic — no breakpoint, because a breakpoint would
+   * be answering a question about the browser window rather than this one:
+   *
+   *   the controls never shrink, and scroll instead if there is truly no room;
+   *   the title block is the only thing that gives way, and truncates cleanly;
+   *   the subtitle is dropped first, being the least load-bearing thing here.
+   */
   return (
     <div className="flex h-11 shrink-0 items-center gap-2.5 border-b border-edge bg-panelalt px-3.5">
-      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-info/12 text-info">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-info/12 text-info">
         <AppIcon id={iconId} size={14} />
       </span>
-      <div className="min-w-0 leading-tight">
+      <div className="min-w-0 flex-1 leading-tight">
         <div className="truncate text-[13px] font-semibold text-gray-100">{title}</div>
         {subtitle && <div className="truncate text-[10px] text-gray-500">{subtitle}</div>}
       </div>
-      <div className="ml-auto flex items-center gap-2">{children}</div>
+      <div className="scroll-thin flex shrink-0 items-center gap-2 overflow-x-auto">{children}</div>
     </div>
   );
 }
@@ -56,7 +72,11 @@ export function CountPill({
     muted: "bg-gray-500/10 text-gray-400",
   } as const;
   return (
-    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${tones[tone]}`}>
+    // `shrink-0` and `whitespace-nowrap`: without them the label wraps inside
+    // the pill and a "6 open" chip renders as a circle with the text hidden.
+    <span
+      className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold ${tones[tone]}`}
+    >
       {value}
       {label ? ` ${label}` : ""}
     </span>
