@@ -38,6 +38,7 @@ import {
 } from "@/lib/core";
 import type { ShareAccess } from "@/lib/core";
 import { int, pick, sample, type Rng } from "@/lib/org/rng";
+import { endpointForUser } from "@/lib/core";
 import type { TicketTemplate } from "./matrix";
 
 // ── Tier tuning ─────────────────────────────────────────────────────────────
@@ -100,9 +101,63 @@ function nodeByRole(infra: InfrastructureState, role: string, rng: Rng): TargetN
   return found.length ? pick(rng, found) : null;
 }
 
+/**
+ * A workstation from the GATEWAY roster.
+ *
+ * Two families still use this, on purpose. `gen-ransomware` isolates its host
+ * through the security layer and `gen-stock-out` runs through Procurement, and
+ * both were written against a machine the gateway lists; moving them to the
+ * fleet is a change worth making against a verified run rather than in the
+ * same pass as everything else.
+ *
+ * Everything that is only about somebody's own machine uses `staffEndpoint`
+ * instead — see the note there for why that matters.
+ */
 function anyWorkstation(infra: InfrastructureState, rng: Rng): TargetNode | null {
   const ws = gatewayNodes(infra).filter((n) => n.role === "workstation");
   return ws.length ? pick(rng, ws) : null;
+}
+
+/**
+ * A member of staff and the machine they actually use.
+ *
+ * ── WHY NOT JUST TAKE A WORKSTATION ─────────────────────────────────────────
+ *
+ * The estate has 24 workstations at phase 1 and 216 at phase 3, and all but a
+ * couple carry the `fleet-endpoint` tag that keeps them off the Remote Gateway
+ * list. That is a deliberate and correct call — a gateway listing 216 desktops
+ * is not a tool — but it left exactly ONE connectable Windows workstation at
+ * every growth phase, so every endpoint ticket in the library pointed at the
+ * same machine. Two tickets raised together landed on the same host, and
+ * fixing one could resolve the other.
+ *
+ * The fleet is not unreachable; it is reached the way a real service desk
+ * reaches it — through the directory, per person. `endpointForUser` is the
+ * exact mapping the Directory Console's Remote Connect uses, so a ticket bound
+ * this way names the machine the operator will actually land on, and the route
+ * it teaches is the one the estate was designed around.
+ *
+ * It also writes better. "Nothing prints from WS-430" is a hostname; "Iris
+ * Takeda cannot print" is somebody's morning.
+ */
+function staffEndpoint(
+  infra: InfrastructureState,
+  rng: Rng,
+  service?: string,
+): { user: { samAccountName: string; displayName: string; department?: string }; node: TargetNode } | null {
+  const ad = adUsers(infra);
+  if (!ad) return null;
+  // Filter to workable pairs BEFORE picking. Picking a person and then
+  // discovering their machine is a Mac is how a family becomes unhostable
+  // half the time, silently.
+  const pairs = ad.users
+    .filter((u) => u.enabled)
+    .map((u) => ({ user: u, node: endpointForUser(infra, u.samAccountName) }))
+    .filter(
+      (p): p is { user: typeof p.user; node: TargetNode } =>
+        !!p.node && p.node.os === "windows" && (!service || !!p.node.services?.[service]),
+    );
+  return pairs.length ? pick(rng, pairs) : null;
 }
 
 /**
@@ -329,13 +384,21 @@ const FAMILIES: Family[] = [
           "Provision fully, then dispatch a field technician for the physical swap",
         ],
         makeContext: (infra, r) => {
-          const ws = anyWorkstation(infra, r);
-          if (!ws) return null;
-          return { targetNodeId: ws.nodeId, targetHostname: ws.hostname, department: dept, serviceName: spec.label };
+          const hit = staffEndpoint(infra, r);
+          if (!hit) return null;
+          return {
+            targetNodeId: hit.node.nodeId,
+            targetHostname: hit.node.hostname,
+            targetUserId: hit.user.samAccountName,
+            targetUserName: hit.user.displayName,
+            department: hit.user.department ?? dept,
+            serviceName: spec.label,
+          };
         },
-        title: (ctx) => `${ctx.targetHostname} out of memory — ${ctx.serviceName} upgrade`,
+        title: (ctx) => `${ctx.targetUserName} out of memory — ${ctx.serviceName} upgrade`,
         description: (ctx) =>
-          `User request:\nA ${ctx.department} user reports **${ctx.targetHostname} freezing** under load.\n\n` +
+          `User request:\n**${ctx.targetUserName}** (${ctx.department}) reports ` +
+          `**${ctx.targetHostname} freezing** under load.\n\n` +
           `What we found:\n• The machine is paging constantly and pinned near 100% memory\n` +
           `• The board takes **${ctx.serviceName}** — nothing else will seat\n\n` +
           `Objective:\n• Source the correct module (check the store room before ordering)\n` +
@@ -467,13 +530,21 @@ const FAMILIES: Family[] = [
           `Sort by CPU and end ${proc}`,
         ],
         makeContext: (infra, r) => {
-          const ws = anyWorkstation(infra, r);
-          if (!ws) return null;
-          return { targetNodeId: ws.nodeId, targetHostname: ws.hostname, serviceName: proc };
+          const hit = staffEndpoint(infra, r);
+          if (!hit) return null;
+          return {
+            targetNodeId: hit.node.nodeId,
+            targetHostname: hit.node.hostname,
+            targetUserId: hit.user.samAccountName,
+            targetUserName: hit.user.displayName,
+            department: hit.user.department,
+            serviceName: proc,
+          };
         },
-        title: (ctx) => `${ctx.targetHostname} unusable — one process eating the CPU`,
+        title: (ctx) => `${ctx.targetUserName}'s machine is unusable — one process eating the CPU`,
         description: (ctx) =>
-          `User request:\nThe machine is "so slow it's unusable" and the fan has been at full speed all morning.\n\n` +
+          `User request:\n**${ctx.targetUserName}** (${ctx.department}) says **${ctx.targetHostname}** is ` +
+          `"so slow it's unusable" and the fan has been at full speed all morning.\n\n` +
           `What we found:\n• A single process, **${ctx.serviceName}**, is holding the CPU near 100%\n` +
           `• Nothing else on the box is misbehaving\n\n` +
           `Objective:\n• Remote in and end the offending process`,
@@ -1977,22 +2048,30 @@ const FAMILIES: Family[] = [
         personaId: voice.persona,
         summary: `Printing has stopped on a ${dept} machine — the spooler is not running.`,
         hints: [
-          "Remote Gateway → RDP to the machine",
-          "Open Services and find Print Spooler",
+          "This is a staff machine, not infrastructure — find the person in the directory",
+          "Directory Console → the requester → Remote Connect opens their endpoint",
+          "Open Services on it and find Print Spooler",
           hard
             ? "Starting it is not enough here — check its startup type, or it will be gone again after a reboot"
             : "Start the service, then have them print a test page",
         ],
         makeContext: (infra, r) => {
-          const ws = windowsWorkstation(infra, r, "Spooler");
-          if (!ws) return null;
-          return { targetNodeId: ws.nodeId, targetHostname: ws.hostname, department: dept };
+          const hit = staffEndpoint(infra, r, "Spooler");
+          if (!hit) return null;
+          return {
+            targetNodeId: hit.node.nodeId,
+            targetHostname: hit.node.hostname,
+            targetUserId: hit.user.samAccountName,
+            targetUserName: hit.user.displayName,
+            department: hit.user.department ?? dept,
+          };
         },
-        title: (ctx) => `Nothing prints from ${ctx.targetHostname}`,
+        title: (ctx) => `${ctx.targetUserName} cannot print`,
         description: (ctx) =>
-          `User request:\nNobody in **${ctx.department}** can print from **${ctx.targetHostname}**. Jobs ` +
-          `sit in the queue and never come out.\n\nWhat we found:\n` +
-          `• The printer answers on the network — other machines print to it fine\n` +
+          `User request:\n**${ctx.targetUserName}** (${ctx.department}) has a stack of jobs that never ` +
+          `come out. Other people on the same printer are fine.\n\nWhat we found:\n` +
+          `• The printer answers on the network, so it is not the printer\n` +
+          `• The problem is on **${ctx.targetHostname}**, the machine they sign in to\n` +
           `• The Print Spooler service on this machine is not running\n` +
           (hard
             ? `• Somebody set it to not start at all, so a reboot will not fix it\n`
@@ -2000,9 +2079,9 @@ const FAMILIES: Family[] = [
           `\nObjective:\n• Get printing working from this machine` +
           (hard ? ` — and make sure it survives a restart` : ``),
         requester: (ctx, org) => ({
-          name: `${ctx.department} Team`,
+          name: String(ctx.targetUserName),
           role: voice.role,
-          email: `${String(ctx.department).toLowerCase()}@${mailDomain(org)}`,
+          email: `${ctx.targetUserId}@${mailDomain(org)}`,
           department: String(ctx.department),
         }),
         injectFault: (draft, ctx) => {
@@ -2049,35 +2128,37 @@ const FAMILIES: Family[] = [
         personaId: voice.persona,
         summary: `One machine cannot resolve internal names — its DNS points outside.`,
         hints: [
-          "Remote Gateway → RDP to the machine",
+          "Find the person in the directory and Remote Connect to their endpoint",
           "Check its DNS servers — a public resolver cannot see the internal zone",
           "Point it back at the domain controller",
         ],
         makeContext: (infra, r) => {
-          const ws = anyWorkstation(infra, r);
+          const hit = staffEndpoint(infra, r);
           const dc = nodesOf(infra).find((n) => n.role === "domain-controller");
-          if (!ws || !dc) return null;
+          if (!hit || !dc) return null;
           return {
-            targetNodeId: ws.nodeId,
-            targetHostname: ws.hostname,
-            department: dept,
+            targetNodeId: hit.node.nodeId,
+            targetHostname: hit.node.hostname,
+            targetUserId: hit.user.samAccountName,
+            targetUserName: hit.user.displayName,
+            department: hit.user.department ?? dept,
             expectedDns: dc.connection.ip,
             observedDns: stray,
           };
         },
-        title: (ctx) => `${ctx.targetHostname} cannot reach anything on the domain`,
+        title: (ctx) => `${ctx.targetUserName} has lost the intranet and their drives`,
         description: (ctx) =>
-          `User request:\nA **${ctx.department}** user says the intranet and their drives have ` +
-          `"disappeared" from **${ctx.targetHostname}**, but the internet works.\n\n` +
+          `User request:\n**${ctx.targetUserName}** (${ctx.department}) says the intranet and their ` +
+          `mapped drives have "disappeared" from **${ctx.targetHostname}**, but the internet works.\n\n` +
           `What we found:\n` +
           `• The machine is on the network and pings by IP\n` +
           `• Its DNS is set to **${ctx.observedDns}**, which has never heard of the internal zone\n` +
           `• The domain controller at **${ctx.expectedDns}** is the one that answers for it\n\n` +
           `Objective:\n• Get the machine resolving internal names again`,
         requester: (ctx, org) => ({
-          name: `${ctx.department} Team`,
+          name: String(ctx.targetUserName),
           role: voice.role,
-          email: `${String(ctx.department).toLowerCase()}@${mailDomain(org)}`,
+          email: `${ctx.targetUserId}@${mailDomain(org)}`,
           department: String(ctx.department),
         }),
         injectFault: (draft, ctx) => {
@@ -2109,19 +2190,27 @@ const FAMILIES: Family[] = [
         personaId: "persona-marcus-calm",
         summary: `A machine has stopped taking updates — the update service is disabled.`,
         hints: [
-          "Remote Gateway → RDP to the machine",
+          "A staff laptop, so go through the directory rather than the gateway",
+          "Directory Console → the user → Remote Connect",
           "Open Services and look at the update service, not the update panel",
           "A disabled service cannot be started by the panel that depends on it",
         ],
         makeContext: (infra, r) => {
-          const ws = windowsWorkstation(infra, r, "wuauserv");
-          if (!ws) return null;
-          return { targetNodeId: ws.nodeId, targetHostname: ws.hostname, department: dept };
+          const hit = staffEndpoint(infra, r, "wuauserv");
+          if (!hit) return null;
+          return {
+            targetNodeId: hit.node.nodeId,
+            targetHostname: hit.node.hostname,
+            targetUserId: hit.user.samAccountName,
+            targetUserName: hit.user.displayName,
+            department: hit.user.department ?? dept,
+          };
         },
         title: (ctx) => `${ctx.targetHostname} has not patched in months`,
         description: (ctx) =>
-          `User request:\nThe compliance report flags **${ctx.targetHostname}** (${ctx.department}) as ` +
-          `months behind on patches. The user says the update screen "just spins".\n\n` +
+          `User request:\nThe compliance report flags **${ctx.targetHostname}** — the machine ` +
+          `**${ctx.targetUserName}** (${ctx.department}) signs in to — as months behind on patches. ` +
+          `They say the update screen "just spins".\n\n` +
           `What we found:\n` +
           `• The machine is online and otherwise healthy\n` +
           `• Its update service is set to Disabled, so the update screen has nothing to talk to\n` +

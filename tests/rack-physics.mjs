@@ -4063,6 +4063,39 @@ group("Client endpoints skip the rack chain");
   }
   eq("no free-tier ticket is solved by its own fault", preSolved.join(", "), "");
 
+  group("Free tier — endpoint work is spread across the estate, not one machine");
+  /*
+   * THE PROPERTY THAT WAS MISSING.
+   *
+   * Every endpoint template used to bind to the same host, because the only
+   * workstations off the `fleet-endpoint` list were one Windows box and a Mac.
+   * The prose changed, the machine never did — and two tickets raised together
+   * landed on the same host, where fixing one could resolve the other.
+   *
+   * Counting DISTINCT TARGETS over many bindings is the only way to see that:
+   * every template still bound, every fault still injected, and nothing failed.
+   */
+  const endpointFamilies = ["gen-print-spooler-1-1", "gen-dns-client-1-1", "gen-update-blocked-1-1"];
+  const seenHosts = new Set();
+  const seenPeople = new Set();
+  for (const fam of endpointFamilies) {
+    const t = ticketLibrary(WORLDS[0])[fam];
+    for (let i = 0; i < 120; i++) {
+      const ctx = t.makeContext(WORLDS[0], mulberry32(i * 7 + 1));
+      if (!ctx) continue;
+      seenHosts.add(ctx.targetHostname);
+      seenPeople.add(ctx.targetUserName);
+    }
+  }
+  eq("a starter estate offers many machines to be called out to", seenHosts.size >= 8, true);
+  eq("and the request comes from a named person, not a hostname", seenPeople.size >= 8, true);
+  // The fleet is reached through the directory, so the ticket must carry the
+  // person — without it there is no way to find their machine.
+  const spooler = ticketLibrary(WORLDS[0])["gen-print-spooler-1-1"];
+  const sctx = spooler.makeContext(WORLDS[0], mulberry32(11));
+  eq("an endpoint ticket names who to look up", typeof sctx.targetUserId === "string" && sctx.targetUserId.length > 0, true);
+  eq("and which machine that resolves to", typeof sctx.targetHostname === "string" && sctx.targetHostname.length > 0, true);
+
   group("Free tier — Tier 2 content that a phase-1 estate cannot host");
   /*
    * A RATCHET, not a clean bill of health. Nine Tier-2 templates need an
