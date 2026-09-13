@@ -39,6 +39,7 @@ import {
 import type { ShareAccess } from "@/lib/core";
 import { int, pick, sample, type Rng } from "@/lib/org/rng";
 import { endpointForUser } from "@/lib/core";
+import { resolveDriveStatus } from "@/lib/infra/shares";
 import type { TicketTemplate } from "./matrix";
 
 // ── Tier tuning ─────────────────────────────────────────────────────────────
@@ -2408,6 +2409,121 @@ const FAMILIES: Family[] = [
           return n.services.Dnscache?.status === "Running";
         },
         healthyNode: (_i, ctx) => String(ctx.targetNodeId),
+      });
+    },
+  },
+
+  {
+    /*
+     * THE SYMPTOM IS NOT ALWAYS WHERE THE FAULT IS, and this family is built
+     * so the operator has to find out which case they are in.
+     *
+     * Tier 1: one person's session did not come back at logon. Everyone else
+     * is fine, the server is fine, and Reconnect on their machine is the whole
+     * job — the client is genuinely the fault.
+     *
+     * Tier 2: the same complaint, from one person, but the share service on
+     * the file server has stopped. Reconnect is still the obvious first move
+     * and it will fail, immediately and for a reason — which is the moment the
+     * operator learns to look past the machine in front of them. Everyone
+     * else's drives are down too; nobody has said so yet.
+     *
+     * The two are indistinguishable from the ticket text on purpose. That is
+     * what makes the first check worth making.
+     */
+    id: "gen-drive-dropped",
+    category: "System & Web Services",
+    track: "helpdesk",
+    tags: ["shares", "mapped-drive", "endpoint"],
+    tiers: ["Tier_1_Easy", "Tier_2_Medium"],
+    variants: 3,
+    build: ({ rng, tier, id }) => {
+      const voice = pick(rng, VOICES);
+      const serverSide = tier !== "Tier_1_Easy";
+      return base({ category: "System & Web Services", track: "helpdesk", tags: ["shares", "mapped-drive", "endpoint"] }, tier, id, {
+        personaId: voice.persona,
+        summary: serverSide
+          ? `A mapped drive is down, and reconnecting it will not help.`
+          : `One person's mapped drive did not come back after a restart.`,
+        hints: [
+          "Find the person in the directory and Remote Connect to their machine",
+          "This PC shows the drive and whether it is actually connected",
+          serverSide
+            ? "Reconnect fails straight away — that is the answer. Check whether anyone ELSE can reach the share"
+            : "Reconnect re-establishes the session; confirm it comes back Connected",
+        ],
+        makeContext: (infra, r) => {
+          const fs = fileServerOf(infra);
+          if (!fs) return null;
+          // Filter to staff whose machine actually carries a drive from this
+          // server, then pick. There is no ticket here without one.
+          const ad = adUsers(infra);
+          if (!ad) return null;
+          const pairs = ad.users
+            .filter((u) => u.enabled)
+            .map((u) => ({ user: u, node: endpointForUser(infra, u.samAccountName) }))
+            .filter((p) => !!p.node && p.node.os === "windows")
+            .map((p) => ({
+              ...p,
+              drive: (p.node as TargetNode & { mappedDrives?: { letter: string; serverNodeId?: string; shareName?: string }[] })
+                .mappedDrives?.find((d) => d.serverNodeId === fs.nodeId),
+            }))
+            .filter((p) => !!p.drive);
+          if (!pairs.length) return null;
+          const hit = pick(r, pairs);
+          return {
+            targetNodeId: hit.node!.nodeId,
+            targetHostname: hit.node!.hostname,
+            targetUserId: hit.user.samAccountName,
+            targetUserName: hit.user.displayName,
+            department: hit.user.department,
+            serverNodeId: fs.nodeId,
+            serverHostname: fs.hostname,
+            shareName: hit.drive!.letter,
+          };
+        },
+        title: (ctx) => `${ctx.targetUserName} cannot open ${ctx.shareName} — drive shows disconnected`,
+        description: (ctx) =>
+          `User request:\n**${ctx.targetUserName}** (${ctx.department}) restarted this morning and ` +
+          `**${ctx.shareName}** has not come back. Everything they need for today is on it.\n\n` +
+          `What we found:\n` +
+          `• The drive is still mapped to **\\\\${ctx.serverHostname}** — nothing was deleted\n` +
+          `• It reports disconnected on **${ctx.targetHostname}**\n` +
+          `• Nobody else has reported anything\n\n` +
+          `Objective:\n• Get them back into ${ctx.shareName}`,
+        requester: (ctx, org) => ({
+          name: String(ctx.targetUserName),
+          role: voice.role,
+          email: `${ctx.targetUserId}@${mailDomain(org)}`,
+          department: String(ctx.department),
+        }),
+        injectFault: (draft, ctx) => {
+          const n = draft.nodes[String(ctx.targetNodeId)];
+          if (n && n.os !== "linux" && n.mappedDrives) {
+            const d = n.mappedDrives.find((x) => x.letter === ctx.shareName);
+            if (d) d.status = "disconnected";
+          }
+          if (!serverSide) return;
+          // The server-side variant ALSO stops the share service, so the
+          // client-side fix is attempted, fails, and sends them upstream.
+          const fs = draft.nodes[String(ctx.serverNodeId)];
+          if (fs && fs.os === "windows" && fs.services.FleetShare) {
+            fs.services.FleetShare.status = "Stopped";
+            fs.services.FleetShare.pid = null;
+          }
+        },
+        /*
+         * Graded through the same derivation the endpoint's own file view
+         * uses, so "solved" means exactly what the operator can see: the drive
+         * reads Connected. On the Tier 2 variant that is only reachable once
+         * the share service is back, whatever was clicked on the client.
+         */
+        win: (infra, ctx) => {
+          const n = infra.nodes[String(ctx.targetNodeId)];
+          if (!n || n.os === "linux" || !n.mappedDrives) return false;
+          const d = n.mappedDrives.find((x) => x.letter === ctx.shareName);
+          return !!d && resolveDriveStatus(infra, d) === "connected";
+        },
       });
     },
   },

@@ -24,6 +24,7 @@
 import { useMemo } from "react";
 import { useInfraStore } from "@/lib/infra/store";
 import { SERVER_OS_FULL } from "@/lib/core";
+import { resolveDriveStatus } from "@/lib/infra/shares";
 import { AppIcon } from "@/components/ui/app-icons";
 
 // ── Shared layout ───────────────────────────────────────────────────────────
@@ -79,6 +80,8 @@ function UsageBar({ pct }: { pct: number }) {
 export function ThisPcPanel({ nodeId }: { nodeId: string }) {
   // Narrowed on the discriminant, not asserted: the node map is a union.
   const raw = useInfraStore((s) => s.infra.nodes[nodeId]);
+  const infra = useInfraStore((s) => s.infra);
+  const reconnect = useInfraStore((s) => s.reconnectMappedDrive);
   const node = raw?.os === "windows" ? raw : undefined;
   if (!node) return <Missing what="This host is no longer in the estate." />;
 
@@ -103,17 +106,57 @@ export function ThisPcPanel({ nodeId }: { nodeId: string }) {
           <UsageBar pct={node.health.diskUsedPct} />
         </div>
 
+        {/*
+          THE SAME FACT THIS FILE MANAGER ALREADY KNOWS.
+          
+          These tiles listed every mapped drive identically, so a drive that
+          was down looked exactly like one that was working — while the
+          endpoint's own file view two clicks away struck it through with a
+          red cross. Two views of one fact, one of them silent, which is the
+          worst version: the operator checks here, sees nothing wrong, and
+          concludes the user is imagining it.
+        */}
         {mapped.length > 0 && (
           <div className="mt-2 grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(15rem, 1fr))" }}>
-            {mapped.map((d) => (
-              <div key={d.letter} className="rounded-md border border-edge bg-panelalt p-3">
-                <div className="flex items-center gap-2">
-                  <AppIcon id="folder" size={14} />
-                  <span className="truncate text-[11px] font-medium text-gray-100">{d.letter}</span>
+            {mapped.map((d) => {
+              const status = resolveDriveStatus(infra, d);
+              const ok = status === "connected";
+              return (
+                <div
+                  key={d.letter}
+                  className={`rounded-md border p-3 ${ok ? "border-edge bg-panelalt" : "border-danger/40 bg-danger/[0.06]"}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <AppIcon id="folder" size={14} />
+                    <span className={`truncate text-[11px] font-medium ${ok ? "text-gray-100" : "text-gray-400 line-through"}`}>
+                      {d.letter}
+                    </span>
+                    <span className={`ml-auto shrink-0 text-[10px] ${ok ? "text-accent-strong" : "text-danger-strong"}`}>
+                      {status === "connected"
+                        ? "Connected"
+                        : status === "auth_error"
+                          ? "Access denied"
+                          : "Disconnected"}
+                    </span>
+                  </div>
+                  <div className="mt-1 truncate font-mono text-[10px] text-gray-400">{d.remotePath}</div>
+                  {/*
+                    Offered only when it could help. Reconnect clears the
+                    CLIENT's session and lets the status resolve again — if the
+                    share service is down it will come straight back, which is
+                    the answer rather than a failure.
+                  */}
+                  {!ok && (
+                    <button
+                      onClick={() => reconnect(nodeId, d.letter)}
+                      className="mt-2 w-full rounded border border-edge px-2 py-1 text-[10.5px] text-gray-200 transition hover:bg-panel"
+                    >
+                      Reconnect
+                    </button>
+                  )}
                 </div>
-                <div className="mt-1 truncate font-mono text-[10px] text-gray-400">{d.remotePath}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Group>

@@ -4125,6 +4125,48 @@ group("Client endpoints skip the rack chain");
   eq("an endpoint ticket names who to look up", typeof sctx.targetUserId === "string" && sctx.targetUserId.length > 0, true);
   eq("and which machine that resolves to", typeof sctx.targetHostname === "string" && sctx.targetHostname.length > 0, true);
 
+  group("Free tier — a mapped drive tells you where the fault is NOT");
+  /*
+   * The two variants read identically in the ticket text and must not behave
+   * identically. Tier 1 is genuinely the client: the session did not come back
+   * and reconnecting is the whole job. Tier 2 wears the same complaint while
+   * the share service is down, so the obvious first move fails — which is the
+   * moment the operator learns to look past the machine in front of them.
+   *
+   * If the client fix satisfied both, the family would be teaching the
+   * opposite lesson: click the button, close the ticket.
+   */
+  const reconnectClient = (world, ctx) => {
+    const n = world.nodes[ctx.targetNodeId];
+    const d = n.mappedDrives.find((x) => x.letter === ctx.shareName);
+    if (d) d.status = "connected";
+  };
+  const startShareService = (world, ctx) => {
+    const fs = world.nodes[ctx.serverNodeId];
+    fs.services.FleetShare.status = "Running";
+    fs.services.FleetShare.pid = 2222;
+  };
+  const driveCase = (id) => {
+    const t = ticketLibrary(WORLDS[0])[id];
+    const ctx = t.makeContext(WORLDS[0], mulberry32(5));
+    const world = structuredClone(WORLDS[0]);
+    t.injectFault(world, ctx);
+    const broken = t.win(world, ctx);
+    reconnectClient(world, ctx);
+    const afterClient = t.win(world, ctx);
+    startShareService(world, ctx);
+    return { broken, afterClient, afterServer: t.win(world, ctx) };
+  };
+
+  const t1 = driveCase("gen-drive-dropped-1-1");
+  eq("tier 1 starts broken", t1.broken, false);
+  eq("and reconnecting on the client is the whole job", t1.afterClient, true);
+
+  const t2 = driveCase("gen-drive-dropped-2-1");
+  eq("tier 2 starts broken too", t2.broken, false);
+  eq("but the same client fix does NOT close it", t2.afterClient, false);
+  eq("it takes the share service coming back", t2.afterServer, true);
+
   group("Free tier — Tier 2 content that a phase-1 estate cannot host");
   /*
    * A RATCHET, not a clean bill of health. Six Tier-2 templates need an

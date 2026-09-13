@@ -11,6 +11,27 @@
 import type { InfrastructureState, MappedDrive, MappedDriveStatus, TargetNode } from "@/lib/core";
 
 /** Resolve the live status of a mapped drive from the backing server node. */
+/**
+ * Is this drive usable right now?
+ *
+ * ── THE SERVER'S STATE COMES FIRST, THEN THE CLIENT'S ───────────────────────
+ *
+ * Everything below the last check is derived from the SERVER, which is the
+ * point: a mapped drive is a symptom and the fault is usually somewhere the
+ * user cannot see. A stopped share service takes every drive in the estate
+ * down at once, and no amount of clicking on the client will fix it.
+ *
+ * The last check is the other half, and it was missing. A drive can also fail
+ * on the CLIENT alone — the session did not re-establish at logon, which is
+ * the single most common mapped-drive complaint a service desk gets. Without
+ * it every drive in the estate was either up or down together, so there was no
+ * way to express one person's drive being broken, and no ticket could ask.
+ *
+ * A stored `disconnected` is therefore honoured as a real client-side state.
+ * `connected` is NOT honoured in reverse: a client that believes it is
+ * connected to a server that is down is simply wrong, and the server's opinion
+ * settles it.
+ */
 export function resolveDriveStatus(infra: InfrastructureState, drive: MappedDrive): MappedDriveStatus {
   const server = findShareServer(infra, drive);
   if (!server) return "disconnected";
@@ -20,8 +41,18 @@ export function resolveDriveStatus(infra: InfrastructureState, drive: MappedDriv
     const smb = server.services["FleetShare"];
     if (smb && smb.status !== "Running") return "disconnected";
   }
-  // AD share permissions revoked → authenticated but access denied.
+  /*
+   * AD share permissions revoked → authenticated but access denied.
+   *
+   * NOTE: gated on `flaggedDomains`, which is empty in a starter estate, so
+   * this branch cannot fire at growth phase 1. That coupling looks accidental
+   * — a phishing signal has no bearing on a share ACL — but it is left as
+   * found rather than changed on the way past.
+   */
   if (infra.security.flaggedDomains?.length && drive.status === "auth_error") return "auth_error";
+  // The client's own session, which is the half that lets ONE person's drive
+  // be broken while everybody else's is fine.
+  if (drive.status === "disconnected") return "disconnected";
   return "connected";
 }
 

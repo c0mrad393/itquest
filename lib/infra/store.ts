@@ -364,6 +364,16 @@ interface InfraStore {
   setNodeInterfaceUp: (nodeId: NodeId, iface: string, up: boolean) => void;
   /** Change a node's resolver list (endpoint Network Settings). */
   setNodeDns: (nodeId: NodeId, dnsServers: string[]) => void;
+  /**
+   * Re-establish a mapped drive's session from the client side.
+   *
+   * Clears the client's own `disconnected` state and lets `resolveDriveStatus`
+   * decide again. It is deliberately NOT a "make this work" button: if the
+   * share service is down or the server is dark, the drive resolves to
+   * disconnected immediately and the operator has learned the fault is not
+   * where the symptom is.
+   */
+  reconnectMappedDrive: (nodeId: NodeId, letter: string) => void;
   /** Change a node's IPv4 on an adapter. */
   setNodeIpv4: (nodeId: NodeId, iface: string, ipv4: string) => void;
   /** macOS Wi-Fi radio toggle. */
@@ -1677,6 +1687,21 @@ export const useInfraStore = create<InfraStore>((set, get) => ({
       return withNode(s, nodeId, {
         ...node,
         network: { ...node.network, dnsServers },
+      } as TargetNode);
+    }),
+
+  reconnectMappedDrive: (nodeId, letter) =>
+    set((s) => {
+      const node = s.infra.nodes[nodeId];
+      // Only endpoints carry mapped drives; a Linux host has no such concept,
+      // and narrowing here keeps the store honest about that rather than
+      // widening the type to make one action compile.
+      if (!node || node.os === "linux" || !node.mappedDrives) return s;
+      return withNode(s, nodeId, {
+        ...node,
+        mappedDrives: node.mappedDrives.map((d) =>
+          d.letter === letter ? { ...d, status: "connected" } : d,
+        ),
       } as TargetNode);
     }),
 
