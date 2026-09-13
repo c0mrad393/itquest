@@ -29,6 +29,7 @@ import {
 import { createHostWorkstation } from "./seed";
 import type { HostWorkstationState } from "@/lib/core";
 import { standingOf, type Standing } from "@/lib/progression/standing";
+import { jobTitle } from "@/lib/progression/tracks";
 import { useEntitlementStore } from "@/lib/platform/entitlements";
 import { playCue, setAudioEnabled } from "@/lib/audio/engine";
 
@@ -424,4 +425,9 @@ export function operatorStanding(): Standing {
     useHostStore.getState().host.user.xp,
     useEntitlementStore.getState().levelCap(),
   );
+}
+
+/** The operator's title, for callers that are not components. */
+export function operatorTitle(): string {
+  return jobTitle(operatorStanding().level, useHostStore.getState().host.user.skills);
 }

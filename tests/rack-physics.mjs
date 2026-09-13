@@ -175,6 +175,14 @@ import {
   lockLabel,
 } from "../.test-build/progression/unlocks.js";
 import { standingOf, toNextLevel } from "../.test-build/progression/standing.js";
+import {
+  codeNumber,
+  dedupeTicketCodes,
+  nextTicketCode,
+  resetTicketSeq,
+  syncTicketSeq,
+} from "../.test-build/tickets/factory.js";
+import { jobTitle, rankPrefix, SPECIALISATION_THRESHOLD } from "../.test-build/progression/tracks.js";
 import { levelForXp, xpForLevel } from "../.test-build/scenario/scoring.js";
 import {
   PRICING,
@@ -3739,6 +3747,119 @@ group("Client endpoints skip the rack chain");
     }
     eq(`${c.id}: no label overlaps another label`, labelHits, 0);
   }
+}
+
+{
+  /*
+   * TICKET CODES.
+   *
+   * `ticketSeq` was a module variable. It reset to its base on every page
+   * load while the SAVE kept every code it had already handed out, so the
+   * first ticket raised after a reload carried a number already sitting on
+   * the operator's board. Measured on a real save before the fix: eight
+   * tickets, seven distinct codes, with TCK-4825 answering to both a password
+   * reset and a rogue-DHCP cascade.
+   */
+  group("Ticket codes — the counter answers to what already exists");
+
+  eq("a code parses", codeNumber("TCK-4831"), 4831);
+  eq("a foreign code does not", codeNumber("INC-4831"), null);
+  eq("and neither does a malformed one", codeNumber("TCK-nope"), null);
+
+  // The exact shape of the bug: a restored queue, then a freshly minted code.
+  resetTicketSeq();
+  const restored = [{ code: "TCK-4820" }, { code: "TCK-4825" }, { code: "TCK-4823" }];
+  syncTicketSeq(restored);
+  const issued = [];
+  for (let i = 0; i < 3; i++) issued.push(nextTicketCode());
+  eq("the next code clears the highest restored one", issued[0], "TCK-4826");
+  eq("and keeps going", issued.join(","), "TCK-4826,TCK-4827,TCK-4828");
+  eq("so nothing it issues collides with the queue it was told about",
+     issued.some((c) => restored.some((r) => r.code === c)), false);
+
+  group("Ticket codes — syncing is monotonic and idempotent");
+  // Called twice with the same queue, it must not hand back a number it has
+  // already given out in between.
+  resetTicketSeq();
+  syncTicketSeq([{ code: "TCK-4900" }]);
+  const a = nextTicketCode();
+  syncTicketSeq([{ code: "TCK-4900" }]);
+  const b = nextTicketCode();
+  eq("a repeat sync does not rewind the counter", a === b, false);
+  eq("it keeps moving forward", codeNumber(b) > codeNumber(a), true);
+
+  // A filtered list — say, only the open tickets — must not drag it back.
+  resetTicketSeq();
+  syncTicketSeq([{ code: "TCK-4950" }]);
+  syncTicketSeq([{ code: "TCK-4830" }]);
+  eq("a lower queue cannot rewind it", codeNumber(nextTicketCode()) > 4950, true);
+
+  group("Ticket codes — junk in the queue is ignored, not obeyed");
+  resetTicketSeq();
+  syncTicketSeq([{ code: "TCK-4840" }, { code: "not-a-code" }, { code: "TCK-" }]);
+  eq("unparseable codes do not move the counter", nextTicketCode(), "TCK-4841");
+
+  group("Ticket codes — a save that already collided is repaired, not inherited");
+  /*
+   * The measured damage: TCK-4825 answering to three different incidents in
+   * one save, written before the counter knew about the queue.
+   */
+  resetTicketSeq();
+  const damaged = [
+    { id: "a", code: "TCK-4820" },
+    { id: "b", code: "TCK-4825" },
+    { id: "c", code: "TCK-4825" },
+    { id: "d", code: "TCK-4826" },
+    { id: "e", code: "TCK-4825" },
+  ];
+  syncTicketSeq(damaged);
+  const fixed = dedupeTicketCodes(damaged);
+  eq("every ticket still exists", fixed.length, damaged.length);
+  eq("and every code is now distinct", new Set(fixed.map((t) => t.code)).size, fixed.length);
+  // The first holder keeps the code it had — it is the one already quoted.
+  eq("the first claimant keeps TCK-4825", fixed.find((t) => t.id === "b").code, "TCK-4825");
+  eq("the later ones move", fixed.find((t) => t.id === "c").code === "TCK-4825", false);
+  eq("and so does the third", fixed.find((t) => t.id === "e").code === "TCK-4825", false);
+  // Reissued codes must come from clear air, not from somewhere in the middle.
+  eq("replacements clear the whole queue", fixed.every((t) => codeNumber(t.code) >= 4820), true);
+  eq("untouched tickets are untouched", fixed.find((t) => t.id === "d").code, "TCK-4826");
+
+  group("Ticket codes — a clean queue is left exactly alone");
+  resetTicketSeq();
+  const clean = [{ id: "a", code: "TCK-4820" }, { id: "b", code: "TCK-4821" }];
+  syncTicketSeq(clean);
+  // Identity, not just equality: a clean load must not look like a change to
+  // anything subscribed to the store.
+  eq("the same array comes back", dedupeTicketCodes(clean) === clean, true);
+  eq("and no code was spent repairing nothing", nextTicketCode(), "TCK-4822");
+
+  {
+
+  /*
+   * THE JOB TITLE, which had the same disease as the level and stayed
+   * undiagnosed for longer: `host.user.role` was written once in the seed and
+   * never again, so it read "IT Intern" for the life of every save while
+   * `jobTitle()` computed the truth beside it on the same screen.
+   */
+  }
+  group("Job title — both axes are live");
+  const none = {};
+  eq("a new operator is an intern", jobTitle(1, none), "IT Intern");
+  eq("and stops being one on promotion", jobTitle(2, none), "Junior IT Generalist");
+  eq("seniority keeps climbing with the level", jobTitle(15, none), "Principal IT Generalist");
+  // The bug in one line: at level 15 the stored field still said this.
+  eq("level 15 is NOT an intern", jobTitle(15, none) === "IT Intern", false);
+
+  group("Job title — the discipline follows the work");
+  const generalist = { networking: SPECIALISATION_THRESHOLD - 1 };
+  const specialist = { networking: SPECIALISATION_THRESHOLD };
+  eq("below the threshold you are a generalist", jobTitle(6, generalist).includes("Generalist"), true);
+  eq("at it you are not", jobTitle(6, specialist).includes("Generalist"), false);
+  eq("and the rank still leads", jobTitle(6, specialist).startsWith(rankPrefix(6)), true);
+  // Changing track changes the title without touching the level.
+  const other = { security: SPECIALISATION_THRESHOLD * 2 };
+  eq("a different track gives a different title", jobTitle(6, specialist) === jobTitle(6, other), false);
+  eq("at the same seniority", jobTitle(6, other).startsWith(rankPrefix(6)), true);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

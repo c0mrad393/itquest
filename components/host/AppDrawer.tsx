@@ -37,6 +37,7 @@ import { AppIcon } from "@/components/ui/app-icons";
 import Avatar from "./Avatar";
 import { IconSearch } from "@/components/ui/icons";
 import { useOperatorLevel } from "@/lib/progression/use-standing";
+import { useJobTitle } from "@/lib/progression/use-standing";
 
 export default function AppDrawer() {
   const open = useHostStore((s) => s.startMenuOpen);
@@ -45,6 +46,7 @@ export default function AppDrawer() {
   const openApp = useHostStore((s) => s.openApp);
   const host = useHostStore((s) => s.host);
   const level = useOperatorLevel();
+  const title = useJobTitle();
   const [query, setQuery] = useState("");
   const field = useRef<HTMLInputElement>(null);
 
@@ -159,7 +161,7 @@ export default function AppDrawer() {
               {host.user.displayName}
             </span>
             <span className="block truncate text-[11px] text-gray-500">
-              {host.user.role} · level {level}
+              {title} · level {level}
             </span>
           </span>
           <span className="shrink-0 font-mono text-[11px] text-gray-500">

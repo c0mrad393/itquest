@@ -43,7 +43,7 @@ import { IconAlert, IconBolt, IconCheck, IconPlus, IconWrench, IconX } from "@/c
 import NetworkBench from "./devtools/NetworkBench";
 import TicketBench from "./devtools/TicketBench";
 import ShellBench from "./devtools/ShellBench";
-import { useStanding } from "@/lib/progression/use-standing";
+import { useJobTitle, useStanding } from "@/lib/progression/use-standing";
 
 type Tab = "shell" | "progress" | "tickets" | "faults" | "network";
 
@@ -120,6 +120,7 @@ export default function DebugPanel({
 function Progression({ say }: { say: (s: string) => void }) {
   const user = useHostStore((s) => s.host.user);
   const standing = useStanding();
+  const title = useJobTitle();
   const awardXp = useHostStore((s) => s.awardXp);
   const awardBudget = useHostStore((s) => s.awardBudget);
   const growth = useInfraStore((s) => s.infra.growth);
@@ -170,7 +171,7 @@ function Progression({ say }: { say: (s: string) => void }) {
           <Stat label="Level" value={standing.held ? `${standing.level} (earned ${standing.earned})` : String(standing.level)} />
           <Stat label="XP" value={`${user.xp.toLocaleString()} / ${nextLevelXp.toLocaleString()}`} />
           <Stat label="Budget" value={`${user.budget.toLocaleString()} Cr`} />
-          <Stat label="Role" value={user.role} />
+          <Stat label="Role" value={title} />
         </dl>
         <div className="mt-2 flex flex-wrap gap-1.5">
           <Btn onClick={levelUp} icon={<IconPlus size={10} />}>Force level up</Btn>

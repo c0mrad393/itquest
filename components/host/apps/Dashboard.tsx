@@ -53,7 +53,7 @@ import {
 import { appLock, isAppUnlocked, lockExplanation, lockLabel } from "@/lib/progression/unlocks";
 import { slaSnapshot } from "@/lib/host/ticket-ui";
 import { AppIcon } from "@/components/ui/app-icons";
-import { useStanding } from "@/lib/progression/use-standing";
+import { useJobTitle, useStanding } from "@/lib/progression/use-standing";
 import {
   IconActivity,
   IconAlert,
@@ -70,6 +70,7 @@ export default function Dashboard() {
   const user = useHostStore((s) => s.host.user);
   const { atLevelCap } = useEntitlements();
   const standing = useStanding();
+  const title = useJobTitle();
   const openApp = useHostStore((s) => s.openApp);
   const tickets = useTicketStore((s) => s.tickets);
   const select = useTicketStore((s) => s.select);
@@ -203,7 +204,7 @@ export default function Dashboard() {
               {greeting()}, {user.displayName.split(" ")[0]}
             </h1>
             <p className="mt-0.5 text-[12px] text-gray-500">
-              {infra.clientOrg} · {user.role} · level {standing.level}
+              {infra.clientOrg} · {title} · level {standing.level}
             </p>
           </div>
           <div className="flex items-center gap-1.5 rounded-full border border-edge bg-surface/70 px-3 py-1.5 backdrop-blur">

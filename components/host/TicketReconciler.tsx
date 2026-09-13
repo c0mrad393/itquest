@@ -19,17 +19,11 @@ import { useNotificationStore } from "@/lib/host/notifications-store";
 import { ticketLibrary } from "@/lib/tickets/factory";
 import { budgetReward, computeScore } from "@/lib/scenario/scoring";
 import { burnRate, HOST_APP_REGISTRY, phaseForLevel, phaseSpec, rackPower, rackThermal } from "@/lib/core";
-import { skillOf, jobTitle } from "@/lib/progression/tracks";
+import { skillOf } from "@/lib/progression/tracks";
 import { appsUnlockedAt, tiersUnlockedAt } from "@/lib/progression/unlocks";
-import { operatorStanding } from "@/lib/host/store";
+import { operatorTitle } from "@/lib/host/store";
 
 const tierNumber = (t: string) => t.replace(/^Tier_(\d).*$/, "$1");
-
-/** Title after the award has landed — read fresh so it reflects the new level. */
-function jobTitleNow(): string {
-  const u = useHostStore.getState().host.user;
-  return jobTitle(operatorStanding().level, u.skills);
-}
 
 export default function TicketReconciler() {
   useEffect(() => {
@@ -180,8 +174,8 @@ export default function TicketReconciler() {
             useNotificationStore.getState().push({
               kind: "success",
               title: `Promoted to level ${lvl}`,
-              body: bits.length ? `Unlocked: ${bits.join(" · ")}` : jobTitleNow(),
-              badge: jobTitleNow(),
+              body: bits.length ? `Unlocked: ${bits.join(" · ")}` : operatorTitle(),
+              badge: operatorTitle(),
             });
             if (tiers.length) {
               useTicketStore.getState().spawnForTiers(tiers, infra, lvl);

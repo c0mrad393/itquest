@@ -34,7 +34,108 @@ export function ticketLibrary(infra: InfrastructureState): Record<string, Ticket
   return templates;
 }
 
-let ticketSeq = 4820;
+/**
+ * THE TICKET NUMBER, AND WHY IT HAS TO BE TOLD WHERE IT IS.
+ *
+ * This was a bare module variable, which means it reset to the base on every
+ * page load while the SAVE kept the codes it had already handed out. Reload a
+ * session with tickets TCK-4820..4825 on the board and the next ticket the
+ * estate generated was TCK-4820 again — a code already on somebody's desk.
+ * Measured on a real save: eight tickets, seven distinct codes.
+ *
+ * The code is the operator's handle on a ticket. It is what they search for,
+ * what a requester quotes back at them, what they carry into a terminal. Two
+ * tickets answering to one is not cosmetic.
+ *
+ * The counter still exists — minting has no access to the queue — but it is
+ * no longer allowed to be the authority on what has been issued. `syncTicketSeq`
+ * points it past everything that exists, and every path that REPLACES the
+ * queue calls it.
+ */
+const CODE_BASE = 4820;
+const CODE_PREFIX = "TCK-";
+
+let ticketSeq = CODE_BASE;
+
+/** The numeric half of a ticket code, or null if it is not one of ours. */
+export function codeNumber(code: string): number | null {
+  if (!code.startsWith(CODE_PREFIX)) return null;
+  const n = Number(code.slice(CODE_PREFIX.length));
+  return Number.isInteger(n) ? n : null;
+}
+
+/**
+ * Point the sequence past every code in `tickets`.
+ *
+ * Idempotent and monotonic: it never moves the counter BACKWARDS, so a caller
+ * that hands it a filtered list cannot make it reissue a code it already gave
+ * out during this session.
+ */
+export function syncTicketSeq(tickets: readonly { code: string }[]): void {
+  let max = ticketSeq - 1;
+  for (const t of tickets) {
+    const n = codeNumber(t.code);
+    if (n !== null && n > max) max = n;
+  }
+  ticketSeq = max + 1;
+}
+
+/**
+ * Give any ticket sharing a code with an earlier one a fresh code.
+ *
+ * Saves written before the counter was fixed carry real duplicates — a
+ * measured one had TCK-4825 answering to three different incidents. Pointing
+ * the counter forward stops NEW collisions but leaves those, and the operator
+ * would keep meeting them every session until they started a new world.
+ *
+ * The FIRST holder of a code keeps it. That matters: it is the one the
+ * operator has most likely already seen, quoted, or searched for, and a repair
+ * that renamed everything would be a second identity change on top of the
+ * first. Only the later claimants move.
+ *
+ * Call `syncTicketSeq` before this, so the codes it issues are past everything.
+ */
+export function dedupeTicketCodes<T extends { code: string }>(tickets: T[]): T[] {
+  const seen = new Set<string>();
+  let changed = false;
+  const out = tickets.map((t) => {
+    if (!seen.has(t.code)) {
+      seen.add(t.code);
+      return t;
+    }
+    changed = true;
+    const code = nextTicketCode();
+    seen.add(code);
+    return { ...t, code };
+  });
+  // Returning the original array when nothing collided keeps the store's
+  // reference stable, so a clean load does not look like a change to anything
+  // subscribed to it.
+  return changed ? out : tickets;
+}
+
+/**
+ * Issue the next ticket code.
+ *
+ * A named operation rather than an inline `ticketSeq++`, so the counter has
+ * exactly one way out of this module and the specs can exercise the thing the
+ * estate actually uses instead of a reimplementation of it.
+ */
+export function nextTicketCode(): string {
+  return `${CODE_PREFIX}${ticketSeq++}`;
+}
+
+/**
+ * Back to the base.
+ *
+ * Nothing in the product calls this: every world reset goes through a page
+ * reload, which reinitialises the module anyway. It exists so the specs can
+ * start each case from a known counter — `syncTicketSeq` is deliberately
+ * monotonic, so without it one assertion would leak into the next.
+ */
+export function resetTicketSeq(): void {
+  ticketSeq = CODE_BASE;
+}
 
 /** Build one ticket from a template + bound context. Returns null if unhostable. */
 export function buildTicket(
@@ -46,7 +147,7 @@ export function buildTicket(
   if (!ctx) return null;
 
   const org = infra.org;
-  const code = `TCK-${ticketSeq++}`;
+  const code = nextTicketCode();
   // God Mode surfaces mail-only tickets straight onto the ITSM board.
   const mailOnly = template.origin === "mail";
 

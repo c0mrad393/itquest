@@ -14,7 +14,7 @@ import { useTicketStore } from "@/lib/host/tickets-store";
 import { useDialogueStore } from "@/lib/dialogue/store";
 import { useSlaStore } from "@/lib/sla/store";
 import { levelForXp } from "@/lib/scenario/scoring";
-import { useStanding } from "@/lib/progression/use-standing";
+import { useJobTitle, useStanding } from "@/lib/progression/use-standing";
 import { RIVALS, type LeaderboardEntry as Row } from "@/lib/host/leaderboard-data";
 import Avatar from "../Avatar";
 import { AppIcon } from "@/components/ui/app-icons";
@@ -43,10 +43,11 @@ export default function Leaderboard() {
    * by XP, which is the honest measure and is not capped by anything.
    */
   const standing = useStanding();
+  const title = useJobTitle();
 
   const you: Row = {
     name: user.displayName,
-    role: user.role,
+    role: title,
     avatar: user.avatar,
     xp: user.xp,
     resolved: resolved.length,

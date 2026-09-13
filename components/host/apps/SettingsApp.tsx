@@ -13,11 +13,11 @@ import { useHostStore } from "@/lib/host/store";
 import { useInfraStore } from "@/lib/infra/store";
 import { resetSimulation, saveNow, savedAt } from "@/lib/persistence/save";
 import { toNextLevel } from "@/lib/progression/standing";
-import { useStanding } from "@/lib/progression/use-standing";
+import { useJobTitle, useStanding } from "@/lib/progression/use-standing";
 import Avatar from "../Avatar";
 import { AppIcon } from "@/components/ui/app-icons";
 import { HOST_WALLPAPERS, type WallpaperFamily } from "@/lib/host/wallpapers";
-import { jobTitle } from "@/lib/progression/tracks";
+
 import { useTutorialStore } from "@/lib/tutorial/store";
 import AppearanceApp from "./AppearanceApp";
 import { TUTORIAL_SEQUENCES } from "@/lib/tutorial/flow";
@@ -58,6 +58,7 @@ export default function SettingsApp() {
    * questions. It is one number now, and the surplus is named as surplus.
    */
   const standing = useStanding();
+  const title = useJobTitle();
   const next = toNextLevel(standing);
   const progressPct = next ? Math.min(100, Math.round((next.have / next.need) * 100)) : 100;
 
@@ -87,7 +88,7 @@ export default function SettingsApp() {
           <Avatar value={user.avatar} name={user.displayName} className="h-14 w-14" />
           <div className="flex-1">
             <div className="text-base font-semibold text-gray-100">{user.displayName}</div>
-            <div className="text-[11px] text-gray-500">{jobTitle(standing.level, user.skills)}</div>
+            <div className="text-[11px] text-gray-500">{title}</div>
             <div className="mt-2">
               <div className="flex items-center justify-between text-[10px] text-gray-500">
                 <span>

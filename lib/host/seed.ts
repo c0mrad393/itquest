@@ -12,9 +12,6 @@ export function createHostWorkstation(): HostWorkstationState {
   return {
     user: {
       displayName: "Operator",
-      // Title is DERIVED from level + skills at render time (see
-      // lib/progression/tracks.ts). This is only the day-one seed.
-      role: "IT Intern",
       avatar: "indigo",
       xp: 0,
       // An intern's float: one memory module and a couple of cables.

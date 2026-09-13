@@ -491,7 +491,11 @@ export function taskbarPinned(level = 99): HostAppId[] {
 
 export interface HostUser {
   displayName: string;
-  role: string; // "Tier-2 Systems Engineer"
+  /*
+   * NO `role` EITHER — see the note on `level` below. It was a stored string
+   * that nothing ever wrote after the seed, so it read "IT Intern" for the
+   * life of every save while `jobTitle()` computed the truth beside it.
+   */
   avatar: string; // palette id or https image URL
   /*
    * THERE IS NO `level` HERE, and that absence is load-bearing.

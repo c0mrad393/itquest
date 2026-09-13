@@ -27,6 +27,7 @@ import type { HostUser, InfrastructureState, Ticket } from "@/lib/core";
 import type { Conversation } from "@/lib/dialogue/types";
 import type { EmailBeat } from "@/lib/tickets/matrix";
 import { decodeSlot, type Migrations } from "./slot";
+import { dedupeTicketCodes, syncTicketSeq } from "@/lib/tickets/factory";
 
 const BASE_KEY = "triageos-save";
 const VERSION = 28;
@@ -228,7 +229,15 @@ export function loadSave(): PersistedState | null {
 /** Push a saved snapshot into the live stores. */
 export function applySave(s: PersistedState): void {
   useInfraStore.setState({ infra: s.infra });
-  useTicketStore.setState({ tickets: s.tickets, mailThreads: s.mailThreads ?? {} });
+  /*
+   * Order matters: point the counter past everything the save holds, THEN
+   * reissue duplicates, so the replacements come from clear air.
+   */
+  syncTicketSeq(s.tickets);
+  useTicketStore.setState({
+    tickets: dedupeTicketCodes(s.tickets),
+    mailThreads: s.mailThreads ?? {},
+  });
   useDialogueStore.setState({ conversations: s.conversations, seq: s.dialogueSeq });
   useSlaStore.setState({ warned: s.slaWarned, breached: s.slaBreached });
   if (s.mail) useMailStore.setState({ messages: s.mail });

@@ -16,12 +16,12 @@ import { useHostStore } from "@/lib/host/store";
 import { useTicketStore } from "@/lib/host/tickets-store";
 import { useSlaStore } from "@/lib/sla/store";
 import { toNextLevel } from "@/lib/progression/standing";
-import { useStanding } from "@/lib/progression/use-standing";
+import { useJobTitle, useStanding } from "@/lib/progression/use-standing";
 import { rankForXp } from "@/lib/host/leaderboard-data";
 import { AVATAR_PALETTES, isImageAvatar } from "@/lib/core";
 import Avatar from "../Avatar";
 import { AppIcon } from "@/components/ui/app-icons";
-import { TRACK_META, SPECIALISATION_THRESHOLD, dominantTrack, jobTitle, trackShares } from "@/lib/progression/tracks";
+import { TRACK_META, SPECIALISATION_THRESHOLD, dominantTrack, trackShares } from "@/lib/progression/tracks";
 
 export default function ProfileApp() {
   const router = useRouter();
@@ -42,6 +42,7 @@ export default function ProfileApp() {
   // `levelForXp(xp)` here was the uncapped figure — the same number the
   // taskbar was capping, rendered as though it were the same question.
   const standing = useStanding();
+  const title = useJobTitle();
   const next = toNextLevel(standing);
   const resolved = tickets.filter((t) => t.status === "resolved" || t.status === "closed");
   const breachCount = Object.values(breached).filter(Boolean).length;
@@ -77,7 +78,9 @@ export default function ProfileApp() {
         <Avatar value={hostUser.avatar} name={hostUser.displayName} className="h-16 w-16" />
         <div className="min-w-0 flex-1">
           <div className="truncate text-lg font-bold text-gray-50">{hostUser.displayName}</div>
-          <div className="truncate text-[11px] text-gray-500">{hostUser.role}</div>
+          {/* The same title the Career track panel below shows. These were two
+              different answers on one screen. */}
+          <div className="truncate text-[11px] text-gray-500">{title}</div>
         </div>
         {savedFlash && (
           <span className="rounded-full bg-accent/20 px-2.5 py-1 text-[10px] font-semibold text-accent">
@@ -93,7 +96,7 @@ export default function ProfileApp() {
             Career track
           </span>
           <span className="ml-auto text-[13px] font-semibold text-gray-100">
-            {jobTitle(standing.level, hostUser.skills)}
+            {title}
           </span>
         </div>
         <div className="mb-3 text-[10px] text-gray-600">
