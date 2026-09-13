@@ -30,6 +30,7 @@ export type AdminIconId =
   | "users"
   | "simulator"
   | "tickets"
+  | "library"
   | "subscriptions"
   | "settings";
 
@@ -38,6 +39,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { slug: "users", label: "User Management", blurb: "Accounts, roles and access across every org", iconId: "users", ready: true },
   { slug: "simulator", label: "Simulator Controls", blurb: "Running scenarios, fault injection and run state", iconId: "simulator", ready: true },
   { slug: "tickets", label: "Ticketing System", blurb: "Support requests raised by operators in training", iconId: "tickets", ready: true },
+  { slug: "library", label: "Scenario Library", blurb: "Every ticket family the estate can raise, and where it lands", iconId: "library", ready: true },
   { slug: "subscriptions", label: "Enterprise Subscriptions", blurb: "B2B accounts, seats and renewals", iconId: "subscriptions", ready: true },
   { slug: "settings", label: "Global Settings", blurb: "Platform defaults, retention and integrations", iconId: "settings", ready: true },
 ];

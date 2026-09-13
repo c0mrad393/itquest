@@ -42,6 +42,13 @@ const PATHS: Record<AdminIconId, JSX.Element> = {
       <path d="M13 7v11" strokeDasharray="2 2" />
     </>
   ),
+  library: (
+    <>
+      <path d="M4 4.5v15M8 4.5v15" />
+      <rect x="11.5" y="4.5" width="4" height="15" rx="1" />
+      <path d="M18.2 5.3l2.6 14.2" />
+    </>
+  ),
   subscriptions: (
     <>
       <rect x="2.5" y="5.5" width="19" height="13" rx="2" />

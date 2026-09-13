@@ -2534,6 +2534,160 @@ const FAMILIES: Family[] = [
       });
     },
   },
+
+  {
+    /*
+     * THE THIRD REASON NOBODY CAN SIGN IN, and the only one that is not about
+     * a person at all.
+     *
+     * A lockout is one account defending itself. A disabled account is one
+     * account switched off. This is the clock: domain authentication will not
+     * accept a ticket minted too far from the server's time, so when the time
+     * service on the controller stops, accounts that are perfectly healthy
+     * start failing — several at once, for no reason any of them can see.
+     *
+     * Deliberately Tier 2 and up. "Everyone is locked out" is not a first
+     * ticket, and the diagnosis only means something once the operator has met
+     * the two per-account causes and can rule them out.
+     */
+    id: "gen-time-skew",
+    category: "Identity & Access",
+    track: "sysadmin",
+    tags: ["ad", "identity", "service", "time"],
+    tiers: ["Tier_2_Medium", "Tier_3_Hard"],
+    variants: 2,
+    build: ({ rng, tier, id }) => {
+      const drift = int(rng, 11, 47);
+      return base({ category: "Identity & Access", track: "sysadmin", tags: ["ad", "identity", "service", "time"] }, tier, id, {
+        personaId: "persona-priya-stressed",
+        summary: `Sign-ins are failing across the estate and no account is actually locked.`,
+        hints: [
+          "Check two or three of the accounts first — if none is locked or disabled, it is not the accounts",
+          "Domain authentication refuses a ticket minted too far from the server's clock",
+          "Remote into the domain controller and look at its time service, not its directory",
+        ],
+        makeContext: (infra, r) => {
+          const dcs = nodesOf(infra).filter(
+            (n) => n.role === "domain-controller" && n.os === "windows" && !!n.services?.W32Time,
+          );
+          if (!dcs.length) return null;
+          const dc = pick(r, dcs);
+          return {
+            targetNodeId: dc.nodeId,
+            targetHostname: dc.hostname,
+            serviceName: "W32Time",
+          };
+        },
+        title: () => `Several staff cannot sign in — no account is locked`,
+        description: (ctx) =>
+          `User request:\nThe desk has taken four calls in twenty minutes. Nobody can sign in, and ` +
+          `the accounts all look fine.\n\nWhat we found:\n` +
+          `• None of the reported accounts is locked, disabled or expired\n` +
+          `• **${ctx.targetHostname}** has drifted roughly ${drift} minutes from real time\n` +
+          `• Its time service is not running, so nothing is correcting it\n\n` +
+          `Objective:\n• Get the controller keeping time again before the drift takes the rest of the domain with it`,
+        requester: (_ctx, org) => ({
+          name: "Service Desk",
+          role: "Shift Lead",
+          email: `servicedesk@${mailDomain(org)}`,
+          department: "IT",
+        }),
+        injectFault: (draft, ctx) => {
+          const n = draft.nodes[String(ctx.targetNodeId)];
+          if (!n || n.os !== "windows") return;
+          const svc = n.services.W32Time;
+          if (!svc) return;
+          svc.status = "Stopped";
+          svc.pid = null;
+          svc.startupType = "Disabled";
+        },
+        /*
+         * Startup type as well: a controller whose clock service is running
+         * but disabled is one reboot away from the same four calls, and the
+         * ticket said "before the drift takes the rest of the domain".
+         */
+        win: (infra, ctx) => {
+          const n = infra.nodes[String(ctx.targetNodeId)];
+          if (!n || n.os !== "windows") return false;
+          const svc = n.services.W32Time;
+          return !!svc && svc.status === "Running" && svc.startupType !== "Disabled";
+        },
+        healthyNode: (_i, ctx) => String(ctx.targetNodeId),
+      });
+    },
+  },
+  {
+    /*
+     * THE THIRD PLACE DNS BREAKS, completing a trio the operator meets in
+     * increasing order of blast radius:
+     *
+     *   gen-dns-client   one machine, wrong resolver address
+     *   gen-dns-service   one machine, the client service is not running
+     *   gen-dc-dns        the whole estate, the resolver itself is down
+     *
+     * Same complaint each time — "it cannot find anything" — and three
+     * different places to look. The first two are somebody's own machine; this
+     * one is nobody's, which is the distinction worth learning.
+     */
+    id: "gen-dc-dns",
+    category: "Network & Routing",
+    track: "netops",
+    tags: ["dns", "service", "outage"],
+    tiers: ["Tier_2_Medium", "Tier_3_Hard"],
+    variants: 2,
+    build: ({ rng, tier, id }) => {
+      return base({ category: "Network & Routing", track: "netops", tags: ["dns", "service", "outage"] }, tier, id, {
+        personaId: "persona-priya-stressed",
+        summary: `Name resolution is down estate-wide — the resolver itself has stopped.`,
+        hints: [
+          "More than one person means it is probably not any one person's machine",
+          "Their DNS settings are correct — they point at the domain controller",
+          "Remote into the controller and check the service that answers those queries",
+        ],
+        makeContext: (infra, r) => {
+          const dcs = nodesOf(infra).filter(
+            (n) => n.role === "domain-controller" && n.os === "windows" && !!n.services?.DNS,
+          );
+          if (!dcs.length) return null;
+          const dc = pick(r, dcs);
+          return {
+            targetNodeId: dc.nodeId,
+            targetHostname: dc.hostname,
+            serviceName: "DNS",
+          };
+        },
+        title: (ctx) => `Nothing resolves anywhere — ${ctx.targetHostname} has stopped answering`,
+        description: (ctx) =>
+          `User request:\nThree floors are reporting the same thing: the intranet, the shares and the ` +
+          `printers have all "gone". Anything already open by IP still works.\n\n` +
+          `What we found:\n` +
+          `• The machines are on the network and their DNS settings are correct\n` +
+          `• They all point at **${ctx.targetHostname}**, which is up and reachable\n` +
+          `• The service that answers name queries on it is not running\n\n` +
+          `Objective:\n• Get the estate resolving names again`,
+        requester: (_ctx, org) => ({
+          name: "Service Desk",
+          role: "Shift Lead",
+          email: `servicedesk@${mailDomain(org)}`,
+          department: "IT",
+        }),
+        injectFault: (draft, ctx) => {
+          const n = draft.nodes[String(ctx.targetNodeId)];
+          if (!n || n.os !== "windows") return;
+          const svc = n.services.DNS;
+          if (!svc) return;
+          svc.status = "Stopped";
+          svc.pid = null;
+        },
+        win: (infra, ctx) => {
+          const n = infra.nodes[String(ctx.targetNodeId)];
+          if (!n || n.os !== "windows") return false;
+          return n.services.DNS?.status === "Running";
+        },
+        healthyNode: (_i, ctx) => String(ctx.targetNodeId),
+      });
+    },
+  },
 ];
 
 // ── Generator ───────────────────────────────────────────────────────────────
