@@ -1436,18 +1436,35 @@ const FAMILIES: Family[] = [
             const fs = fileServerOf(infra);
             if (!dir || !fs?.shares?.length) return null;
 
-            // A share whose access list does NOT already reach the requester,
-            // so the ticket needs both halves of the fix.
-            const share = pick(r, fs.shares.filter((sh) => sh.acl.length > 0 && !sh.acl.some((a) => a.deny)));
-            if (!share) return null;
-            const owningGroup = share.acl.find((a) => !a.deny && a.groupName !== "Domain Admins")?.groupName;
-            if (!owningGroup) return null;
-
-            const outsiders = dir.users.filter(
-              (u) => u.enabled && !effectiveGroups(dir, u.samAccountName).includes(owningGroup),
-            );
-            if (!outsiders.length) return null;
-            const user = pick(r, outsiders);
+            /*
+             * FILTER TO SHARES THAT CAN ACTUALLY CARRY THIS TICKET, then pick.
+             *
+             * Picking first and rejecting after made this family bind only 87%
+             * of the time: a starter estate has a `Public` share owned by
+             * Domain Users, so there is nobody outside it to be asking for
+             * access, and landing on it returned null. Thirteen percent of the
+             * time the family silently did not exist — and an unhostable
+             * template is skipped without complaint, so nothing ever said so.
+             */
+            const usable = fs.shares
+              .filter((sh) => sh.acl.length > 0 && !sh.acl.some((a) => a.deny))
+              .map((sh) => ({
+                share: sh,
+                owningGroup: sh.acl.find((a) => !a.deny && a.groupName !== "Domain Admins")?.groupName,
+              }))
+              .filter((c): c is { share: typeof c.share; owningGroup: string } => !!c.owningGroup)
+              .map((c) => ({
+                ...c,
+                outsiders: dir.users.filter(
+                  (u) => u.enabled && !effectiveGroups(dir, u.samAccountName).includes(c.owningGroup),
+                ),
+              }))
+              .filter((c) => c.outsiders.length > 0);
+            if (!usable.length) return null;
+            const chosen = pick(r, usable);
+            const share = chosen.share;
+            const owningGroup = chosen.owningGroup;
+            const user = pick(r, chosen.outsiders);
 
             return {
               targetUserId: user.samAccountName,
@@ -2241,6 +2258,154 @@ const FAMILIES: Family[] = [
           if (!n || n.os !== "windows") return false;
           const svc = n.services.wuauserv;
           return !!svc && svc.status === "Running" && svc.startupType !== "Disabled";
+        },
+        healthyNode: (_i, ctx) => String(ctx.targetNodeId),
+      });
+    },
+  },
+
+  {
+    /*
+     * NOT A LOCKOUT, and the difference is the whole lesson.
+     *
+     * A lockout is the account defending itself after bad passwords and clears
+     * with an unlock. A DISABLED account was switched off by a person — the
+     * leaver process, a manager's request, a mistake during onboarding — and
+     * unlocking it does nothing at all. The two look identical from the user's
+     * side ("it won't let me in") and are fixed in different places, which is
+     * exactly the discrimination a first-line technician has to learn.
+     */
+    id: "gen-disabled-account",
+    category: "Identity & Access",
+    track: "helpdesk",
+    tags: ["ad", "identity", "access"],
+    tiers: ["Tier_1_Easy", "Tier_2_Medium"],
+    variants: 3,
+    build: ({ rng, tier, id }) => {
+      const voice = pick(rng, VOICES);
+      const reason = pick(rng, [
+        "came back from a long secondment",
+        "returned from parental leave",
+        "was re-hired into a new team",
+        "moved back from the contractor roll",
+      ]);
+      return base({ category: "Identity & Access", track: "helpdesk", tags: ["ad", "identity", "access"] }, tier, id, {
+        personaId: voice.persona,
+        summary: `An account is switched off, not locked — unlocking it will not help.`,
+        hints: [
+          "Directory Console → find the account and read its state carefully",
+          "Locked and Disabled are different things with different fixes",
+          "Enable the account, then check it is not also locked",
+        ],
+        makeContext: (infra, r) => {
+          const ad = adUsers(infra);
+          if (!ad) return null;
+          // Filter before picking: an account that is already disabled cannot
+          // be disabled by this ticket's fault and would read as pre-solved.
+          const candidates = ad.users.filter((u) => u.enabled && !u.locked);
+          if (!candidates.length) return null;
+          const user = pick(r, candidates);
+          return {
+            targetUserId: user.samAccountName,
+            targetUserName: user.displayName,
+            department: user.department,
+          };
+        },
+        title: (ctx) => `${ctx.targetUserName} cannot sign in — "your account has been disabled"`,
+        description: (ctx) =>
+          `User request:\n**${ctx.targetUserName}** (${ctx.targetUserId}, ${ctx.department}) ${reason} ` +
+          `and cannot sign in. The message names their account, not their password.\n\n` +
+          `What we found:\n` +
+          `• The account is not locked — no failed sign-in run, nothing to unlock\n` +
+          `• It is DISABLED: somebody switched it off and nobody switched it back\n` +
+          `• Their password is fine and does not need resetting\n\n` +
+          `Objective:\n• Put the account back in service without changing their password`,
+        requester: (ctx, org) => ({
+          name: String(ctx.targetUserName),
+          role: voice.role,
+          email: `${ctx.targetUserId}@${mailDomain(org)}`,
+          department: String(ctx.department),
+        }),
+        injectFault: (draft, ctx) => {
+          const dc = Object.values(draft.nodes).find((n) => n.role === "domain-controller");
+          const ad = dc && "activeDirectory" in dc ? dc.activeDirectory : undefined;
+          const u = ad?.users.find((x) => x.samAccountName === ctx.targetUserId);
+          if (u) u.enabled = false;
+        },
+        /*
+         * Graded on BOTH, so the lazy fix fails: resetting the password or
+         * clearing a lock leaves the account off, and the user still cannot
+         * sign in tomorrow.
+         */
+        win: (infra, ctx) => {
+          const ad = adUsers(infra);
+          const u = ad?.users.find((x) => x.samAccountName === ctx.targetUserId);
+          return !!u && u.enabled && !u.locked;
+        },
+      });
+    },
+  },
+  {
+    /*
+     * The third Windows service the estate models, and the one that produces
+     * the most confusing symptom: the resolver addresses are correct, so every
+     * check an operator makes on paper passes — but the client that asks them
+     * is not running.
+     */
+    id: "gen-dns-service",
+    category: "Network & Routing",
+    track: "netops",
+    tags: ["dns", "service", "endpoint"],
+    tiers: ["Tier_1_Easy", "Tier_2_Medium"],
+    variants: 3,
+    build: ({ rng, tier, id }) => {
+      const voice = pick(rng, VOICES);
+      return base({ category: "Network & Routing", track: "netops", tags: ["dns", "service", "endpoint"] }, tier, id, {
+        personaId: voice.persona,
+        summary: `Name resolution is dead on one machine, but its DNS settings are correct.`,
+        hints: [
+          "Find the person in the directory and Remote Connect to their machine",
+          "The DNS server addresses are right — check them and rule them out",
+          "The DNS Client service is what asks them, and it is not running",
+        ],
+        makeContext: (infra, r) => {
+          const hit = staffEndpoint(infra, r, "Dnscache");
+          if (!hit) return null;
+          return {
+            targetNodeId: hit.node.nodeId,
+            targetHostname: hit.node.hostname,
+            targetUserId: hit.user.samAccountName,
+            targetUserName: hit.user.displayName,
+            department: hit.user.department,
+          };
+        },
+        title: (ctx) => `${ctx.targetUserName} can reach things by IP but nothing by name`,
+        description: (ctx) =>
+          `User request:\n**${ctx.targetUserName}** (${ctx.department}) can open a bookmarked address ` +
+          `that happens to be an IP, and nothing else. Everything by name fails on ` +
+          `**${ctx.targetHostname}**.\n\nWhat we found:\n` +
+          `• The machine is on the network and routes fine\n` +
+          `• Its DNS server addresses are correct — this is not a settings problem\n` +
+          `• Nothing on the machine is asking them\n\n` +
+          `Objective:\n• Get name resolution working again on this machine`,
+        requester: (ctx, org) => ({
+          name: String(ctx.targetUserName),
+          role: voice.role,
+          email: `${ctx.targetUserId}@${mailDomain(org)}`,
+          department: String(ctx.department),
+        }),
+        injectFault: (draft, ctx) => {
+          const n = draft.nodes[String(ctx.targetNodeId)];
+          if (!n || n.os !== "windows") return;
+          const svc = n.services.Dnscache;
+          if (!svc) return;
+          svc.status = "Stopped";
+          svc.pid = null;
+        },
+        win: (infra, ctx) => {
+          const n = infra.nodes[String(ctx.targetNodeId)];
+          if (!n || n.os !== "windows") return false;
+          return n.services.Dnscache?.status === "Running";
         },
         healthyNode: (_i, ctx) => String(ctx.targetNodeId),
       });

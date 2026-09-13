@@ -4010,7 +4010,27 @@ group("Client endpoints skip the rack chain");
   const LIB = Object.values(ticketLibrary(WORLDS[0]));
   const freeOf = (lvl) =>
     LIB.filter((t) => unlockedTiers(lvl).includes(t.difficulty) && templateMinLevel(t.tags) <= lvl);
-  const binds = (t) => WORLDS.some((w) => t.makeContext(w, mulberry32(3)) !== null);
+  /*
+   * MANY RNG SEEDS, not one.
+   *
+   * My first version of this varied the WORLD and held the rng fixed, which
+   * measured something quite different: a template whose binder happened to
+   * pick an unusable asset for that one seed looked permanently dead. Three
+   * share-access templates were condemned that way while actually binding 87%
+   * of the time. Varying both is what separates "cannot exist here" from
+   * "was unlucky", and only the first is a fault.
+   */
+  const binds = (t) =>
+    WORLDS.some((w) => {
+      for (let i = 0; i < 40; i++) if (t.makeContext(w, mulberry32(i * 13 + 1)) !== null) return true;
+      return false;
+    });
+  /** Binds EVERY time, not just eventually — see the note on pick-then-guard. */
+  const bindsReliably = (t) =>
+    WORLDS.every((w) => {
+      for (let i = 0; i < 25; i++) if (t.makeContext(w, mulberry32(i * 7 + 2)) === null) return false;
+      return true;
+    });
   const familyOf = (t) => t.id.replace(/-(easy|medium|hard|expert)-\d+$/, "");
 
   const lvl1 = freeOf(1);
@@ -4022,13 +4042,13 @@ group("Client endpoints skip the rack chain");
    * meet the entire game on day one — and nine of its twenty-four templates
    * were the same account lockout.
    */
-  eq("a new operator meets at least eight kinds of work", families1.size >= 8, true);
-  eq("...across more than one shift's worth of tickets", lvl1.length >= 30, true);
+  eq("a new operator meets at least twelve kinds of work", families1.size >= 12, true);
+  eq("...across several shifts' worth of tickets", lvl1.length >= 36, true);
 
   // Concentration, not just count. One archetype owning a third of the pool is
   // how a queue starts feeling like a single repeated chore.
   const lockouts = lvl1.filter((t) => /lockout|pw-reset/.test(t.id)).length;
-  eq("no single theme owns a third of the first shift", lockouts / lvl1.length < 0.33, true);
+  eq("no single theme owns a quarter of the first shift", lockouts / lvl1.length < 0.25, true);
 
   // Every track should be able to speak to a beginner. netops had nothing at
   // all, so the whole discipline was invisible until level 2.
@@ -4046,6 +4066,15 @@ group("Client endpoints skip the rack chain");
    */
   const unhostable1 = lvl1.filter((t) => !binds(t));
   eq("no level-1 template is dead content", unhostable1.map((t) => t.id).join(", "), "");
+
+  /*
+   * Stronger, and the bug it catches is invisible: a binder that picks an
+   * asset and THEN rejects it works most of the time and silently produces
+   * nothing the rest. Two families I wrote bound in no starter world at all
+   * that way, and a third bound 87% of the time for months.
+   */
+  const flaky1 = lvl1.filter((t) => !bindsReliably(t));
+  eq("and none binds only when the dice agree", flaky1.map((t) => t.id).join(", "), "");
 
   group("Free tier — a ticket's own fault leaves it unsolved");
   /*
@@ -4098,7 +4127,7 @@ group("Client endpoints skip the rack chain");
 
   group("Free tier — Tier 2 content that a phase-1 estate cannot host");
   /*
-   * A RATCHET, not a clean bill of health. Nine Tier-2 templates need an
+   * A RATCHET, not a clean bill of health. Six Tier-2 templates need an
    * estate a free operator never gets — a rack to hot-swap a disk in, a
    * database tier, a DHCP pool big enough to exhaust. They are offered inside
    * the free range and can never appear there.
@@ -4109,7 +4138,7 @@ group("Client endpoints skip the rack chain");
    * not grow.
    */
   const deadT2 = freeOf(4).filter((t) => t.difficulty === "Tier_2_Medium" && !binds(t));
-  eq("the known phase-1 gap has not grown", deadT2.length <= 9, true);
+  eq("the known phase-1 gap has not grown", deadT2.length <= 6, true);
   eq("and it is all Tier 2 — nothing at level 1 is affected", deadT2.every((t) => t.difficulty === "Tier_2_Medium"), true);
 }
 
