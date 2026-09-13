@@ -21,6 +21,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { useArmed } from "@/components/ui/useArmed";
 import {
   ActionLog,
   AdminPage,
@@ -60,7 +61,7 @@ export default function UserManagement() {
   const [query, setQuery] = useState("");
   const [role, setRole] = useState<UserRole | "all">("all");
   const [status, setStatus] = useState<UserStatus | "all">("all");
-  const [armedReset, setArmedReset] = useState<string | null>(null);
+  const arm = useArmed();
   const { lines, record, recordCall } = useActionLog();
 
   const orgs = useMemo(
@@ -86,13 +87,12 @@ export default function UserManagement() {
   }
 
   function resetProgress(u: AdminUser) {
-    if (armedReset !== u.id) {
-      setArmedReset(u.id);
+    // The guard this panel invented now lives in `useArmed`, so the four
+    // simulator apps that needed it are not four more copies of it.
+    if (!arm.press(u.id)) {
       record(`Reset progress requested for ${u.email} — click again to confirm`);
-      window.setTimeout(() => setArmedReset((a) => (a === u.id ? null : a)), 4000);
       return;
     }
-    setArmedReset(null);
     recordCall(`Reset progress confirmed for ${u.email} (level ${u.level}, ${u.scenariosCompleted} completions)`);
   }
 
@@ -181,12 +181,12 @@ export default function UserManagement() {
                         <button
                           onClick={() => resetProgress(u)}
                           className={`rounded border px-1.5 py-0.5 text-[11px] transition ${
-                            armedReset === u.id
+                            arm.isArmed(u.id)
                               ? "border-danger/60 bg-danger/15 text-danger-strong"
                               : "border-edge text-gray-400 hover:bg-panelalt"
                           }`}
                         >
-                          {armedReset === u.id ? "Confirm reset" : "Reset"}
+                          {arm.isArmed(u.id) ? "Confirm reset" : "Reset"}
                         </button>
                         <select
                           value={u.org ?? ""}

@@ -47,6 +47,7 @@ import {
 } from "@/lib/host/rdp";
 import CopyButton from "@/components/ui/CopyButton";
 import { IconChevronDown, IconHelp, IconLock, IconMonitor, IconX } from "@/components/ui/icons";
+import { useArmed } from "@/components/ui/useArmed";
 
 /** RDP is 3389 and always has been. Derived, never stored. */
 const RDP_PORT = 3389;
@@ -286,6 +287,13 @@ export default function RemoteGateway() {
             <button
               onClick={beginConnect}
               disabled={busy || !computer.trim()}
+              title={
+                busy
+                  ? "Already connecting"
+                  : !computer.trim()
+                    ? "Enter a hostname or address to connect to"
+                    : "Connect"
+              }
               className="ml-auto rounded-md bg-brand-fill px-4 py-1.5 text-[12px] font-semibold text-brand-on transition hover:bg-brand-hover active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-edge disabled:text-gray-500"
             >
               {busy ? "Connecting…" : "Connect"}
@@ -438,6 +446,7 @@ function OptionsDrawer({
   const profiles = useRdpStore((s) => s.profiles);
   const saveProfile = useRdpStore((s) => s.saveProfile);
   const deleteProfile = useRdpStore((s) => s.deleteProfile);
+  const arm = useArmed();
   const clearRecents = useRdpStore((s) => s.clearRecents);
   const [profileName, setProfileName] = useState("");
 
@@ -491,10 +500,20 @@ function OptionsDrawer({
                         {p.computer} · {p.username}
                       </span>
                     </span>
+                    {/* An icon-only delete is the easiest thing on this screen
+                        to hit by accident, and a saved profile is typing the
+                        operator does not want to do twice. */}
                     <button
-                      onClick={() => deleteProfile(p.id)}
-                      aria-label={`Delete ${p.name}`}
-                      className="shrink-0 rounded p-1 text-gray-500 transition hover:bg-danger/15 hover:text-danger-strong"
+                      onClick={() => arm.press(p.id) && deleteProfile(p.id)}
+                      aria-label={
+                        arm.isArmed(p.id) ? `Press again to delete ${p.name}` : `Delete ${p.name}`
+                      }
+                      title={arm.isArmed(p.id) ? "Press again to delete" : "Delete"}
+                      className={`shrink-0 rounded p-1 transition ${
+                        arm.isArmed(p.id)
+                          ? "bg-danger/20 text-danger-strong"
+                          : "text-gray-500 hover:bg-danger/15 hover:text-danger-strong"
+                      }`}
                     >
                       <IconX size={11} />
                     </button>

@@ -45,6 +45,7 @@ import CablingPanel from "./rack/CablingPanel";
 import PingTool from "./rack/PingTool";
 import RackTelemetry, { THERMAL_TONE } from "./rack/RackTelemetry";
 import { RackProvider } from "./rack/rack-context";
+import { useArmed } from "@/components/ui/useArmed";
 
 const ROW_H = 26;
 
@@ -81,6 +82,13 @@ export default function RackSimulator() {
   const [dragItem, setDragItem] = useState<AssetItem | null>(null);
   /** Click-to-place: an "armed" unit waiting for the operator to pick a U. */
   const [armed, setArmed] = useState<AssetItem | null>(null);
+  /*
+   * Unrelated to `armed` above, which is a unit waiting to be placed. This is
+   * the confirm guard on removing one — see `useArmed`. Two similar words for
+   * two different ideas is a poor pair, but renaming the click-to-place state
+   * would touch more of this file than the guard is worth.
+   */
+  const arm = useArmed();
   const [hoverU, setHoverU] = useState<number | null>(null);
   /** U slot the pointer is over — drives the per-slot power/heat readout. */
   const [statU, setStatU] = useState<number | null>(null);
@@ -374,7 +382,25 @@ export default function RackSimulator() {
                       : "not cabled — cooling nothing"}
                   </span>
                 )}
-                <ToolBtn onClick={() => { remove(rack.id, selected.id); setSelectedId(null); }} icon={<IconTrash size={12} />} danger>Unrack</ToolBtn>
+                {/* Pulling a device out of the rack drops its cabling, its
+                    power draw and its workloads with it. Two presses. */}
+                <ToolBtn
+                  onClick={() => {
+                    if (!arm.press(selected.id)) return;
+                    remove(rack.id, selected.id);
+                    setSelectedId(null);
+                  }}
+                  icon={<IconTrash size={12} />}
+                  danger
+                  armed={arm.isArmed(selected.id)}
+                  title={
+                    arm.isArmed(selected.id)
+                      ? "Press again to remove this device from the rack"
+                      : "Remove this device from the rack"
+                  }
+                >
+                  {arm.isArmed(selected.id) ? "Confirm unrack" : "Unrack"}
+                </ToolBtn>
               </div>
             )}
           </div>
@@ -525,15 +551,30 @@ function ModalShell({ title, onClose, children }: { title: string; onClose: () =
   );
 }
 
-function ToolBtn({ onClick, icon, danger, disabled, children }: { onClick: () => void; icon: React.ReactNode; danger?: boolean; disabled?: boolean; children: React.ReactNode }) {
+/**
+ * `title` is not optional in spirit: a greyed-out button that will not say why
+ * is a dead end the operator has to guess at. Callers pass the reason.
+ */
+function ToolBtn({ onClick, icon, danger, disabled, armed, title, children }: {
+  onClick: () => void;
+  icon: React.ReactNode;
+  danger?: boolean;
+  disabled?: boolean;
+  /** Waiting on a second press before it fires — see `useArmed`. */
+  armed?: boolean;
+  title?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <button onClick={onClick} disabled={disabled}
-      className={`flex items-center gap-1 rounded border px-2 py-0.5 ${
+    <button onClick={onClick} disabled={disabled} title={title}
+      className={`flex items-center gap-1 rounded border px-2 py-0.5 transition ${
         disabled
           ? "cursor-not-allowed border-edge/50 text-gray-600"
-          : danger
-            ? "border-danger/40 text-danger hover:bg-danger/10"
-            : "border-edge text-gray-200 hover:bg-panel"
+          : armed
+            ? "border-danger bg-danger/20 font-semibold text-danger-strong"
+            : danger
+              ? "border-danger/40 text-danger hover:bg-danger/10"
+              : "border-edge text-gray-200 hover:bg-panel"
       }`}>
       {icon} {children}
     </button>

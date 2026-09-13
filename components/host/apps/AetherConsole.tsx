@@ -39,6 +39,7 @@ import { playCue } from "@/lib/audio/engine";
 import { hasLicense } from "@/lib/economy/licenses";
 import EmptyState from "@/components/ui/EmptyState";
 import { IconList } from "@/components/ui/icons";
+import { useArmed } from "@/components/ui/useArmed";
 
 type Tab = "overview" | "compute" | "network" | "traffic" | "trace";
 
@@ -379,6 +380,7 @@ function Network({ operator }: { operator: string }) {
   const disconnect = useInfraStore((s) => s.cloudDisconnectVpn);
   const addRule = useInfraStore((s) => s.cloudAddShieldRule);
   const deleteRule = useInfraStore((s) => s.cloudDeleteShieldRule);
+  const arm = useArmed();
   const restrictRule = useInfraStore((s) => s.cloudRestrictShieldRule);
 
   const cloud = infra.cloud;
@@ -565,11 +567,18 @@ function Network({ operator }: { operator: string }) {
                     Restrict to 10.0.0.0/8
                   </button>
                 )}
+                {/* Two presses. A shield rule is part of the estate's
+                    perimeter and there is no undo behind this. */}
                 <button
-                  onClick={() => deleteRule(r.id, operator)}
-                  className="rounded border border-danger/40 px-2 py-0.5 text-[10px] text-danger hover:bg-danger/10"
+                  onClick={() => arm.press(r.id) && deleteRule(r.id, operator)}
+                  title={arm.isArmed(r.id) ? "Press again to delete this rule" : "Delete this rule"}
+                  className={`rounded border px-2 py-0.5 text-[10px] transition ${
+                    arm.isArmed(r.id)
+                      ? "border-danger bg-danger/20 text-danger-strong font-semibold"
+                      : "border-danger/40 text-danger hover:bg-danger/10"
+                  }`}
                 >
-                  Delete
+                  {arm.isArmed(r.id) ? "Confirm delete" : "Delete"}
                 </button>
               </div>
             </div>
@@ -605,6 +614,7 @@ function Traffic({ operator }: { operator: string }) {
   const create = useInfraStore((s) => s.cloudCreateRouter);
   const setEnabled = useInfraStore((s) => s.cloudSetRouterEnabled);
   const remove = useInfraStore((s) => s.cloudDeleteRouter);
+  const arm = useArmed();
 
   const cloud = infra.cloud;
   const webNodes = infra.gateway
@@ -725,10 +735,15 @@ function Traffic({ operator }: { operator: string }) {
               {r.enabled ? "Disable" : "Enable"}
             </button>
             <button
-              onClick={() => remove(r.id, operator)}
-              className="rounded border border-danger/40 px-2 py-1 text-[10px] text-danger hover:bg-danger/10"
+              onClick={() => arm.press(r.id) && remove(r.id, operator)}
+              title={arm.isArmed(r.id) ? "Press again to delete" : "Delete"}
+              className={`rounded border px-2 py-1 text-[10px] transition ${
+                arm.isArmed(r.id)
+                  ? "border-danger bg-danger/20 text-danger-strong font-semibold"
+                  : "border-danger/40 text-danger hover:bg-danger/10"
+              }`}
             >
-              Delete
+              {arm.isArmed(r.id) ? "Confirm delete" : "Delete"}
             </button>
           </div>
         ))}

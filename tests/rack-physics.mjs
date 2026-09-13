@@ -184,6 +184,7 @@ import {
 } from "../.test-build/tickets/factory.js";
 import { TRACK_META as SKILL_TRACK_META, jobTitle, rankPrefix, SPECIALISATION_THRESHOLD } from "../.test-build/progression/tracks.js";
 import { collisions, renderIdentity, swatchOf } from "../.test-build/ui/swatch.js";
+import { armReduce, IDLE } from "../.test-build/ui/arm.js";
 import { SEVERITY_META, STATUS_META, TRACK_META } from "../.test-build/host/ticket-ui.js";
 import { EMOTION_META } from "../.test-build/dialogue/types.js";
 import { levelForXp, xpForLevel } from "../.test-build/scenario/scoring.js";
@@ -3929,6 +3930,66 @@ group("Client endpoints skip the rack chain");
   eq("new and accepted share an ink", swatchOf(STATUS_META.new.color.split(" ")[0]), swatchOf(STATUS_META.accepted.color.split(" ")[0]));
   eq("but not a strength", renderIdentity(STATUS_META.new.color) === renderIdentity(STATUS_META.accepted.color), false);
   eq("work in flight leaves blue", swatchOf(STATUS_META.in_progress.color.split(" ")[0]).startsWith("text:info"), false);
+}
+
+{
+  /*
+   * ARM BEFORE FIRING.
+   *
+   * One product was running two policies on irreversible work: `/admin` made
+   * you confirm before discarding somebody's progress, while the cloud console
+   * deleted a firewall rule, the gateway deleted a saved profile, the floor
+   * un-racked a running server and Appearance discarded the whole desktop
+   * layout — each on one click, none of them undoable.
+   *
+   * These specs exist because the FIRST attempt at the shared guard was
+   * broken in a way that type-checked: it asked a `useState` updater whether
+   * to fire, and updaters do not run synchronously, so it read the value from
+   * before the press. The control armed and could never be fired.
+   */
+  group("Arm — one press arms, the same press again fires");
+
+  const first = armReduce(IDLE, { type: "press", key: "rule-1" });
+  eq("the first press does not fire", first.fire, false);
+  eq("but it arms", first.state.key, "rule-1");
+
+  const second = armReduce(first.state, { type: "press", key: "rule-1" });
+  eq("the second press fires", second.fire, true);
+  eq("and firing disarms", second.state.key, null);
+
+  // If firing left the arm in place, the NEXT press would fire unguarded.
+  const third = armReduce(second.state, { type: "press", key: "rule-1" });
+  eq("so the press after that has to arm again", third.fire, false);
+  eq("and does", third.state.key, "rule-1");
+
+  group("Arm — arming something else moves the arm, it does not fire");
+  const armedA = armReduce(IDLE, { type: "press", key: "A" });
+  const pressedB = armReduce(armedA.state, { type: "press", key: "B" });
+  eq("pressing a different control never fires", pressedB.fire, false);
+  eq("the arm moves to it", pressedB.state.key, "B");
+  // The one that matters: A must now need two presses again, not one.
+  eq("and the one you walked away from is disarmed",
+     armReduce(pressedB.state, { type: "press", key: "A" }).fire, false);
+
+  group("Arm — the timeout is keyed, so it cannot disarm the wrong control");
+  /*
+   * Arm A, then B, then A's timer elapses. If `expire` were unkeyed it would
+   * drop B's arm, and the operator's deliberate second press on B would
+   * quietly re-arm instead of firing.
+   */
+  const staleTimer = armReduce(pressedB.state, { type: "expire", key: "A" });
+  eq("an old timer leaves the current arm alone", staleTimer.state.key, "B");
+  eq("so B still fires on its second press",
+     armReduce(staleTimer.state, { type: "press", key: "B" }).fire, true);
+  // And the timer for whatever IS armed does disarm it.
+  eq("the live timer disarms", armReduce(pressedB.state, { type: "expire", key: "B" }).state.key, null);
+  eq("expiring never fires anything", armReduce(pressedB.state, { type: "expire", key: "B" }).fire, false);
+
+  group("Arm — disarm is always safe");
+  eq("disarm clears an arm", armReduce(armedA.state, { type: "disarm" }).state.key, null);
+  eq("disarming nothing is not an error", armReduce(IDLE, { type: "disarm" }).state.key, null);
+  eq("and it never fires", armReduce(armedA.state, { type: "disarm" }).fire, false);
+  eq("an expire against an idle machine is inert", armReduce(IDLE, { type: "expire", key: "A" }).state.key, null);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -26,6 +26,7 @@ import { AppHeader, Segmented } from "./AppChrome";
 import { AppIcon } from "@/components/ui/app-icons";
 import { IconCheck, IconGrid, IconPlus, IconX } from "@/components/ui/icons";
 import { useOperatorLevel } from "@/lib/progression/use-standing";
+import { useArmed } from "@/components/ui/useArmed";
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: "system", label: "System" },
@@ -47,6 +48,7 @@ export default function AppearanceApp({ embedded = false }: { embedded?: boolean
   const removeIcon = useDesktopIconStore((s) => s.remove);
   const tidy = useDesktopIconStore((s) => s.tidy);
   const resetIcons = useDesktopIconStore((s) => s.reset);
+  const arm = useArmed();
 
   const onDesktop = new Set(icons.map((i) => i.app));
   const grid = typeof window === "undefined" ? { cols: 12, rows: 7 } : gridFor(window.innerWidth, window.innerHeight - 48);
@@ -114,11 +116,22 @@ export default function AppearanceApp({ embedded = false }: { embedded?: boolean
             >
               <IconGrid size={12} /> Tidy up
             </button>
+            {/* Throws away every icon the operator placed, and sits one button
+                along from "Tidy up", which does something much smaller. */}
             <button
-              onClick={resetIcons}
-              className="rounded-md border border-edge px-2.5 py-1.5 text-[11px] text-gray-300 transition hover:bg-panelalt"
+              onClick={() => arm.press("icons") && resetIcons()}
+              title={
+                arm.isArmed("icons")
+                  ? "Press again to discard your desktop layout"
+                  : "Discard your desktop layout and start from the defaults"
+              }
+              className={`rounded-md border px-2.5 py-1.5 text-[11px] transition ${
+                arm.isArmed("icons")
+                  ? "border-danger bg-danger/15 font-semibold text-danger-strong"
+                  : "border-edge text-gray-300 hover:bg-panelalt"
+              }`}
             >
-              Reset to defaults
+              {arm.isArmed("icons") ? "Confirm reset" : "Reset to defaults"}
             </button>
           </div>
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">

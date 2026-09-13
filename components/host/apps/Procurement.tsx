@@ -388,9 +388,19 @@ function Hardware() {
             <Row label="Budget after" value={`${(budget - orderTotal).toLocaleString()} Cr`} tone={budget - orderTotal < 0 ? "bad" : "muted"} />
           </div>
 
+          {/* Two different reasons to be greyed out, and the operator cannot
+              tell them apart by looking: an empty cart and an unaffordable one
+              produce the same dead button. */}
           <button
             onClick={submit}
             disabled={!affordable}
+            title={
+              lines.length === 0
+                ? "Add something to the order first"
+                : budget < orderTotal
+                  ? `Over budget by ${(orderTotal - budget).toLocaleString()} Cr`
+                  : "Place this order"
+            }
             className={`mt-3 w-full rounded-md border px-3 py-2 text-[11px] font-semibold transition ${
               flash === "ordered" || flash === "delivered"
                 ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
