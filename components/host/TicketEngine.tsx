@@ -29,6 +29,7 @@ import { useNotificationStore } from "@/lib/host/notifications-store";
 import { ticketLibrary } from "@/lib/tickets/factory";
 import { ambientDecision } from "@/lib/tickets/ambient";
 import { mulberry32 } from "@/lib/org/rng";
+import { operatorStanding } from "@/lib/host/store";
 
 /**
  * How often the question is ASKED — not how often a ticket arrives, which is
@@ -54,7 +55,7 @@ export default function TicketEngine() {
     function tick() {
       const infra = useInfraStore.getState().infra;
       const tickets = useTicketStore.getState().tickets;
-      const level = useHostStore.getState().host.user.level;
+      const level = operatorStanding().level;
 
       const live = tickets.filter(
         (t) => !t.mailOnly && t.status !== "resolved" && t.status !== "closed",

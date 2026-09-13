@@ -43,6 +43,7 @@ import { IconAlert, IconBolt, IconCheck, IconPlus, IconWrench, IconX } from "@/c
 import NetworkBench from "./devtools/NetworkBench";
 import TicketBench from "./devtools/TicketBench";
 import ShellBench from "./devtools/ShellBench";
+import { useStanding } from "@/lib/progression/use-standing";
 
 type Tab = "shell" | "progress" | "tickets" | "faults" | "network";
 
@@ -118,13 +119,14 @@ export default function DebugPanel({
 
 function Progression({ say }: { say: (s: string) => void }) {
   const user = useHostStore((s) => s.host.user);
+  const standing = useStanding();
   const awardXp = useHostStore((s) => s.awardXp);
   const awardBudget = useHostStore((s) => s.awardBudget);
   const growth = useInfraStore((s) => s.infra.growth);
   const org = useInfraStore((s) => s.infra.org);
   const grow = useInfraStore((s) => s.growCompany);
 
-  const nextLevelXp = xpForLevel(user.level + 1);
+  const nextLevelXp = xpForLevel(standing.level + 1);
   const spec = phaseSpec(growth.phase);
 
   /**
@@ -165,7 +167,7 @@ function Progression({ say }: { say: (s: string) => void }) {
       <section>
         <Head>Operator</Head>
         <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[10px]">
-          <Stat label="Level" value={String(user.level)} />
+          <Stat label="Level" value={standing.held ? `${standing.level} (earned ${standing.earned})` : String(standing.level)} />
           <Stat label="XP" value={`${user.xp.toLocaleString()} / ${nextLevelXp.toLocaleString()}`} />
           <Stat label="Budget" value={`${user.budget.toLocaleString()} Cr`} />
           <Stat label="Role" value={user.role} />
@@ -206,7 +208,7 @@ function Progression({ say }: { say: (s: string) => void }) {
         </ol>
         <p className="mt-1.5 text-[9px] leading-relaxed text-gray-600">
           Growth fires from the promotion handler, so forcing a level up to {phaseSpec(
-            phaseForLevel(user.level + 1),
+            phaseForLevel(standing.level + 1),
           ).level} runs the real milestone — hiring, new OUs and the project ticket.
         </p>
       </section>

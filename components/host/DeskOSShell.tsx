@@ -41,6 +41,7 @@ export default function DeskOSShell() {
   // The plan and the shift counter live in the browser, which does not exist
   // during SSR — same reason auth hydrates here rather than in render.
   const hydrateEntitlements = useEntitlementStore((s) => s.hydrate);
+  const entitlementsReady = useEntitlementStore((s) => s.ready);
 
   useEffect(() => {
     hydrateAuth();
@@ -51,7 +52,20 @@ export default function DeskOSShell() {
     setBooting(!signInBypassed() && !hasBootedThisSession());
   }, [hydrateAuth, hydrateEntitlements]);
 
-  if (booting === null || !authReady) return <div className="h-screen w-screen bg-sunken" />;
+  /*
+   * The plan has to be KNOWN before anything that gates on it is drawn.
+   *
+   * This already held, but only by accident: both hydrations run in the same
+   * effect above, so `authReady` happened to flip on the same commit as the
+   * plan. Nothing said so, and the day someone reorders those two lines or
+   * mounts an entitlement-reading surface outside this shell, a Pro operator
+   * starts painting a free tier's shift meter for a frame with no test to
+   * catch it. Naming the condition costs one clause and turns the ordering
+   * into a guarantee.
+   */
+  if (booting === null || !authReady || !entitlementsReady) {
+    return <div className="h-screen w-screen bg-sunken" />;
+  }
   if (booting) return <BootSequence onDone={() => setBooting(false)} />;
   /*
    * Sign-in gates the DESKTOP, not the shell. HostDesktop mounts every

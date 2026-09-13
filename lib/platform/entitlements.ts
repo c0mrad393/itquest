@@ -26,6 +26,7 @@
  */
 
 import { create } from "zustand";
+import { useMinute } from "@/lib/sla/store";
 import {
   TIERS,
   allows,
@@ -65,6 +66,20 @@ function writeLocal(key: string, value: unknown): void {
   } catch {
     /* Storage refused. The session still works; it just will not be remembered. */
   }
+}
+
+/**
+ * The stored plan's ceiling, read straight from the browser.
+ *
+ * For the handful of callers that run BEFORE the desktop mounts — the landing
+ * page's "welcome back" line reads a level out of the save slot while the
+ * store below is still on its defaults. Going to localStorage twice is worth
+ * it to keep one rule intact: wherever a level is shown, the plan's ceiling
+ * has been applied to it.
+ */
+export function storedLevelCap(): number | null {
+  if (typeof window === "undefined") return tierOf("free").levelCap;
+  return tierOf(readLocal<TierId>(TIER_KEY, "free")).levelCap;
 }
 
 interface EntitlementStore {
@@ -166,6 +181,25 @@ export function useEntitlements(): Entitlements {
   const tier = useEntitlementStore((s) => s.tier);
   const shift = useEntitlementStore((s) => s.shift);
   const ready = useEntitlementStore((s) => s.ready);
+  /*
+   * THE SHIFT IS ON A CLOCK, SO THIS HOOK HAS TO BE ON ONE TOO.
+   *
+   * Everything below is derived from `Date.now()`, which means it is only as
+   * fresh as the last render. Nothing here asked to be re-rendered, so the
+   * countdown in the taskbar and on the account screen simply froze at
+   * whatever it read when the window opened — and, worse, the day never
+   * turned over on screen: `rollover` was being applied to a value nobody was
+   * recomputing, so a session left running past midnight went on insisting
+   * the shift was over while `spendShift` would happily have granted one.
+   *
+   * The Ticket Center escaped this only because its detail pane happens to
+   * subscribe to the same clock for the SLA timer. Luck, not design.
+   *
+   * Minute resolution, not seconds: this countdown is told in hours and
+   * minutes, and waking every subscriber once a second to redraw "2h 30m"
+   * would be a lot of renders to change nothing.
+   */
+  useMinute();
 
   const spec = tierOf(tier);
   const allowance = spec.shiftAllowance;

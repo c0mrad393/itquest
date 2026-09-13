@@ -23,6 +23,7 @@ import { useEffect, useMemo } from "react";
 import { useHostStore } from "@/lib/host/store";
 import { useTicketStore } from "@/lib/host/tickets-store";
 import { useTutorialStore } from "@/lib/tutorial/store";
+import { useOperatorLevel } from "@/lib/progression/use-standing";
 import {
   advanceIndex,
   eligibleSequence,
@@ -32,7 +33,7 @@ import {
 
 export default function TutorialDirector() {
   const windows = useHostStore((s) => s.windows);
-  const level = useHostStore((s) => s.host.user.level);
+  const level = useOperatorLevel();
   const tickets = useTicketStore((s) => s.tickets);
   const selectedId = useTicketStore((s) => s.selectedId);
 

@@ -35,6 +35,7 @@ import { useThemeStore } from "@/lib/host/theme";
 import { visibleApps, HOST_APP_GROUPS, type HostAppId } from "@/lib/core";
 import { AppIcon } from "@/components/ui/app-icons";
 import { IconSearch, IconTicket, IconCommand, IconContrast } from "@/components/ui/icons";
+import { useOperatorLevel } from "@/lib/progression/use-standing";
 
 /**
  * True when the keystroke belongs to whatever the operator is typing into.
@@ -66,7 +67,7 @@ export default function CommandPalette() {
   const listRef = useRef<HTMLDivElement>(null);
 
   const openApp = useHostStore((s) => s.openApp);
-  const level = useHostStore((s) => s.host.user.level);
+  const level = useOperatorLevel();
   const tickets = useTicketStore((s) => s.tickets);
   const select = useTicketStore((s) => s.select);
   const cycleTheme = useThemeStore((s) => s.cycle);

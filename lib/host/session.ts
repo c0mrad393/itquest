@@ -24,12 +24,19 @@
 
 import { create } from "zustand";
 import { clearSave, loadSave, setSaveScope } from "@/lib/persistence/save";
+import { storedLevelCap } from "@/lib/platform/entitlements";
+import { standingOf } from "@/lib/progression/standing";
 
 export interface OperatorProfile {
   username: string;
   /** Palette id or an https image URL. */
   avatar: string;
   xp: number;
+  /**
+   * Derived from `xp` and the stored plan, never read back out of the save —
+   * see lib/progression/standing.ts. Kept on the profile because the landing
+   * page shows it before any store has hydrated.
+   */
   level: number;
 }
 
@@ -55,7 +62,7 @@ export function savedProfile(): OperatorProfile {
     username: saved.displayName,
     avatar: saved.avatar,
     xp: saved.xp,
-    level: saved.level,
+    level: standingOf(saved.xp, storedLevelCap()).level,
   };
 }
 
@@ -100,7 +107,6 @@ export async function applyProfileToHost(profile: OperatorProfile): Promise<void
         displayName: profile.username,
         avatar: profile.avatar,
         xp: profile.xp,
-        level: profile.level,
       },
     },
   }));

@@ -158,6 +158,8 @@ import {
   seatsUsed,
 } from "../.test-build/admin/mock-data.js";
 import { TIERS, allows, firstTierWith, lockReason } from "../.test-build/platform/tiers.js";
+import { standingOf, toNextLevel } from "../.test-build/progression/standing.js";
+import { levelForXp, xpForLevel } from "../.test-build/scenario/scoring.js";
 import {
   PRICING,
   format,
@@ -3461,6 +3463,68 @@ group("Client endpoints skip the rack chain");
   eq("cannot install with nothing pending", installPending(base, null, NOW).phase, base.phase);
   eq("cannot restart-complete when no restart is pending", restartComplete(base, NOW).phase, base.phase);
   eq("cannot check while already checking", canCheck(checking, NOW), false);
+}
+
+{
+  /*
+   * OPERATOR STANDING — the level, and the plan's hold on it.
+   *
+   * These exist because the bug they describe type-checked perfectly and ran
+   * for weeks. `awardXp` stored the CAPPED level while Settings, Profile and
+   * the leaderboard each recomputed the UNCAPPED one from XP, so a free
+   * operator read 4 in the taskbar and 7 on their own profile. Nothing in
+   * 1335 specs had an opinion about it, because nothing asserted that the
+   * estate only has ONE level.
+   */
+  group("Operator standing — one level, derived");
+
+  const CAP = TIERS.free.levelCap;          // 4
+  const belowXp = xpForLevel(3);            // comfortably inside the free plan
+  const overXp = xpForLevel(CAP + 3);       // three levels past the ceiling
+
+  const below = standingOf(belowXp, CAP);
+  eq("under the ceiling, granted level is what the XP earned", below.level, below.earned);
+  eq("and nothing is being withheld", below.held, false);
+  eq("so nothing is banked", below.banked, 0);
+
+  const over = standingOf(overXp, CAP);
+  eq("past the ceiling, the granted level stops at the cap", over.level, CAP);
+  eq("but the earned level keeps climbing", over.earned, levelForXp(overXp));
+  eq("the difference is reported as held", over.held, true);
+  eq("and counted", over.banked, over.earned - CAP);
+
+  /*
+   * THE UPGRADE. This is the promise `awardXp` made in a comment and broke in
+   * its body: it wrote the capped figure into the record, so lifting the cap
+   * changed nothing until the next award happened to rewrite it.
+   */
+  const upgraded = standingOf(overXp, TIERS.pro.levelCap);
+  eq("lifting the cap needs no recompute — same XP, full level", upgraded.level, over.earned);
+  eq("an uncapped plan holds nothing", upgraded.held, false);
+
+  // ...and the other direction, which a plan change can also take.
+  eq("dropping back to a capped plan re-applies the ceiling", standingOf(overXp, CAP).level, CAP);
+
+  group("Operator standing — standing ON the cap is not the same as held");
+  const exact = standingOf(xpForLevel(CAP), CAP);
+  eq("an operator exactly at the ceiling is at the cap", exact.level, CAP);
+  eq("but has banked nothing, and must not be told otherwise", exact.held, false);
+  eq("no surplus levels", exact.banked, 0);
+
+  group("Operator standing — no progress bar towards a level the plan withholds");
+  eq("under the ceiling there is a next level to aim at", toNextLevel(below) !== null, true);
+  eq("and its target is the next level's XP", toNextLevel(below).need, xpForLevel(below.level + 1));
+  eq("at the ceiling there is not", toNextLevel(exact), null);
+  eq("past the ceiling there is not either", toNextLevel(over), null);
+  eq("an uncapped plan always has a next level", toNextLevel(upgraded) !== null, true);
+
+  group("Operator standing — XP is the only stored fact");
+  // Same XP and same cap must always give the same answer, whoever asks and
+  // whenever. This is what makes it safe for the taskbar, the profile and the
+  // leaderboard to each derive it independently.
+  eq("derivation is total", standingOf(overXp, CAP).level, standingOf(overXp, CAP).level);
+  eq("zero XP is level 1, not level 0", standingOf(0, CAP).level, 1);
+  eq("and a free operator at zero is not being held", standingOf(0, CAP).held, false);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

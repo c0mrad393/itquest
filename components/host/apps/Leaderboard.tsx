@@ -14,6 +14,7 @@ import { useTicketStore } from "@/lib/host/tickets-store";
 import { useDialogueStore } from "@/lib/dialogue/store";
 import { useSlaStore } from "@/lib/sla/store";
 import { levelForXp } from "@/lib/scenario/scoring";
+import { useStanding } from "@/lib/progression/use-standing";
 import { RIVALS, type LeaderboardEntry as Row } from "@/lib/host/leaderboard-data";
 import Avatar from "../Avatar";
 import { AppIcon } from "@/components/ui/app-icons";
@@ -31,6 +32,17 @@ export default function Leaderboard() {
   const avgCsat = resolvedCsats.length
     ? Math.round(resolvedCsats.reduce((a, b) => a + b, 0) / resolvedCsats.length)
     : null;
+
+  /*
+   * YOUR row shows the level your plan grants, not the one your XP bought.
+   *
+   * The board used to run `levelForXp(r.xp)` over every row including this
+   * one, so a capped operator was ranked at a level the rest of the desktop
+   * would not give them — the one screen where the discrepancy sat in a
+   * column, next to strangers, waiting to be read as a bug. Ranking is still
+   * by XP, which is the honest measure and is not capped by anything.
+   */
+  const standing = useStanding();
 
   const you: Row = {
     name: user.displayName,
@@ -101,7 +113,9 @@ export default function Leaderboard() {
               </span>
             </span>
             <span className="text-right font-mono text-gray-100">{r.xp.toLocaleString()}</span>
-            <span className="text-right font-mono text-gray-400">{levelForXp(r.xp)}</span>
+            <span className="text-right font-mono text-gray-400">
+              {r.you ? standing.level : levelForXp(r.xp)}
+            </span>
             <span className="text-right font-mono text-gray-400">{r.resolved}</span>
             <span className="text-right font-mono">
               {r.csat === null ? (

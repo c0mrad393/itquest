@@ -28,6 +28,7 @@ import { useThemeStore } from "@/lib/host/theme";
 import { IconContrast, IconMoon, IconSun } from "@/components/ui/icons";
 import Clock from "./Clock";
 import { useState } from "react";
+import { useOperatorLevel } from "@/lib/progression/use-standing";
 
 export default function Taskbar({
   devToolsOpen,
@@ -38,7 +39,7 @@ export default function Taskbar({
 }) {
   const [actionCenter, setActionCenter] = useState(false);
   const [full, toggleFull] = useFullscreen();
-  const level = useHostStore((s) => s.host.user.level);
+  const level = useOperatorLevel();
   const pinned = taskbarPinned(level);
   const unread = useNotificationStore((s) => unreadCount(s.items));
   const windows = useHostStore((s) => s.windows);

@@ -16,7 +16,6 @@ export function createHostWorkstation(): HostWorkstationState {
       // lib/progression/tracks.ts). This is only the day-one seed.
       role: "IT Intern",
       avatar: "indigo",
-      level: 1,
       xp: 0,
       // An intern's float: one memory module and a couple of cables.
       budget: 400,

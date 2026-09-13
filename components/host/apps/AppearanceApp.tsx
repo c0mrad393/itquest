@@ -25,6 +25,7 @@ import { HOST_WALLPAPERS } from "@/lib/host/wallpapers";
 import { AppHeader, Segmented } from "./AppChrome";
 import { AppIcon } from "@/components/ui/app-icons";
 import { IconCheck, IconGrid, IconPlus, IconX } from "@/components/ui/icons";
+import { useOperatorLevel } from "@/lib/progression/use-standing";
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: "system", label: "System" },
@@ -39,7 +40,7 @@ export default function AppearanceApp({ embedded = false }: { embedded?: boolean
   const setTheme = useThemeStore((s) => s.setPreference);
   const wallpaper = useHostStore((s) => s.host.wallpaper);
   const setWallpaper = useHostStore((s) => s.setWallpaper);
-  const level = useHostStore((s) => s.host.user.level);
+  const level = useOperatorLevel();
 
   const icons = useDesktopIconStore((s) => s.icons);
   const addIcon = useDesktopIconStore((s) => s.add);

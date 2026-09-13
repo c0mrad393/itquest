@@ -15,7 +15,8 @@ import { useSessionStore } from "@/lib/host/session";
 import { useHostStore } from "@/lib/host/store";
 import { useTicketStore } from "@/lib/host/tickets-store";
 import { useSlaStore } from "@/lib/sla/store";
-import { levelForXp, xpForLevel } from "@/lib/scenario/scoring";
+import { toNextLevel } from "@/lib/progression/standing";
+import { useStanding } from "@/lib/progression/use-standing";
 import { rankForXp } from "@/lib/host/leaderboard-data";
 import { AVATAR_PALETTES, isImageAvatar } from "@/lib/core";
 import Avatar from "../Avatar";
@@ -38,8 +39,10 @@ export default function ProfileApp() {
 
   // ── Gamification stats (live sim state; XP mirrors the synced profile) ──
   const xp = hostUser.xp;
-  const level = levelForXp(xp);
-  const nextXp = xpForLevel(level + 1);
+  // `levelForXp(xp)` here was the uncapped figure — the same number the
+  // taskbar was capping, rendered as though it were the same question.
+  const standing = useStanding();
+  const next = toNextLevel(standing);
   const resolved = tickets.filter((t) => t.status === "resolved" || t.status === "closed");
   const breachCount = Object.values(breached).filter(Boolean).length;
   const slaRate =
@@ -90,7 +93,7 @@ export default function ProfileApp() {
             Career track
           </span>
           <span className="ml-auto text-[13px] font-semibold text-gray-100">
-            {jobTitle(hostUser.level, hostUser.skills)}
+            {jobTitle(standing.level, hostUser.skills)}
           </span>
         </div>
         <div className="mb-3 text-[10px] text-gray-600">
@@ -131,7 +134,7 @@ export default function ProfileApp() {
           Operator record
         </div>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Stat label="Level" value={String(level)} accent="text-info" />
+          <Stat label="Level" value={String(standing.level)} accent="text-info" />
           <Stat label="Total XP" value={xp.toLocaleString()} accent="text-gray-100" />
           <Stat label="IT Budget" value={`${hostUser.budget.toLocaleString()} Cr`} accent="text-emerald-300" />
           <Stat
@@ -142,16 +145,36 @@ export default function ProfileApp() {
           <Stat label="Global rank" value={`#${rank}`} accent="text-amber-300" />
         </div>
         <div className="mt-3">
+          {/*
+            At the plan's ceiling this stops being a progress bar and says so.
+            Running one towards level 5 on a plan that ends at 4 would be the
+            product promising something it has decided not to give.
+          */}
           <div className="flex justify-between text-[10px] text-gray-500">
-            <span>Progress to level {level + 1}</span>
             <span>
-              {xp.toLocaleString()} / {nextXp.toLocaleString()} XP
+              {next
+                ? `Progress to level ${standing.level + 1}`
+                : `Level ${standing.level} — where this plan ends`}
+            </span>
+            <span>
+              {next ? (
+                `${xp.toLocaleString()} / ${next.need.toLocaleString()} XP`
+              ) : standing.held ? (
+                <span className="text-gray-400">
+                  {standing.banked} level{standing.banked === 1 ? "" : "s"} banked ·{" "}
+                  {xp.toLocaleString()} XP
+                </span>
+              ) : (
+                `${xp.toLocaleString()} XP`
+              )}
             </span>
           </div>
           <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-edge">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-sky-400 to-emerald-400"
-              style={{ width: `${Math.min(100, Math.round((xp / nextXp) * 100))}%` }}
+              className={`h-full rounded-full ${
+                next ? "bg-gradient-to-r from-sky-400 to-emerald-400" : "bg-gray-500/40"
+              }`}
+              style={{ width: next ? `${Math.min(100, Math.round((xp / next.need) * 100))}%` : "100%" }}
             />
           </div>
         </div>

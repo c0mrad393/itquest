@@ -39,6 +39,7 @@ import { TIERS, type Feature, type TierId } from "@/lib/platform/tiers";
 import { PRICING, format, perMonthFromYearly } from "@/lib/platform/pricing";
 import { useHostStore } from "@/lib/host/store";
 import { IconBolt, IconCheck, IconClock, IconLock, IconTrophy } from "@/components/ui/icons";
+import { useStanding } from "@/lib/progression/use-standing";
 
 const FEATURE_LABEL: Record<Feature, string> = {
   leaderboard: "Global leaderboard",
@@ -85,7 +86,8 @@ function Card({
 export default function AccountApp() {
   const { tier, spec, shift, levelCap, atLevelCap, can } = useEntitlements();
   const setTier = useEntitlementStore((s) => s.setTier);
-  const level = useHostStore((s) => s.host.user.level);
+  const standing = useStanding();
+  const level = standing.level;
   const xp = useHostStore((s) => s.host.user.xp);
 
   const proPlan = PRICING.pro;

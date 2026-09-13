@@ -31,6 +31,7 @@ import { useHostStore } from "@/lib/host/store";
 import { HOST_APP_REGISTRY, type HostAppId } from "@/lib/core";
 import { appUnlockLevel, isAppUnlocked } from "@/lib/progression/unlocks";
 import { IconLock } from "@/components/ui/icons";
+import { useOperatorLevel } from "@/lib/progression/use-standing";
 
 export default function AppLink({
   app,
@@ -44,7 +45,7 @@ export default function AppLink({
   className?: string;
   purpose?: string;
 }) {
-  const level = useHostStore((s) => s.host.user.level);
+  const level = useOperatorLevel();
   const openApp = useHostStore((s) => s.openApp);
   const meta = HOST_APP_REGISTRY[app];
   const unlocked = isAppUnlocked(app, level);
@@ -76,7 +77,7 @@ export default function AppLink({
  * rather than becoming a dead link the reader has to test to discover.
  */
 export function AppRef({ app, purpose }: { app: HostAppId; purpose?: string }) {
-  const level = useHostStore((s) => s.host.user.level);
+  const level = useOperatorLevel();
   const openApp = useHostStore((s) => s.openApp);
   const meta = HOST_APP_REGISTRY[app];
   const unlocked = isAppUnlocked(app, level);

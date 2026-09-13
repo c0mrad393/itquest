@@ -26,12 +26,13 @@ import { useEntitlementStore } from "@/lib/platform/entitlements";
  */
 function levelNow(): number {
   try {
-    return useHostStore.getState().host.user.level;
+    return operatorStanding().level;
   } catch {
     return 1;
   }
 }
 import type { EmailBeat } from "@/lib/tickets/matrix";
+import { operatorStanding } from "@/lib/host/store";
 
 export interface TicketFilters {
   track: TicketTrack | "all";

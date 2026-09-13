@@ -12,7 +12,8 @@ import { useState } from "react";
 import { useHostStore } from "@/lib/host/store";
 import { useInfraStore } from "@/lib/infra/store";
 import { resetSimulation, saveNow, savedAt } from "@/lib/persistence/save";
-import { levelForXp, xpForLevel } from "@/lib/scenario/scoring";
+import { toNextLevel } from "@/lib/progression/standing";
+import { useStanding } from "@/lib/progression/use-standing";
 import Avatar from "../Avatar";
 import { AppIcon } from "@/components/ui/app-icons";
 import { HOST_WALLPAPERS, type WallpaperFamily } from "@/lib/host/wallpapers";
@@ -48,9 +49,17 @@ export default function SettingsApp() {
     typeof window === "undefined" ? null : savedAt(),
   );
 
-  const level = levelForXp(user.xp);
-  const nextLevelXp = xpForLevel(level + 1);
-  const progressPct = Math.min(100, Math.round((user.xp / nextLevelXp) * 100));
+  /*
+   * The level shown here is the one every gate uses.
+   *
+   * This line read `levelForXp(user.xp)` — the UNCAPPED figure — so a free
+   * operator over the ceiling was told level 7 on their own profile while the
+   * taskbar beside it said 4, with no hint that the two were different
+   * questions. It is one number now, and the surplus is named as surplus.
+   */
+  const standing = useStanding();
+  const next = toNextLevel(standing);
+  const progressPct = next ? Math.min(100, Math.round((next.have / next.need) * 100)) : 100;
 
   function onSave() {
     saveNow();
@@ -78,21 +87,30 @@ export default function SettingsApp() {
           <Avatar value={user.avatar} name={user.displayName} className="h-14 w-14" />
           <div className="flex-1">
             <div className="text-base font-semibold text-gray-100">{user.displayName}</div>
-            <div className="text-[11px] text-gray-500">{jobTitle(user.level, user.skills)}</div>
+            <div className="text-[11px] text-gray-500">{jobTitle(standing.level, user.skills)}</div>
             <div className="mt-2">
               <div className="flex items-center justify-between text-[10px] text-gray-500">
                 <span>
-                  Level {level} · {user.xp.toLocaleString()} XP ·{" "}
+                  Level {standing.level} · {user.xp.toLocaleString()} XP ·{" "}
                   <span className="font-mono text-emerald-300">
                     {user.budget.toLocaleString()} Cr
                   </span>
                 </span>
+                {/*
+                  A bar creeping towards a level the plan will not grant is a
+                  promise the product cannot keep, so at the ceiling it is
+                  full and says what is actually holding it.
+                */}
                 <span>
-                  next: {nextLevelXp.toLocaleString()} XP
+                  {next
+                    ? `next: ${next.need.toLocaleString()} XP`
+                    : standing.held
+                      ? `${standing.banked} level${standing.banked === 1 ? "" : "s"} banked`
+                      : "plan ceiling"}
                 </span>
               </div>
               <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-edge">
-                <div className="h-full rounded-full bg-info" style={{ width: `${progressPct}%` }} />
+                <div className={`h-full rounded-full ${next ? "bg-info" : "bg-gray-500/50"}`} style={{ width: `${progressPct}%` }} />
               </div>
             </div>
           </div>

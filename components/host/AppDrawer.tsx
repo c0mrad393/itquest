@@ -36,6 +36,7 @@ import {
 import { AppIcon } from "@/components/ui/app-icons";
 import Avatar from "./Avatar";
 import { IconSearch } from "@/components/ui/icons";
+import { useOperatorLevel } from "@/lib/progression/use-standing";
 
 export default function AppDrawer() {
   const open = useHostStore((s) => s.startMenuOpen);
@@ -43,6 +44,7 @@ export default function AppDrawer() {
   const setOpen = useHostStore((s) => s.setStartMenu);
   const openApp = useHostStore((s) => s.openApp);
   const host = useHostStore((s) => s.host);
+  const level = useOperatorLevel();
   const [query, setQuery] = useState("");
   const field = useRef<HTMLInputElement>(null);
 
@@ -54,7 +56,7 @@ export default function AppDrawer() {
     }
   }, [open]);
 
-  const apps = useMemo(() => visibleApps(host.user.level), [host.user.level]);
+  const apps = useMemo(() => visibleApps(level), [level]);
 
   const grouped = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -157,7 +159,7 @@ export default function AppDrawer() {
               {host.user.displayName}
             </span>
             <span className="block truncate text-[11px] text-gray-500">
-              {host.user.role} · level {host.user.level}
+              {host.user.role} · level {level}
             </span>
           </span>
           <span className="shrink-0 font-mono text-[11px] text-gray-500">

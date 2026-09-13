@@ -26,6 +26,7 @@ import { useTutorialStore } from "@/lib/tutorial/store";
 import { useDesktopIconStore } from "@/lib/host/desktop-icons";
 import { HOST_APP_REGISTRY, type HostAppId } from "@/lib/core";
 import { isAppUnlocked } from "@/lib/progression/unlocks";
+import { useOperatorLevel } from "@/lib/progression/use-standing";
 
 const BOOT_KEY = "itquest-booted";
 
@@ -33,7 +34,7 @@ export default function ShellBench({ say }: { say: (s: string) => void }) {
   const windows = useHostStore((s) => s.windows);
   const close = useHostStore((s) => s.close);
   const openApp = useHostStore((s) => s.openApp);
-  const level = useHostStore((s) => s.host.user.level);
+  const level = useOperatorLevel();
   const push = useNotificationStore((s) => s.push);
 
   const bypass = useAuthStore((s) => s.bypass);

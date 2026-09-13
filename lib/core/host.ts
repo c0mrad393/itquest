@@ -493,7 +493,21 @@ export interface HostUser {
   displayName: string;
   role: string; // "Tier-2 Systems Engineer"
   avatar: string; // palette id or https image URL
-  level: number;
+  /*
+   * THERE IS NO `level` HERE, and that absence is load-bearing.
+   *
+   * Level is derived from `xp` and the plan's ceiling — see
+   * lib/progression/standing.ts. It used to be stored, written by `awardXp`
+   * with the cap already applied, and the moment a plan could cap anything
+   * the estate grew two different levels: the capped one in this record, and
+   * the uncapped `levelForXp(xp)` that Settings, Profile and the leaderboard
+   * each computed for themselves. A free operator at the ceiling read level 4
+   * in the taskbar and level 7 on their own profile.
+   *
+   * Storing it also broke the upgrade it was supposed to serve: raising the
+   * cap left this field untouched, so the operator stayed at the old ceiling
+   * until the next award happened to rewrite it.
+   */
   xp: number;
   /**
    * IT Budget, in credits. The desk's spending power: earned by resolving

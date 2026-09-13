@@ -28,7 +28,7 @@ import {
 } from "./windows";
 import { createHostWorkstation } from "./seed";
 import type { HostWorkstationState } from "@/lib/core";
-import { levelForXp } from "@/lib/scenario/scoring";
+import { standingOf, type Standing } from "@/lib/progression/standing";
 import { useEntitlementStore } from "@/lib/platform/entitlements";
 import { playCue, setAudioEnabled } from "@/lib/audio/engine";
 
@@ -136,7 +136,7 @@ export const useHostStore = create<HostStore>((set, get) => ({
      * that want to render a locked state ask `isAppUnlocked` first; callers
      * that forget get a toast naming the level instead of a bypass.
      */
-    const level = get().host.user.level;
+    const { level } = operatorStanding();
     if (!isAppUnlocked(appId, level)) {
       useNotificationStore.getState().push({
         kind: "warning",
@@ -346,25 +346,24 @@ export const useHostStore = create<HostStore>((set, get) => ({
     set((s) => ({ host: { ...s.host, user: { ...s.host.user, ...patch } } })),
 
   awardXp: (amount) => {
-    const before = get().host.user.level;
-    set((s) => {
-      const xp = s.host.user.xp + amount;
-      /*
-       * XP still accrues past the plan's ceiling; the RANK stops.
-       *
-       * Banking the experience rather than discarding it matters: someone who
-       * plays three more days on the free tier and then upgrades should arrive
-       * where their work actually put them, not back at the cap. Throwing it
-       * away would make the ceiling a punishment instead of a pause.
-       */
-      const cap = useEntitlementStore.getState().levelCap();
-      const earned = levelForXp(xp);
-      const level = cap === null ? earned : Math.min(earned, cap);
-      return { host: { ...s.host, user: { ...s.host.user, xp, level } } };
-    });
+    /*
+     * XP is the only thing written. The level follows from it.
+     *
+     * This used to compute the capped level and store it, which made the
+     * ceiling permanent: an operator who upgraded kept whatever figure the
+     * last award had frozen into the record. Writing only the XP is what
+     * makes the promise below actually hold — the plan's ceiling is applied
+     * when the level is READ, so lifting it is enough on its own.
+     *
+     * XP still accrues past the ceiling and always did. Banking it matters:
+     * someone who plays three more days on the free tier and then upgrades
+     * should arrive where their work put them, not back at the cap.
+     */
+    const before = operatorStanding().level;
+    set((s) => ({ host: { ...s.host, user: { ...s.host.user, xp: s.host.user.xp + amount } } }));
     // Progression lives in the save slot, written by PersistenceManager. There
     // is no account to sync it to any more.
-    return { from: before, to: get().host.user.level };
+    return { from: before, to: operatorStanding().level };
   },
 
   awardSkillXp: (track, amount) =>
@@ -405,3 +404,18 @@ export const useHostStore = create<HostStore>((set, get) => ({
     set((s) => ({ host: { ...s.host, soundEnabled: on } }));
   },
 }));
+
+/**
+ * The operator's standing, for callers that are not components.
+ *
+ * It lives in this module rather than beside `useStanding` because the gate in
+ * `openApp` above needs it: a helper that imported both stores would have to
+ * import this one, and this one would have to import the helper. Engines and
+ * stores read it from here; components use `useStanding`, which subscribes.
+ */
+export function operatorStanding(): Standing {
+  return standingOf(
+    useHostStore.getState().host.user.xp,
+    useEntitlementStore.getState().levelCap(),
+  );
+}

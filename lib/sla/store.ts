@@ -32,3 +32,18 @@ export const useSlaStore = create<SlaStore>((set) => ({
 export function useNow(): number {
   return useSlaStore((s) => s.now);
 }
+
+/**
+ * The same clock, snapped to the minute.
+ *
+ * For countdowns told in minutes and hours — the shift timer, chiefly. It is
+ * the selector's RESULT that decides whether a subscriber re-renders, so a
+ * component reading this wakes once a minute instead of once a second, while
+ * still following the same tick as everything else.
+ *
+ * Read it for the subscription and take the time itself from `Date.now()`: the
+ * bucket is a change signal, not a clock to display.
+ */
+export function useMinute(): number {
+  return useSlaStore((s) => Math.floor(s.now / 60_000));
+}

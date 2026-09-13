@@ -21,13 +21,14 @@ import { budgetReward, computeScore } from "@/lib/scenario/scoring";
 import { burnRate, HOST_APP_REGISTRY, phaseForLevel, phaseSpec, rackPower, rackThermal } from "@/lib/core";
 import { skillOf, jobTitle } from "@/lib/progression/tracks";
 import { appsUnlockedAt, tiersUnlockedAt } from "@/lib/progression/unlocks";
+import { operatorStanding } from "@/lib/host/store";
 
 const tierNumber = (t: string) => t.replace(/^Tier_(\d).*$/, "$1");
 
 /** Title after the award has landed — read fresh so it reflects the new level. */
 function jobTitleNow(): string {
   const u = useHostStore.getState().host.user;
-  return jobTitle(u.level, u.skills);
+  return jobTitle(operatorStanding().level, u.skills);
 }
 
 export default function TicketReconciler() {
