@@ -90,12 +90,23 @@ export type EmotionIconId =
   | "face-angry";
 
 export const EMOTION_META: Record<Emotion, { label: string; iconId: EmotionIconId; color: string }> = {
+  /*
+   * A RAMP IN TWO CHANNELS: hue for the register, weight for the degree.
+   *
+   * Stressed/Irritated were `amber`/`orange` and Panicked/Angry were
+   * `rose`/`red` — two pairs, each pair one colour once the config had
+   * remapped them. Four of six states rendered as two.
+   *
+   * Each step also carries its own face icon, so colour was never the only
+   * channel here; that is why the escalation within a pair is a weight change
+   * rather than an unrelated hue. Getting angrier is not changing subject.
+   */
   relieved: { label: "Relieved", iconId: "face-relieved", color: "text-emerald-300 bg-emerald-500/15" },
   calm: { label: "Calm", iconId: "face-calm", color: "text-sky-300 bg-sky-500/15" },
   stressed: { label: "Stressed", iconId: "face-stressed", color: "text-amber-300 bg-amber-500/15" },
-  irritated: { label: "Irritated", iconId: "face-irritated", color: "text-orange-300 bg-orange-500/15" },
-  panicked: { label: "Panicked", iconId: "face-panicked", color: "text-rose-300 bg-rose-500/15" },
-  angry: { label: "Angry", iconId: "face-angry", color: "text-red-300 bg-red-500/15" },
+  irritated: { label: "Irritated", iconId: "face-irritated", color: "text-amber-300 bg-amber-500/35 font-semibold" },
+  panicked: { label: "Panicked", iconId: "face-panicked", color: "text-red-300 bg-red-500/15" },
+  angry: { label: "Angry", iconId: "face-angry", color: "text-red-300 bg-red-500/35 font-semibold" },
 };
 
 /** Map a 0-100 meter value to the nearest emotion label. */

@@ -182,7 +182,10 @@ import {
   resetTicketSeq,
   syncTicketSeq,
 } from "../.test-build/tickets/factory.js";
-import { jobTitle, rankPrefix, SPECIALISATION_THRESHOLD } from "../.test-build/progression/tracks.js";
+import { TRACK_META as SKILL_TRACK_META, jobTitle, rankPrefix, SPECIALISATION_THRESHOLD } from "../.test-build/progression/tracks.js";
+import { collisions, renderIdentity, swatchOf } from "../.test-build/ui/swatch.js";
+import { SEVERITY_META, STATUS_META, TRACK_META } from "../.test-build/host/ticket-ui.js";
+import { EMOTION_META } from "../.test-build/dialogue/types.js";
 import { levelForXp, xpForLevel } from "../.test-build/scenario/scoring.js";
 import {
   PRICING,
@@ -3860,6 +3863,72 @@ group("Client endpoints skip the rack chain");
   const other = { security: SPECIALISATION_THRESHOLD * 2 };
   eq("a different track gives a different title", jobTitle(6, specialist) === jobTitle(6, other), false);
   eq("at the same seniority", jobTitle(6, other).startsWith(rankPrefix(6)), true);
+}
+
+{
+  /*
+   * COLOUR THAT STILL MEANS SOMETHING.
+   *
+   * `tailwind.config.ts` remaps every raw Tailwind family onto a semantic one,
+   * which is what gives the product correct light-mode contrast everywhere.
+   * The cost nobody was paying attention to: `amber` IS `orange`, and `sky`,
+   * `blue`, `cyan` and `indigo` are one colour.
+   *
+   * Measured in the browser before this: Medium and High severity both
+   * `rgb(252, 200, 110)`; New, Accepted and In Progress all
+   * `rgb(130, 183, 255)`. Six of eleven entries across the queue's two primary
+   * codings were duplicates, and reading the source could not reveal it
+   * because the names are all different words.
+   */
+  group("Swatches — the resolver knows what the config does");
+
+  eq("amber and orange are one family", swatchOf("text-amber-300"), swatchOf("text-orange-300"));
+  eq("so are sky, blue, cyan and indigo", swatchOf("bg-sky-500"), swatchOf("bg-indigo-500"));
+  eq("and rose is red", swatchOf("text-rose-300"), swatchOf("text-red-300"));
+  eq("different families stay different", swatchOf("text-amber-300") === swatchOf("text-red-300"), false);
+  // Shades collapse onto three roles, so 200 and 300 are one ink...
+  eq("200 and 300 are the same ink", swatchOf("text-amber-200"), swatchOf("text-amber-300"));
+  // ...but 300 and 500 are not.
+  eq("300 and 500 are not", swatchOf("text-amber-300") === swatchOf("text-amber-500"), false);
+  // The neutral ramp is real, so its shades stay distinct.
+  eq("neutral keeps a per-shade scale", swatchOf("text-gray-300") === swatchOf("text-gray-400"), false);
+  // Strength is part of how it paints, so it is part of the identity.
+  eq("opacity separates two uses of one ink", renderIdentity("bg-amber-500/15") === renderIdentity("bg-amber-500/30"), false);
+  eq("the order classes were written in does not matter",
+     renderIdentity("bg-red-500/15 text-red-300"), renderIdentity("text-red-300 bg-red-500/15"));
+  eq("a non-colour utility is not a swatch", swatchOf("rounded-md"), null);
+
+  group("Colour maps — no two entries paint the same");
+  /*
+   * THE PROPERTY, not a list. Anybody adding a seventh status or a seventh
+   * track will be told here rather than by somebody squinting at a queue.
+   */
+  const maps = {
+    severity: Object.fromEntries(Object.entries(SEVERITY_META).map(([k, v]) => [k, v.color])),
+    "severity dots": Object.fromEntries(Object.entries(SEVERITY_META).map(([k, v]) => [k, v.dot])),
+    status: Object.fromEntries(Object.entries(STATUS_META).map(([k, v]) => [k, v.color])),
+    track: Object.fromEntries(Object.entries(TRACK_META).map(([k, v]) => [k, v.color])),
+    emotion: Object.fromEntries(Object.entries(EMOTION_META).map(([k, v]) => [k, v.color])),
+    "skill track": Object.fromEntries(Object.entries(SKILL_TRACK_META).map(([k, v]) => [k, v.color])),
+  };
+  for (const [name, entries] of Object.entries(maps)) {
+    const clashes = collisions(entries);
+    eq(`${name}: every entry is distinguishable`, clashes.map((g) => g.join("=")).join(", "), "");
+  }
+
+  group("Colour maps — the ramps still read as ramps");
+  // Severity escalates through three hues and ends on the one filled chip in
+  // the product; sharing a hue with High is the point of Critical.
+  eq("low is neutral", swatchOf(SEVERITY_META.low.color.split(" ")[0]), "text:neutral:300");
+  eq("medium warns", swatchOf(SEVERITY_META.medium.color.split(" ")[0]), "text:warn:text");
+  eq("high is already danger", swatchOf(SEVERITY_META.high.color.split(" ")[0]).startsWith("text:danger"), true);
+  eq("and critical is the only filled chip", SEVERITY_META.critical.color.includes("bg-danger"), true);
+  eq("nothing else fills", Object.entries(SEVERITY_META).filter(([k]) => k !== "critical").every(([, v]) => !/bg-\w+(?!.*\/)/.test(v.color.replace(/bg-\w+-\d+\/\d+/g, ""))), true);
+
+  // New and Accepted are one idea at two weights; In Progress leaves blue.
+  eq("new and accepted share an ink", swatchOf(STATUS_META.new.color.split(" ")[0]), swatchOf(STATUS_META.accepted.color.split(" ")[0]));
+  eq("but not a strength", renderIdentity(STATUS_META.new.color) === renderIdentity(STATUS_META.accepted.color), false);
+  eq("work in flight leaves blue", swatchOf(STATUS_META.in_progress.color.split(" ")[0]).startsWith("text:info"), false);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

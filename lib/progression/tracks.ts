@@ -47,12 +47,26 @@ export const TRACK_META: Record<SkillTrack, TrackMeta> = {
     iconId: "globe",
     color: "text-teal-300",
   },
+  /*
+   * SIX TRACKS, FIVE CHROMATIC FAMILIES.
+   *
+   * Systems and Cloud were `sky` and `indigo` — one family, one colour, on a
+   * panel whose whole job is comparing the six against each other.
+   *
+   * There is no sixth hue to reach for: the palette has info, accent, warn,
+   * danger and violet, and separating two of these by shade instead would
+   * work in dark mode and collapse in light, where `-text` and `-base` sit a
+   * few RGB units apart by design. So one track takes the neutral, and
+   * Systems is the honest candidate — it is the substrate the other five run
+   * on rather than a speciality beside them. Every row carries its own icon
+   * and label, so neutral reads as "general", not "disabled".
+   */
   systems: {
     id: "systems",
     label: "Systems",
     discipline: "SysAdmin",
     iconId: "server",
-    color: "text-sky-300",
+    color: "text-gray-300",
   },
   security: {
     id: "security",
@@ -73,7 +87,7 @@ export const TRACK_META: Record<SkillTrack, TrackMeta> = {
     label: "Cloud",
     discipline: "Cloud Engineer",
     iconId: "cloud",
-    color: "text-indigo-300",
+    color: "text-sky-300",
   },
 };
 
