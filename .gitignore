@@ -23,3 +23,8 @@ next-env.d.ts
 
 # Editor/agent launch config
 .claude/
+
+# Static export output for the Pages demo
+out/
+site/
+.next-pages/
