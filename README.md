@@ -10,16 +10,22 @@ A simulation of enterprise IT and cybersecurity work: a nested desktop OS, a liv
 model of a company's infrastructure, and support tickets that are graded from the
 actual state of that infrastructure — not from a checklist.
 
+[![Live demo](https://img.shields.io/badge/▶_Live_demo-try_it_now-2ea043.svg)](https://c0mrad393.github.io/itquest/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-1d76db.svg)](LICENSE)
 [![Next.js 14](https://img.shields.io/badge/Next.js-14-000000.svg?logo=next.js)](https://nextjs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Specs](https://img.shields.io/badge/specs-1521%20passing-2ea043.svg)](tests/rack-physics.mjs)
 [![No backend](https://img.shields.io/badge/backend-none%20required-6f42c1.svg)](#no-backend-no-accounts-no-telemetry)
 
+### [▶ Open the live demo](https://c0mrad393.github.io/itquest/)
+
+No install, no sign-up, no backend. Click **Launch Interactive Lab**, then
+**Skip sign-in** — you are in.
+
 </div>
 
 <p align="center">
-  <img src="docs/screenshots/landing.png" alt="The ITQuest landing page" width="100%" />
+  <img src="docs/screenshots/tour.gif" alt="A tour of ITQuest: the desktop, the ticket queue, the hardware bench and the firewall appliance" width="100%" />
 </p>
 
 ---
@@ -97,9 +103,14 @@ model, same result, same ticket closes.
 
 ## Quick start
 
+The fastest way to see it is the **[live demo](https://c0mrad393.github.io/itquest/)** —
+it is the same build, served as a static site.
+
+To run it yourself:
+
 ```bash
-git clone https://github.com/c0mrad393/IT-SIMULATOR.git
-cd IT-SIMULATOR
+git clone https://github.com/c0mrad393/itquest.git
+cd itquest
 npm install
 npm run dev
 ```
@@ -247,7 +258,7 @@ whole codebase, and they are what makes the project more useful to everyone.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — setup, conventions, how to propose changes
 - [docs/SCENARIOS.md](docs/SCENARIOS.md) — writing a ticket family, start to finish
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the model fits together
-- [Good first issues](https://github.com/c0mrad393/IT-SIMULATOR/labels/good%20first%20issue)
+- [Good first issues](https://github.com/c0mrad393/itquest/labels/good%20first%20issue)
 
 House style, briefly: no emoji in the product, semantic design tokens rather than
 raw colours, and comments that explain **why** rather than what. The existing code

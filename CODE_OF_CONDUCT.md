@@ -26,7 +26,7 @@ are representing the project.
 ## Reporting
 
 Report a problem by opening a
-[private security advisory](https://github.com/c0mrad393/IT-SIMULATOR/security/advisories/new),
+[private security advisory](https://github.com/c0mrad393/itquest/security/advisories/new),
 which is the only confidential channel this repository has. Reports are read by
 the maintainer and handled discreetly.
 

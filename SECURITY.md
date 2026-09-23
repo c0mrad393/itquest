@@ -23,7 +23,7 @@ behind them. They are marked `noindex`.
 
 ## How
 
-Open a [security advisory](https://github.com/c0mrad393/IT-SIMULATOR/security/advisories/new)
+Open a [security advisory](https://github.com/c0mrad393/itquest/security/advisories/new)
 rather than a public issue, and allow a reasonable window before disclosure.
 
 This project is not actively developed, so please set your expectations for
