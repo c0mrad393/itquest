@@ -1,0 +1,35 @@
+name: Scenario proposal
+description: Suggest a new ticket family — a new kind of thing that can go wrong
+labels: ["scenario", "good first issue"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Scenarios are the most valuable contribution to this project.
+        See [docs/SCENARIOS.md](../blob/main/docs/SCENARIOS.md) for how to build one.
+  - type: textarea
+    id: complaint
+    attributes:
+      label: What does the user report?
+      description: In their words, not yours. "The intranet has disappeared but the internet works."
+    validations:
+      required: true
+  - type: textarea
+    id: fault
+    attributes:
+      label: What is actually wrong?
+      description: Which piece of modelled state is broken.
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: How would an operator fix it?
+      description: Which app or console, and what they change there. If nothing in the product can currently change it, say so — that is useful too.
+    validations:
+      required: true
+  - type: input
+    id: tier
+    attributes:
+      label: Suggested tier and track
+      placeholder: "Tier 1 · helpdesk"

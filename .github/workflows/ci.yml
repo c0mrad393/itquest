@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # Typecheck and the full spec suite. The suite is dependency-free: it
+      # transpiles the pure model layer with the project's own tsc and runs it
+      # on bare Node, so there is nothing else to install here.
+      - run: npm test
+
+      # A production build catches what neither of the above can — route-level
+      # errors, and anything that only breaks once Next is optimising.
+      - run: npm run build

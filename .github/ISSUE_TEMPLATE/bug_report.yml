@@ -1,0 +1,42 @@
+name: Bug report
+description: Something in the simulation behaves incorrectly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: hot-reload staleness produces convincing phantom errors.
+        If you hit a `ReferenceError`, please reload in a **fresh tab** first.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Launch the lab, skip sign-in
+        2. Open …
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: context
+    attributes:
+      label: Operator level and growth phase
+      description: Almost everything is gated by one or both. DevTools → Progression shows them.
+      placeholder: "level 4, phase 1"
+  - type: input
+    id: seed
+    attributes:
+      label: World seed (optional)
+      description: The estate is a pure function of its seed, so this makes the report reproducible.
+  - type: textarea
+    id: console
+    attributes:
+      label: Console output
+      render: text
